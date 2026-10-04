@@ -20,7 +20,7 @@ from app.schemas.coupon_public import (
     VerifyResponse,
     compute_success_rate,
 )
-from app.services import affiliate, click_service, coupon_service
+from app.services import affiliate, affiliate_router, click_service, coupon_service
 from app.services.coupon_service import AlreadyVerifiedRecentlyError
 
 router = APIRouter(prefix="/coupons", tags=["coupons"])
@@ -85,6 +85,11 @@ async def go_to_coupon(
 ) -> RedirectResponse:
     """The only place destination_url is ever revealed: a redirect, not a JSON field.
 
+    Which provider's link is used is decided here, server-side, from the
+    coupon's source records — see `app.services.affiliate_router`. The frontend
+    only ever asks for the click, so a shopper cannot choose the network, and
+    cannot read one out of a JSON response either.
+
     Each hit is recorded as a ClickEvent and the outbound URL carries that
     click's reference, so a later network sale can be traced back to this
     coupon and to the page (`?src=`) that sent the visitor.
@@ -101,8 +106,18 @@ async def go_to_coupon(
         visitor_hash=hash_ip(client_ip(request)),
         user_agent=request.headers.get("user-agent"),
     )
+    routed = await affiliate_router.route_coupon(db, coupon)
+    if not routed.url:
+        # Redirecting to an empty Location resolves against the current path and
+        # sends the shopper back into this endpoint, forever. A coupon with
+        # nowhere to send them is a broken record, not a redirect.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Coupon has no destination")
+    # The clickref parameter name comes from the store, not from the winning
+    # source: which sub-ID field a network wants is a per-programme detail an
+    # operator configures, and guessing it from a provider's name is how a
+    # clickref ends up silently dropped.
     target = affiliate.build_outbound_url(
-        coupon.destination_url,
+        routed.url,
         network=store.affiliate_network if store else None,
         link_template=store.link_template if store else None,
         clickref=click.clickref,
