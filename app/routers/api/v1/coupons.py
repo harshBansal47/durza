@@ -39,6 +39,8 @@ async def list_coupons(
     category_id: uuid.UUID | None = None,
     search: str | None = None,
     active_only: bool = True,
+    sort: coupon_service.CouponSort = coupon_service.CouponSort.newest,
+    expires_within_days: int | None = Query(None, ge=1, le=365),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -49,6 +51,8 @@ async def list_coupons(
         category_id=category_id,
         search=search,
         active_only=active_only,
+        sort=sort,
+        expires_within_days=expires_within_days,
         skip=skip,
         limit=limit,
     )

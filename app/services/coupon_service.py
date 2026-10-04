@@ -1,20 +1,48 @@
+import enum
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import EntityNotFoundError
 from app.core.pagination import paginate
 from app.core.slugs import generate_unique_slug
 from app.models.category import Category
+from app.models.click import ClickEvent
 from app.models.coupon import Coupon
 from app.models.coupon_verification import CouponVerification
 from app.models.store import Store
 from app.schemas.coupon import CouponCreate, CouponUpdate
 
 VERIFICATION_COOLDOWN = timedelta(hours=24)
+
+# A coupon needs at least this many reports before its success rate is allowed
+# to rank it: "100% (1 report)" must not beat "94% (48 reports)".
+MIN_REPORTS_TO_RANK = 5
+TRENDING_WINDOW = timedelta(days=7)
+
+
+class CouponSort(str, enum.Enum):
+    """Orderings the storefront may ask for. Each is backed by data we hold; the
+    frontend presents them and never ranks anything itself.
+
+    newest             most recently added (default, the historical behaviour)
+    ending_soon        soonest real expiry first; coupons with no expiry excluded
+    recently_verified  most recently confirmed by a shopper; never-verified excluded
+    trending           most real (non-bot) outbound clicks in the last 7 days; coupons
+                       nobody clicked this week are excluded rather than padded in
+    most_used          most all-time clicks (explicitly NOT "trending")
+    top_rated          highest success rate among coupons with enough reports
+    """
+
+    newest = "newest"
+    ending_soon = "ending_soon"
+    recently_verified = "recently_verified"
+    trending = "trending"
+    most_used = "most_used"
+    top_rated = "top_rated"
 
 
 async def list_coupons(
@@ -24,9 +52,12 @@ async def list_coupons(
     category_id: uuid.UUID | None = None,
     search: str | None = None,
     active_only: bool = True,
+    sort: CouponSort = CouponSort.newest,
+    expires_within_days: int | None = None,
     skip: int = 0,
     limit: int = 20,
 ) -> tuple[Sequence[Coupon], int]:
+    now = datetime.now(UTC)
     stmt = select(Coupon)
     if store_id is not None:
         stmt = stmt.where(Coupon.store_id == store_id)
@@ -35,8 +66,48 @@ async def list_coupons(
     if search:
         stmt = stmt.where(Coupon.title.ilike(f"%{search}%"))
     if active_only:
-        stmt = stmt.where(Coupon.is_active.is_(True))
-    return await paginate(db, stmt.order_by(Coupon.created_at.desc()), skip, limit)
+        # The lifecycle job deactivates expired coupons on a schedule; this makes
+        # "active" true the instant a coupon expires, not at the next run.
+        stmt = stmt.where(
+            Coupon.is_active.is_(True),
+            or_(Coupon.expires_at.is_(None), Coupon.expires_at > now),
+        )
+    if expires_within_days is not None:
+        stmt = stmt.where(
+            Coupon.expires_at.is_not(None),
+            Coupon.expires_at > now,
+            Coupon.expires_at <= now + timedelta(days=expires_within_days),
+        )
+
+    if sort is CouponSort.ending_soon:
+        stmt = stmt.where(Coupon.expires_at.is_not(None), Coupon.expires_at > now)
+        stmt = stmt.order_by(Coupon.expires_at.asc(), Coupon.created_at.desc())
+    elif sort is CouponSort.recently_verified:
+        stmt = stmt.where(Coupon.last_verified_at.is_not(None))
+        stmt = stmt.order_by(Coupon.last_verified_at.desc(), Coupon.created_at.desc())
+    elif sort is CouponSort.most_used:
+        stmt = stmt.order_by(Coupon.clicks_count.desc(), Coupon.created_at.desc())
+    elif sort is CouponSort.top_rated:
+        reports = Coupon.success_count + Coupon.fail_count
+        stmt = stmt.where(reports >= MIN_REPORTS_TO_RANK)
+        rate = (Coupon.success_count * 1.0) / reports
+        stmt = stmt.order_by(rate.desc(), reports.desc(), Coupon.created_at.desc())
+    elif sort is CouponSort.trending:
+        recent = (
+            select(ClickEvent.coupon_id.label("cid"), func.count().label("n"))
+            .where(
+                ClickEvent.created_at >= now - TRENDING_WINDOW,
+                ClickEvent.is_bot.is_(False),
+                ClickEvent.coupon_id.is_not(None),
+            )
+            .group_by(ClickEvent.coupon_id)
+            .subquery()
+        )
+        stmt = stmt.join(recent, recent.c.cid == Coupon.id)
+        stmt = stmt.order_by(recent.c.n.desc(), Coupon.created_at.desc())
+    else:
+        stmt = stmt.order_by(Coupon.created_at.desc())
+    return await paginate(db, stmt, skip, limit)
 
 
 async def get_coupon(db: AsyncSession, coupon_id: uuid.UUID) -> Coupon | None:

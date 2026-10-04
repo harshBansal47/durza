@@ -426,3 +426,21 @@ an advertiser can never be served outside what they booked:
   `ad_id` set from per-store earnings reports.**
 - Impressions are not counted yet (that needs batching rather than a write per page view).
 
+## Discovery orderings
+
+`GET /api/v1/coupons?sort=<name>` lets the storefront build discovery sections without
+inventing signals. Every ordering is backed by data we hold; the frontend only presents it.
+
+| `sort` | Meaning | Excluded |
+|---|---|---|
+| `newest` (default) | most recently added | |
+| `ending_soon` | soonest real expiry first | no expiry, already expired |
+| `recently_verified` | most recently confirmed by a shopper | never verified |
+| `trending` | most non-bot outbound clicks in the last 7 days | coupons nobody clicked this week (the list can be empty) |
+| `most_used` | most all-time clicks (not "trending") | |
+| `top_rated` | highest success rate | fewer than 5 reports |
+
+`expires_within_days=N` keeps only coupons that really expire within N days. With
+`active_only=true` (default) a coupon is hidden the instant `expires_at` passes, without
+waiting for the lifecycle job.
+
