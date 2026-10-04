@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import select
 
-from app.ingestion import pipeline, probe
+from app.ingestion import merchants, pipeline, probe
 from app.ingestion.lifecycle import expire_stale_coupons
 from app.ingestion.normalize import NormalizeError, normalize_offer, offer_from_dict, parse_discount
 from app.models.category import Category
@@ -83,6 +83,37 @@ async def static_source(async_session_maker, category):
         await db.commit()
         await db.refresh(source)
         return source
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        # The registrable host, not the TLD. This is the whole point of the
+        # function: `stores.normalized_domain` is UNIQUE, so two `.com` retailers
+        # normalizing to `"com"` would be merged onto one merchant row.
+        ("https://www.myntra.com/offers/kurta?deal=1", "myntra.com"),
+        ("www.nike.com", "nike.com"),
+        ("myntra.com", "myntra.com"),
+        ("m.nike.com", "nike.com"),
+        ("MYNTRA.COM", "myntra.com"),
+        ("myntra.com:8080", "myntra.com"),
+        # Multi-label public suffixes keep the label in front of them.
+        ("https://www.amazon.co.uk/", "amazon.co.uk"),
+        ("https://shop.example.com.au/x", "example.com.au"),
+        # Subdomains that are not a storefront front door stay put.
+        ("sub.domain.example.org", "example.org"),
+        # A host that *is* a public suffix names no merchant.
+        ("co.uk", None),
+        ("https://co.uk", None),
+        # No dot, no guessing. Inventing a domain is how unrelated shops merge.
+        ("localhost", None),
+        ("example", None),
+        ("", None),
+        (None, None),
+    ],
+)
+async def test_normalize_domain_returns_the_registrable_host(raw, expected):
+    assert merchants.normalize_domain(raw) == expected
 
 
 async def test_parse_discount():
@@ -256,3 +287,160 @@ async def test_content_hash_ignores_discount_changes():
         )
     )
     assert dedupe.content_hash(offer_a) == dedupe.content_hash(offer_b)
+
+
+async def test_a_partial_run_keeps_the_records_the_provider_did_send(
+    async_session_maker, category, monkeypatch
+):
+    # `PartialFetchError` promises "here is everything I managed to retrieve".
+    # The pipeline batched records before consuming them, so the last,
+    # not-yet-full batch was only yielded *after* the stream ended — and a stream
+    # that raises never gets there. Every provider that truncated mid-page lost up
+    # to `BATCH_SIZE - 1` records it had already fetched and paid for.
+    from app.ingestion.base import PartialFetchError, RawOffer
+    from app.ingestion.registry import _ADAPTERS
+
+    class _TruncatingSource:
+        async def stream(self, config, *, mode=None, credentials=None):
+            yield RawOffer(
+                title="Kept deal",
+                store_slug="truncatedshop",
+                category_slug="fashion",
+                code="KEPT",
+                discount_text="10% off",
+                destination_url="https://truncatedshop.example.com/deal",
+            )
+            raise PartialFetchError("failed on page 2 of 40", pages_completed=2)
+
+    monkeypatch.setitem(_ADAPTERS, SourceKind.static, _TruncatingSource)
+
+    async with async_session_maker() as db:
+        source = Source(
+            name="Truncating",
+            slug="truncating",
+            kind=SourceKind.static,
+            config={},
+        )
+        db.add(source)
+        await db.commit()
+        await db.refresh(source)
+
+        run = await pipeline.run_ingestion(db, source)
+
+        assert run.status == RunStatus.partial
+        assert run.fetched == 1
+        assert run.created == 1
+        assert "page 2 of 40" in (run.error or "")
+        coupon = (await db.execute(select(Coupon))).scalar_one()
+        assert coupon.title == "Kept deal"
+
+
+async def test_a_merchant_another_run_created_first_is_adopted_not_duplicated(
+    async_session_maker, category, monkeypatch
+):
+    # Two sources ingested independently will meet the same new merchant at the
+    # same time, so "SELECT, find nothing, INSERT" racing another run's INSERT is
+    # the normal case rather than an exotic one. The loser has to adopt the
+    # winner's row; a duplicate `stores` row would split every future coupon for
+    # that merchant across two pages.
+    #
+    # The stale read is simulated rather than raced: `_by_domain` misses once, as
+    # it would have done had the rival committed in the microsecond between the
+    # two statements, and the row really is already there for the INSERT to
+    # collide with.
+    from app.ingestion import merchant_resolution
+
+    # The rival spells the merchant differently, so the alias and exact-name steps
+    # cannot rescue the stale read and the run really does reach the INSERT. That
+    # is the realistic case: providers disagree about spelling far more often than
+    # they disagree about a hostname.
+    async with async_session_maker() as db:
+        rival = Store(
+            name="Myntra Fashion",
+            slug="myntra-fashion",
+            normalized_name="myntra fashion",
+            normalized_domain="myntra.com",
+        )
+        db.add(rival)
+        await db.commit()
+
+    real_by_domain = merchant_resolution._by_domain
+    seen = {"n": 0}
+
+    async def _stale_first_read(db, domain):
+        seen["n"] += 1
+        return None if seen["n"] == 1 else await real_by_domain(db, domain)
+
+    monkeypatch.setattr(merchant_resolution, "_by_domain", _stale_first_read)
+
+    async with async_session_maker() as db:
+        match = await merchant_resolution.resolve_or_create(
+            db, normalize_offer(_offer(store_domain="myntra.com"))
+        )
+        assert match.matched_by == "domain"
+        assert match.is_new is False
+        await db.commit()
+        # The winner's row, not a second one: two rows would split every future
+        # coupon for this merchant across two pages.
+        stores = (await db.execute(select(Store))).scalars().all()
+        assert [store.id for store in stores] == [match.store.id]
+
+
+async def test_creating_a_merchant_does_not_expire_the_caller_s_own_objects(
+    async_session_maker, category
+):
+    # The recovery used to be a savepoint, and SQLAlchemy 2.1 marks the enclosing
+    # transaction unusable when a flush inside one fails. Recovering therefore
+    # needed a full `db.rollback()`, which expired every object in the session —
+    # including the pipeline's `Source` and `IngestionRun`, so the run's own
+    # counters silently reverted and the next attribute read raised
+    # `MissingGreenlet`. Writing the row through `ON CONFLICT` means no flush and
+    # no rollback, so nothing is expired; this pins that down.
+    from app.ingestion import merchant_resolution
+
+    async with async_session_maker() as db:
+        source = Source(name="Solo", slug="solo", kind=SourceKind.static, config={})
+        db.add(source)
+        await db.commit()
+
+        match = await merchant_resolution.resolve_or_create(
+            db, normalize_offer(_offer(store_slug="freshshop", store_name="Fresh Shop"))
+        )
+        assert match.is_new is True
+        # No refresh, no re-select: the point is that the attribute is still loaded.
+        assert source.slug == "solo"
+        assert match.store.slug == "freshshop"
+
+
+async def test_two_merchants_without_a_domain_are_not_collapsed(
+    async_session_maker, category
+):
+    # `normalized_domain` is nullable and both databases treat NULLs as distinct,
+    # which is what lets a provider that gives a name but no usable domain still
+    # get its own row. The `ON CONFLICT (normalized_domain)` in
+    # `merchant_resolution._claim_domain` must not narrow that into a constraint on
+    # NULL — an index that ignored NULLs would silently merge unrelated shops.
+    from app.ingestion import merchant_resolution
+
+    # A provider that lists a shop but gives no usable hostname. `localhost` has no
+    # registrable domain, which is exactly the shape of offer that leaves
+    # `normalized_domain` NULL.
+    offer = normalize_offer(
+        _offer(
+            store_slug="nameless",
+            store_name="Nameless Shop",
+            destination_url="https://localhost/deal",
+        )
+    )
+    assert offer.store_domain is None
+
+    async with async_session_maker() as db:
+        first = await merchant_resolution.resolve_or_create(db, offer)
+        second = await merchant_resolution.resolve_or_create(db, offer)
+        await db.commit()
+
+        assert first.is_new is True
+        assert first.store.normalized_domain is None
+        assert second.store.id == first.store.id
+        stores = (await db.execute(select(Store))).scalars().all()
+        assert [store.id for store in stores] == [first.store.id]

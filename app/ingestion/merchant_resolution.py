@@ -9,8 +9,10 @@ Signals are tried strongest-first and each must earn its place:
 
 1. **Normalized domain.** Near-proof of identity. Uniqueness is enforced by the
    database as well, because a check-then-insert races two concurrent ingestion
-   runs and the loser would otherwise create a duplicate that no amount of
-   application-level matching can undo afterwards.
+   runs — which is the *normal* state once sources are ingested independently —
+   and the loser has to be able to fall back to the row that won without losing
+   its own run. The `ON CONFLICT DO NOTHING` in step 4 is what makes that
+   recoverable; see `_claim_domain` for why it is not a savepoint.
 2. **A known alias.** Human-curated, so it can encode knowledge no algorithm has
    ("NIKE" and "Nike Official Store UK" are one merchant).
 3. **Exact normalized name.** Case and marketing-suffix differences only.
@@ -25,9 +27,11 @@ of which worked.
 """
 
 from dataclasses import dataclass
+from uuid import uuid4
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.observability import get_logger
@@ -41,6 +45,12 @@ logger = get_logger("couponza.ingestion.merchants")
 #: *review purposes only*. Deliberately high: the goal is to surface
 #: "Nike" / "Nike Store UK" to a human, not to decide it automatically.
 FUZZY_CANDIDATE_THRESHOLD = 0.88
+
+#: Dialects whose INSERT can say "write this row unless it is already there".
+#: Postgres runs the app; SQLite runs the test suite. There is no third option to
+#: support: four models already carry `postgresql.ARRAY`/`JSONB` columns, so a
+#: MySQL port is a port, not a configuration change.
+_INSERT_FACTORIES = {"postgresql": pg_insert, "sqlite": sqlite_insert}
 
 
 @dataclass(frozen=True)
@@ -115,6 +125,11 @@ async def resolve_or_create(
 
     # ---- 4. Create ---------------------------------------------------------
     created = Store(
+        # Assigned up front for the same reason `pipeline._ingest_one` assigns a
+        # Coupon's id: the row is written by a hand-built INSERT (see
+        # `_claim_domain`), and a Python-side `default=` is evaluated by the ORM
+        # during flush — which this path deliberately never performs.
+        id=uuid4(),
         name=offer.store_name,
         slug=offer.store_slug,
         website_url=offer.store_website or (f"https://{domain}" if domain else None),
@@ -127,27 +142,104 @@ async def resolve_or_create(
         # producing a public page for a shop that does not exist.
         status=StoreStatus.active if domain else StoreStatus.pending,
     )
-    db.add(created)
-    try:
-        await db.flush()
-    except IntegrityError:
-        # Lost a race: another ingestion run created this domain between our
-        # SELECT and our INSERT. The unique constraint did its job. Fall back to
-        # reading the row that now exists rather than failing the run — two
-        # providers syncing at once is normal operation, not an error.
-        await db.rollback()
-        if domain:
-            raced = await _by_domain(db, domain)
-            if raced is not None:
-                return MerchantMatch(store=raced, matched_by="domain", is_new=False)
-        raise
+    won, store = await _claim_domain(db, created, domain)
+    if not won:
+        # Another run created this domain between our SELECT and our INSERT. The
+        # unique constraint did its job and this run carries on, which is the
+        # whole point: two providers listing the same shop at the same moment is
+        # ordinary once sources are ingested independently, not an exotic race.
+        return MerchantMatch(store=store, matched_by="domain", is_new=False)
 
     if program_ids:
         # Recorded for operator visibility rather than used for matching here:
         # see `merchants.merchant_ids_match` for why a bare id is not an identity.
-        logger.debug("merchant created with program ids", extra={"slug": created.slug})
+        logger.debug("merchant created with program ids", extra={"slug": store.slug})
 
-    return MerchantMatch(store=created, matched_by="created", is_new=True)
+    return MerchantMatch(store=store, matched_by="created", is_new=True)
+
+
+async def _claim_domain(db: AsyncSession, created: Store, domain: str | None) -> tuple[bool, Store]:
+    """Write a new merchant row unless a concurrent run already owns the domain.
+
+    Returns `(won_the_race, store)`. `store` is the row this call created, or the
+    row a rival created first — the two are the same merchant either way, which is
+    the entire point of matching on the domain.
+
+    ### Why `ON CONFLICT` and not a savepoint
+
+    The obvious shape is `db.add(created)` inside `begin_nested()`, catch the
+    `IntegrityError`, roll back to the savepoint and re-read the winner. It does
+    not survive contact with SQLAlchemy 2.1: a flush that fails marks the
+    *enclosing* transaction with `_rollback_exception`, so the very next
+    statement raises `PendingRollbackError` and the session is unusable until it
+    is fully rolled back. A full `db.rollback()` does recover the session — and
+    throws away every coupon already flushed in this batch, expired `Source` and
+    `IngestionRun` included, which broke the invariant that a run's counters
+    always equal the sum of what it did. That failure mode is *worse* than the
+    race it was meant to handle, and it fires exactly when ingestion is doing its
+    job.
+
+    Letting the database decide the insert is both simpler and correct:
+
+    * no exception, so nothing is rolled back and nothing is expired;
+    * the losing session blocks until the winner commits (Postgres blocks on the
+      conflicting row), then reads it under a fresh READ COMMITTED snapshot, so
+      `_by_domain` below cannot miss it;
+    * it costs one extra round trip on the rare create path and nothing at all on
+      the domain-match path that every later offer takes.
+
+    Only `normalized_domain` is targeted. `slug` is separately unique and is *not*
+    silently swallowed, because a slug collision means two domains produced one
+    slug — a genuine bug that should stay loud.
+    """
+    dialect = getattr(getattr(db, "bind", None), "dialect", None)
+    if dialect is None or dialect.name not in _INSERT_FACTORIES:
+        raise RuntimeError(
+            "merchant creation requires Postgres or SQLite: INSERT ... ON CONFLICT "
+            "is the only way to survive the domain race. Got dialect "
+            f"{dialect.name if dialect is not None else None!r}."
+        )
+    factory = _INSERT_FACTORIES[dialect.name]
+
+    stmt = (
+        factory(Store)
+        .values(
+            id=created.id,
+            name=created.name,
+            slug=created.slug,
+            website_url=created.website_url,
+            normalized_name=created.normalized_name,
+            normalized_domain=domain,
+            aliases=created.aliases,
+            status=created.status,
+        )
+        .on_conflict_do_nothing(index_elements=["normalized_domain"])
+        .returning(Store.id)
+    )
+    # `synchronize_session=False` because nothing in the identity map describes
+    # this row: `created` was never `db.add`ed, so there is no session state for
+    # the ORM to reconcile after a no-op insert.
+    new_id = (
+        await db.execute(stmt.execution_options(synchronize_session=False))
+    ).scalar_one_or_none()
+
+    if new_id is not None:
+        # Our own insert, read back so the caller gets a persistent instance.
+        # One extra SELECT on the create path; the row cannot be built any other
+        # way without letting the ORM flush, which is what this avoids.
+        return True, await db.get(Store, new_id)
+
+    winner = await _by_domain(db, domain) if domain else None
+    if winner is None:
+        # Unreachable on Postgres: `ON CONFLICT` returning nothing means the
+        # conflicting transaction committed, and READ COMMITTED gives this
+        # statement a snapshot taken after that commit. Refusing to invent a
+        # merchant beats returning one the caller would then link coupons to.
+        raise RuntimeError(
+            f"insert of store {created.slug!r} conflicted on normalized_domain "
+            f"{domain!r} but no owning row could be read"
+        )
+    return False, winner
 
 
 async def _by_domain(db: AsyncSession, domain: str) -> Store | None:

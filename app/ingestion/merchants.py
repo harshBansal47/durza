@@ -125,8 +125,21 @@ def normalize_domain(value: str | None) -> str | None:
     while len(labels) > 2 and labels[0] in _GENERIC_SUBDOMAINS:
         labels.pop(0)
 
+    # The registrable domain is the public suffix plus one more label — so
+    # `myntra.com`, not `com`. `keep` was 1 for single-label suffixes, which
+    # returned the bare TLD: `normalize_domain("www.nike.com") == "com"`, and
+    # `normalize_domain("www.amazon.co.uk") == "co.uk"`. Every `.com` retailer in
+    # the catalogue therefore produced the same `normalized_domain`, and the UNIQUE
+    # constraint that exists to keep one domain to one merchant quietly merged
+    # *all* of them onto a single Store row — the exact over-merge this module's
+    # docstring calls the failure that costs trust. Nothing caught it because the
+    # name path still resolved every offer; the domain path, the strongest signal,
+    # was simply doing nothing.
     tail2 = ".".join(labels[-2:])
-    keep = 2 if tail2 in _MULTI_PART_SUFFIXES else 1
+    keep = 3 if tail2 in _MULTI_PART_SUFFIXES else 2
+    if len(labels) < keep:
+        # The host *is* a public suffix ("co.uk"), so it names no merchant.
+        return None
     domain = ".".join(labels[-keep:])
 
     # A domain made only of digits is an IP fragment or a mis-parse.

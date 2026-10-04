@@ -718,19 +718,36 @@ async def _batched(
     Cancellation is checked per batch, not per record: an operator who cancels a
     40,000-record run should not wait for the current batch, but they also should
     not cost us a query per record to notice.
+
+    The `except` clause is the whole reason this is not four lines. A tail batch
+    smaller than `size` is only yielded *after* the stream ends, so a stream that
+    raises part-way through used to lose that tail — every provider that
+    truncated mid-page silently dropped up to `BATCH_SIZE - 1` records it had
+    already paid for, which is the opposite of what `PartialFetchError` promises.
+
+    Only `PartialFetchError` is caught, and deliberately so. Widening this to
+    `BaseException` would also catch `GeneratorExit`, and yielding from inside a
+    `GeneratorExit` handler is an error in itself — the generator is being closed
+    and must not produce another value. Cancellation is left alone for the same
+    reason, and because dropping the tail is the right answer to "stop now".
     """
     batch: list[tuple[Any, int]] = []
-    async for item in stream:
-        batch.append(item)
-        if len(batch) >= size:
+    try:
+        async for item in stream:
+            batch.append(item)
+            if len(batch) >= size:
+                if cancel is not None and cancel():
+                    raise _Cancelled()
+                yield batch
+                batch = []
+        if batch:
             if cancel is not None and cancel():
                 raise _Cancelled()
             yield batch
-            batch = []
-    if batch:
-        if cancel is not None and cancel():
-            raise _Cancelled()
-        yield batch
+    except PartialFetchError:
+        if batch:
+            yield batch
+        raise
 
 
 async def _ingest_one(

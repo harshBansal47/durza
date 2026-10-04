@@ -32,13 +32,14 @@ from datetime import UTC, datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from sqlalchemy import select, text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import metrics, sentry
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
+from app.core.locks import try_lock as _try_lock
+from app.core.locks import unlock as _unlock
 from app.core.observability import get_logger
 from app.models.job import JobRun, JobStatus
 from app.services.alert_service import run_alert_scan
@@ -64,8 +65,11 @@ async def _expire_job(db: AsyncSession) -> str:
     return f"expired {expired}"
 
 
-async def _refresh_job(db: AsyncSession) -> str:
-    refreshed = await refresh_coupon_prices(db)
+async def _refresh_job(db: AsyncSession, *, force: bool = False) -> str:
+    # `force` comes from the manual "run it again" path. The sweep normally syncs
+    # only sources whose own interval has elapsed, which after a provider
+    # incident is exactly the wrong set to wait on.
+    refreshed = await refresh_coupon_prices(db, force=force)
     return f"refreshed {refreshed} source(s)"
 
 
@@ -89,7 +93,7 @@ async def _scrub_clicks_job(db: AsyncSession) -> str:
     return f"scrubbed {scrubbed} visitor hash(es)"
 
 
-JOBS: dict[str, tuple[Callable[[AsyncSession], Awaitable[str]], int]] = {
+JOBS: dict[str, tuple[Callable[..., Awaitable[str]], int]] = {
     "expire_coupons": (_expire_job, _LOCK_EXPIRE),
     "refresh_prices": (_refresh_job, _LOCK_REFRESH),
     "send_alerts": (_alerts_job, _LOCK_ALERTS),
@@ -199,35 +203,11 @@ def _note_success(name: str) -> None:
     _backoff_until.pop(name, None)
 
 
-async def _try_lock(db: AsyncSession, lock_id: int) -> bool:
-    """Take a session-scoped advisory lock. Caller must release it.
-
-    Returns True when the caller may proceed. Advisory locks are a Postgres
-    feature, so on any other dialect (the test suite runs SQLite) this returns
-    True unconditionally: a single shared test connection cannot have two
-    workers racing in the first place, and a hard failure here would mean the
-    scheduler is untestable rather than wrong.
-    """
-    if db.bind is not None and db.bind.dialect.name != "postgresql":
-        return True
-    result = await db.execute(text("SELECT pg_try_advisory_lock(:id)"), {"id": lock_id})
-    # Commit so the lock is held by this connection rather than being discarded
-    # with the implicit transaction's result set.
-    await db.commit()
-    return bool(result.scalar())
-
-
-async def _unlock(db: AsyncSession, lock_id: int) -> None:
-    if db.bind is not None and db.bind.dialect.name != "postgresql":
-        return
-    try:
-        await db.execute(text("SELECT pg_advisory_unlock(:id)"), {"id": lock_id})
-        await db.commit()
-    except SQLAlchemyError:
-        # If the connection is already gone, Postgres released the lock when the
-        # backend exited. Nothing to do, and nothing worth failing the job over —
-        # the worst case is a log line that says so.
-        logger.warning("advisory lock release failed", extra={"lock_id": lock_id})
+# The lock helpers live in `app.core.locks` — per-source ingestion needs the same
+# two functions, and a second copy is a second chance to forget the `finally`
+# that releases them. Imported under the old private names because that is what
+# this module's own tests monkeypatch, and because every call site here is
+# internal.
 
 
 def _row(job: str, status: JobStatus, detail: str | None, started: datetime) -> JobRun:
@@ -243,7 +223,7 @@ def _row(job: str, status: JobStatus, detail: str | None, started: datetime) -> 
     )
 
 
-async def run_job(name: str, *, ignore_backoff: bool = False) -> str:
+async def run_job(name: str, *, ignore_backoff: bool = False, **job_kwargs: object) -> str:
     """Execute one scheduled job under its advisory lock.
 
     Raises on failure so the caller can distinguish "ran and broke" from
@@ -253,6 +233,11 @@ async def run_job(name: str, *, ignore_backoff: bool = False) -> str:
     statement about *automatic* retries — it says this job has failed five times
     in a row. It is not a statement that a human looking at the failure and
     clicking "run it again" should be told no.
+
+    `job_kwargs` is forwarded to the job body, and exists for the same reason:
+    `refresh_prices` normally syncs only the sources whose own interval has
+    elapsed, so a human asking it to run has to be able to say "all of them,
+    now" without waiting out a degraded provider's six-hour backoff.
     """
     fn, lock_id = JOBS[name]
 
@@ -273,7 +258,7 @@ async def run_job(name: str, *, ignore_backoff: bool = False) -> str:
 
         started = datetime.now(UTC)
         try:
-            detail = await fn(db)
+            detail = await fn(db, **job_kwargs)
         except Exception as exc:
             message = f"{type(exc).__name__}: {exc}"
             db.add(_row(name, JobStatus.failed, message, started))
@@ -462,15 +447,16 @@ async def stop_scheduler() -> None:
         _scheduler = None
 
 
-async def run_job_now(name: str) -> str:
+async def run_job_now(name: str, **job_kwargs: object) -> str:
     """Run a job immediately, ignoring its schedule but honouring the lock.
 
     Backs the admin "run now" button and gives tests a deterministic sweep
-    without waiting on an interval.
+    without waiting on an interval. `job_kwargs` reaches the job body, so
+    `run_job_now("refresh_prices", force=True)` is "re-ingest every source now".
     """
     if name not in JOBS:
         raise ValueError(f"unknown job: {name}")
-    return await run_job(name, ignore_backoff=True)
+    return await run_job(name, ignore_backoff=True, **job_kwargs)
 
 
 async def last_run(db: AsyncSession, name: str) -> JobRun | None:
