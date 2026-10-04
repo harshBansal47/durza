@@ -10,7 +10,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from app.models.coupon import DiscountType
+from app.models.coupon import DiscountType, VerificationStatus
 
 
 def compute_success_rate(success_count: int, fail_count: int) -> float | None:
@@ -37,6 +37,10 @@ class CouponPublicRead(BaseModel):
     success_count: int
     fail_count: int
     last_verified_at: datetime | None
+    # How much evidence backs this coupon (unverified/pending/verified/disputed/failed).
+    # Exposed so the UI can show an honest trust state; the raw quality_score stays
+    # private because it feeds ranking, including a revenue component.
+    verification_status: VerificationStatus
     created_at: datetime
 
     @computed_field  # type: ignore[prop-decorator]

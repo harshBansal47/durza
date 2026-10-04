@@ -29,6 +29,7 @@ class CouponSort(str, enum.Enum):
     frontend presents them and never ranks anything itself.
 
     newest             most recently added (default, the historical behaviour)
+    recommended        the ranking engine's quality score (app.services.quality), best first
     ending_soon        soonest real expiry first; coupons with no expiry excluded
     recently_verified  most recently confirmed by a shopper; never-verified excluded
     trending           most real (non-bot) outbound clicks in the last 7 days; coupons
@@ -38,6 +39,7 @@ class CouponSort(str, enum.Enum):
     """
 
     newest = "newest"
+    recommended = "recommended"
     ending_soon = "ending_soon"
     recently_verified = "recently_verified"
     trending = "trending"
@@ -79,7 +81,10 @@ async def list_coupons(
             Coupon.expires_at <= now + timedelta(days=expires_within_days),
         )
 
-    if sort is CouponSort.ending_soon:
+    if sort is CouponSort.recommended:
+        # The score is computed and stored by the ranking engine; this only reads it.
+        stmt = stmt.order_by(Coupon.quality_score.desc(), Coupon.created_at.desc())
+    elif sort is CouponSort.ending_soon:
         stmt = stmt.where(Coupon.expires_at.is_not(None), Coupon.expires_at > now)
         stmt = stmt.order_by(Coupon.expires_at.asc(), Coupon.created_at.desc())
     elif sort is CouponSort.recently_verified:

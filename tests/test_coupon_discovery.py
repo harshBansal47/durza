@@ -198,3 +198,35 @@ async def test_default_order_is_still_newest_first(client, admin_headers, async_
 async def test_unknown_sort_is_rejected(client):
     assert (await client.get(API, params={"sort": "best_deals"})).status_code == 422
     assert (await client.get(API, params={"expires_within_days": 0})).status_code == 422
+
+
+# -------------------------------------------------------------- recommended
+
+
+async def test_recommended_orders_by_the_ranking_engines_score(
+    client, admin_headers, async_session_maker
+):
+    store, cat = await _setup(client, admin_headers)
+    low = await _coupon(client, admin_headers, store, cat, "Low score")
+    high = await _coupon(client, admin_headers, store, cat, "High score")
+    mid = await _coupon(client, admin_headers, store, cat, "Mid score")
+    await _set(async_session_maker, low["id"], quality_score=10)
+    await _set(async_session_maker, high["id"], quality_score=92)
+    await _set(async_session_maker, mid["id"], quality_score=55)
+    assert await _titles(client, sort="recommended") == ["High score", "Mid score", "Low score"]
+
+
+async def test_public_json_shows_verification_status_but_never_the_quality_score(
+    client, admin_headers
+):
+    store, cat = await _setup(client, admin_headers)
+    await _coupon(client, admin_headers, store, cat, "Plain")
+    item = (await client.get(API)).json()["items"][0]
+    assert item["verification_status"] in {
+        "unverified",
+        "pending",
+        "verified",
+        "disputed",
+        "failed",
+    }
+    assert "quality_score" not in item  # internal ranking input, includes a revenue component
