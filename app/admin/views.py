@@ -22,6 +22,7 @@ from app.models.ad import Ad
 from app.models.category import Category
 from app.models.click import ClickEvent
 from app.models.coupon import Coupon
+from app.models.coupon_source import CouponSource
 from app.models.ingestion_run import IngestionRun
 from app.models.job import JobRun, JobStatus
 from app.models.page import Page
@@ -103,14 +104,53 @@ class CategoryAdmin(StaffModelView, model=Category):
 
 
 class StoreAdmin(StaffModelView, model=Store):
+    """The canonical merchant. `normalized_domain` is the identity that matters.
+
+    Four networks spell "Nike" four ways. The domain is what collapses them into
+    one row, so it is shown and editable here: an operator who notices two
+    merchants that are actually one fixes it by setting the domain, which is a
+    visible, reviewable edit — rather than by a merge the pipeline performs on its
+    own and nobody sees.
+
+    `aliases` is editable for the same reason: "NIKE" and "Nike Official Store UK"
+    are one merchant by human knowledge that no algorithm has, and an alias
+    encodes exactly that, without weakening the domain guarantee.
+    """
+
     name = "Store"
     name_plural = "Stores"
     icon = "fa-solid fa-store"
 
-    column_list = [Store.name, Store.slug, Store.website_url, Store.is_active, Store.created_at]
-    column_searchable_list = [Store.name, Store.slug]
-    column_sortable_list = [Store.name, Store.is_active, Store.created_at]
+    column_list = [
+        Store.name,
+        Store.slug,
+        Store.normalized_domain,
+        Store.status,
+        Store.is_active,
+        Store.created_at,
+    ]
+    column_searchable_list = [Store.name, Store.slug, Store.normalized_domain]
+    column_sortable_list = [
+        Store.name,
+        Store.status,
+        Store.is_active,
+        Store.country_code,
+        Store.created_at,
+    ]
     column_default_sort = [(Store.name, False)]
+    column_filters = [
+        StaticValuesFilter(
+            Store.status,
+            values=[
+                ("active", "active"),
+                ("pending", "pending"),
+                ("inactive", "inactive"),
+                ("merged", "merged"),
+            ],
+            title="Status",
+        ),
+        BooleanFilter(Store.is_active, title="Active"),
+    ]
     form_columns = [
         Store.name,
         Store.logo_url,
@@ -120,6 +160,15 @@ class StoreAdmin(StaffModelView, model=Store):
         Store.affiliate_network,
         Store.link_template,
         Store.cookie_days,
+        Store.country_code,
+        Store.currency,
+        # The three identity fields. Left out of `column_list`'s filters and
+        # treated as derived-but-correctable rather than fully derived, because a
+        # wrong domain here sends every future coupon for that retailer to the
+        # wrong merchant page and no automated step will notice.
+        Store.normalized_domain,
+        Store.aliases,
+        Store.status,
         Store.is_active,
     ]
     slug_source = "name"
@@ -136,34 +185,48 @@ class CouponAdmin(StaffModelView, model=Coupon):
         "category",
         Coupon.discount_type,
         Coupon.discount_value,
+        Coupon.status,
+        Coupon.verification_status,
+        Coupon.quality_score,
+        "sources",
+        Coupon.source_count,
         Coupon.is_active,
         Coupon.expires_at,
-        Coupon.success_count,
-        Coupon.fail_count,
-        Coupon.clicks_count,
-        Coupon.status,
-        Coupon.failure_reason,
     ]
     column_details_list = [
         Coupon.title,
         Coupon.slug,
         Coupon.code,
+        Coupon.normalized_code,
         Coupon.description,
         "store",
         "category",
         Coupon.discount_type,
         Coupon.discount_value,
+        Coupon.country,
+        # `destination_url` is a resolved denormalisation for display and as the
+        # fallback for the /go redirect. The authoritative per-provider
+        # destinations are on the CouponSource rows linked in "sources" below,
+        # which is what AffiliateRouter actually chooses between.
         Coupon.destination_url,
+        "sources",
+        Coupon.source_count,
+        Coupon.restrictions,
+        Coupon.source_categories,
+        Coupon.status,
+        Coupon.verification_status,
+        Coupon.quality_score,
         Coupon.is_active,
+        Coupon.starts_at,
         Coupon.expires_at,
         Coupon.clicks_count,
         Coupon.views_count,
         Coupon.success_count,
         Coupon.fail_count,
         Coupon.last_verified_at,
-        Coupon.status,
         Coupon.failure_reason,
         Coupon.last_checked_at,
+        Coupon.content_hash,
         Coupon.source_id,
         Coupon.created_at,
         Coupon.updated_at,
@@ -171,16 +234,42 @@ class CouponAdmin(StaffModelView, model=Coupon):
     column_searchable_list = [Coupon.title, Coupon.code, Coupon.slug]
     # The "admin queue" for suspicious offers: filter by status in one click.
     column_filters = [
+        # `pending_validation` is the state every newly ingested coupon lands in
+        # and the one a reviewer actually works through, so it leads.
         StaticValuesFilter(
             Coupon.status,
-            values=[("active", "active"), ("failed", "failed"), ("expired", "expired")],
+            values=[
+                ("active", "active"),
+                ("pending_validation", "pending_validation"),
+                ("validation_failed", "validation_failed"),
+                ("source_removed", "source_removed"),
+                ("failed", "failed"),
+                ("expired", "expired"),
+                ("disabled", "disabled"),
+            ],
             title="Status",
+        ),
+        # Verification is kept as a separate filter from status on purpose: "is
+        # it showing" and "does it work" are different questions, and one filter
+        # for both would hide coupons that are live but untrusted.
+        StaticValuesFilter(
+            Coupon.verification_status,
+            values=[
+                ("unverified", "unverified"),
+                ("pending", "pending"),
+                ("verified", "verified"),
+                ("disputed", "disputed"),
+                ("failed", "failed"),
+            ],
+            title="Verification",
         ),
         BooleanFilter(Coupon.is_active, title="Active"),
     ]
     column_sortable_list = [
         Coupon.title,
         Coupon.discount_type,
+        Coupon.quality_score,
+        Coupon.source_count,
         Coupon.is_active,
         Coupon.expires_at,
         Coupon.clicks_count,
@@ -197,6 +286,7 @@ class CouponAdmin(StaffModelView, model=Coupon):
         "store",
         "category",
         Coupon.destination_url,
+        Coupon.starts_at,
         Coupon.expires_at,
         Coupon.status,
         Coupon.is_active,
@@ -324,6 +414,21 @@ class UserAdmin(StaffModelView, model=User):
 
 
 class SourceAdmin(StaffModelView, model=Source):
+    """A provider, plus how much we trust it and whether its API is answering.
+
+    `credential_ref` is editable and it is safe to render: it holds the *name* of
+    an environment variable ("AWIN_API_KEY"), never its value. The value is read
+    from the process environment at fetch time by `app.ingestion.credentials`.
+    That indirection is the whole reason this form is safe to show to every
+    editor — there is no secret in this row to redact, so no redaction pass can be
+    forgotten later.
+
+    `api_status` is deliberately a health reading and not an on/off switch. A
+    provider with a failing API becomes `degraded`, which slows its schedule and
+    stops it being counted as corroboration — it does *not* remove every coupon
+    it already contributed. `is_enabled` remains the only human kill switch.
+    """
+
     name = "Source"
     name_plural = "Sources"
     icon = "fa-solid fa-database"
@@ -332,15 +437,47 @@ class SourceAdmin(StaffModelView, model=Source):
         Source.name,
         Source.kind,
         Source.is_enabled,
-        Source.probe_destinations,
+        Source.api_status,
+        Source.priority,
+        Source.last_success_at,
+        Source.consecutive_failures,
         Source.created_at,
     ]
     column_searchable_list = [Source.name, Source.slug]
-    column_sortable_list = [Source.name, Source.kind, Source.is_enabled, Source.created_at]
+    column_sortable_list = [
+        Source.name,
+        Source.kind,
+        Source.is_enabled,
+        Source.api_status,
+        Source.priority,
+        Source.last_success_at,
+        Source.consecutive_failures,
+        Source.created_at,
+    ]
     column_default_sort = [(Source.name, False)]
+    column_filters = [
+        StaticValuesFilter(
+            Source.api_status,
+            values=[
+                ("healthy", "healthy"),
+                ("degraded", "degraded"),
+                ("failing", "failing"),
+                ("paused", "paused"),
+                ("unconfigured", "unconfigured"),
+            ],
+            title="API health",
+        ),
+        BooleanFilter(Source.is_enabled, title="Enabled"),
+        BooleanFilter(Source.probe_destinations, title="Probe destinations"),
+    ]
     # JSON config edited as raw text is error-prone in a form; manage it via
     # scripts/seed or the DB, and show it read-only in the details view.
     # (form_columns below therefore omits Source.config.)
+    #
+    # Note `api_status`, `consecutive_failures` and the `last_*` timestamps are
+    # absent from form_columns as well. They are written by the pipeline; letting
+    # a form set them would let an operator mark a broken feed healthy and have
+    # the dashboard agree with the lie.
     column_details_list = [
         Source.name,
         Source.slug,
@@ -348,6 +485,20 @@ class SourceAdmin(StaffModelView, model=Source):
         Source.description,
         Source.is_enabled,
         Source.probe_destinations,
+        Source.priority,
+        Source.confidence,
+        Source.countries,
+        Source.credential_ref,
+        Source.sync_interval_minutes,
+        Source.timeout_seconds,
+        Source.rate_limit_per_minute,
+        Source.requests_per_second,
+        Source.api_status,
+        Source.consecutive_failures,
+        Source.last_sync_at,
+        Source.last_success_at,
+        Source.last_failure_at,
+        Source.last_error,
         Source.config,
         Source.created_at,
         Source.updated_at,
@@ -358,8 +509,87 @@ class SourceAdmin(StaffModelView, model=Source):
         Source.description,
         Source.is_enabled,
         Source.probe_destinations,
+        # Precedence and confidence are data, not code: re-ordering which
+        # provider wins a metadata conflict should be a reviewed config edit,
+        # not a redeploy.
+        Source.priority,
+        Source.confidence,
+        Source.countries,
+        Source.credential_ref,
+        Source.sync_interval_minutes,
+        Source.timeout_seconds,
     ]
     slug_source = "name"
+
+
+class CouponSourceAdmin(StaffModelView, model=CouponSource):
+    """One provider's claim about one canonical coupon — the provenance ledger.
+
+    This is the view that answers "where did this coupon come from?" and "why
+    does it say it expires on the 30th when the other three say the 31st?". Each
+    row is a single network's opinion, kept separately from the resolved
+    `Coupon` precisely because they disagree.
+
+    `raw_data` is in the details list and not the form: it is a verbatim provider
+    payload, useful when a network changes a field name, and useless to type by
+    hand. It is also the only place a provider's *original* claim survives, which
+    is why it is never overwritten by anything except that same provider's next
+    run.
+    """
+
+    name = "Coupon Source"
+    name_plural = "Coupon Sources"
+    icon = "fa-solid fa-link"
+
+    column_list = [
+        "coupon",
+        "source",
+        CouponSource.external_id,
+        CouponSource.status,
+        CouponSource.source_expires_at,
+        CouponSource.last_seen_at,
+        CouponSource.updated_at,
+    ]
+    column_details_list = column_list + [
+        CouponSource.source_title,
+        CouponSource.affiliate_url,
+        CouponSource.last_verified_at,
+        CouponSource.source_created_at,
+        CouponSource.source_updated_at,
+        CouponSource.created_at,
+    ]
+    column_searchable_list = [
+        CouponSource.external_id,
+        CouponSource.source_title,
+    ]
+    column_filters = [
+        # The distinction this table exists to preserve: a provider reporting the
+        # coupon as gone (`deleted`) is NOT the same as it going quiet, and only
+        # one of the two is acted upon automatically.
+        StaticValuesFilter(
+            CouponSource.status,
+            values=[
+                ("active", "active"),
+                ("inactive", "inactive"),
+                ("expired", "expired"),
+                ("failed", "failed"),
+                ("deleted", "deleted"),
+            ],
+            title="Source status",
+        ),
+    ]
+    column_sortable_list = [
+        CouponSource.status,
+        CouponSource.source_expires_at,
+        CouponSource.last_seen_at,
+        CouponSource.created_at,
+    ]
+    column_default_sort = [(CouponSource.last_seen_at, True)]
+    form_columns = [CouponSource.status]
+    # Rows are written by the pipeline. An editable `affiliate_url` here would be
+    # an unaudited override of the one field the affiliate router trusts.
+    can_create = False
+    can_edit = False
 
 
 class ProductAdmin(StaffModelView, model=Product):
@@ -412,21 +642,78 @@ class PricePointAdmin(StaffModelView, model=PricePoint):
 
 
 class IngestionRunAdmin(StaffModelView, model=IngestionRun):
+    """Every execution of every source, with counters that say *why* it ended.
+
+    The counter list is the point of this view. `skipped` was removed because it
+    lumped four different outcomes into one number — a payload that no longer
+    parses, a record that failed validation, an offer that arrived already
+    expired and one we folded into an existing coupon. Those need four different
+    fixes, so they are four counters now:
+
+    * `malformed` — the provider changed their payload shape.
+    * `failed` — well-formed but unusable (bad URL, impossible discount).
+    * `expired` — arrived after its own end date.
+    * `duplicated` — matched a coupon another source had already given us.
+
+    `duplicated` is not an error and a high value is a sign the multi-source
+    setup is working: it is the direct measure of redundancy absorbed.
+    """
+
     name = "Ingestion Run"
     name_plural = "Ingestion Runs"
     icon = "fa-solid fa-rotate"
 
     column_list = [
+        "source",
         IngestionRun.status,
+        IngestionRun.mode,
         IngestionRun.started_at,
-        IngestionRun.finished_at,
+        IngestionRun.duration_ms,
         IngestionRun.fetched,
         IngestionRun.created,
         IngestionRun.updated,
-        IngestionRun.skipped,
+        IngestionRun.duplicated,
+        IngestionRun.malformed,
         IngestionRun.failed,
+        IngestionRun.expired,
     ]
-    column_sortable_list = [IngestionRun.started_at, IngestionRun.status]
+    column_details_list = column_list + [
+        IngestionRun.finished_at,
+        IngestionRun.pages_fetched,
+        IngestionRun.cancel_requested,
+        IngestionRun.triggered_by,
+        IngestionRun.error,
+    ]
+    column_searchable_list = [IngestionRun.error]
+    column_filters = [
+        # "Partial" is the filter an operator reaches for first: it is the only
+        # status that means the provider answered but the answer was incomplete,
+        # which is invisible in every other column.
+        StaticValuesFilter(
+            IngestionRun.status,
+            values=[
+                ("success", "success"),
+                ("partial", "partial"),
+                ("failed", "failed"),
+                ("cancelled", "cancelled"),
+                ("running", "running"),
+            ],
+            title="Status",
+        ),
+        StaticValuesFilter(
+            IngestionRun.mode,
+            values=[("incremental", "incremental"), ("full", "full")],
+            title="Mode",
+        ),
+    ]
+    column_sortable_list = [
+        IngestionRun.started_at,
+        IngestionRun.duration_ms,
+        IngestionRun.fetched,
+        IngestionRun.created,
+        IngestionRun.failed,
+        IngestionRun.status,
+    ]
     column_default_sort = [(IngestionRun.started_at, True)]
     # Audit rows: no create/edit, only view + delete.
     can_create = False
@@ -566,6 +853,7 @@ ALL_VIEWS = (
     CategoryAdmin,
     StoreAdmin,
     CouponAdmin,
+    CouponSourceAdmin,
     AdAdmin,
     PageAdmin,
     UserAdmin,

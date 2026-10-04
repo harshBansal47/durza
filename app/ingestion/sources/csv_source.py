@@ -1,9 +1,13 @@
 import csv
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.ingestion.base import RawOffer
 from app.ingestion.normalize import offer_from_dict
+
+if TYPE_CHECKING:
+    from app.ingestion.credentials import SourceCredentials
+    from app.models.ingestion_run import SyncMode
 
 
 class CsvSource:
@@ -14,7 +18,16 @@ class CsvSource:
     destination_url, expires_at, external_id.
     """
 
-    async def fetch(self, config: dict[str, Any]) -> list[RawOffer]:
+    async def fetch(
+        self,
+        config: dict[str, Any],
+        *,
+        mode: "SyncMode | None" = None,
+        credentials: "SourceCredentials | None" = None,
+    ) -> list[RawOffer]:
+        # `mode` is ignored: the file is read in full either way. `credentials` is
+        # ignored: a local file needs no authentication, which is why `csv` is one
+        # of the two kinds exempt from requiring a `credential_ref`.
         path = Path(config["path"])
         if not path.exists():
             raise FileNotFoundError(f"CSV source not found: {path}")

@@ -168,15 +168,30 @@ async def test_switched_off_ad_does_not_redirect(client, admin_headers):
 
 
 def test_is_live_handles_naive_datetimes():
+    """Naive datetimes must not raise, and must be read as UTC.
+
+    The naive value below simulates what SQLite hands back for a
+    `DateTime(timezone=True)` column: the same instant, with the offset dropped.
+    That is why it is built by stripping the tzinfo off an *aware UTC* value
+    rather than by calling `datetime.now()` — a naive `datetime.now()` is local
+    time, and a naive value carries no offset, so no amount of coercion can turn
+    it back into the instant it was taken from. Asserting that a local naive
+    timestamp is interpreted as UTC would be asserting a bug.
+    """
     ad = Ad(
         position=AdPosition.header,
         image_url="https://x.example/a.png",
         target_url="https://x.example",
         is_active=True,
-        starts_at=datetime.now() - timedelta(hours=1),  # noqa: DTZ005  naive on purpose: SQLite returns naive
+        starts_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1),
         ends_at=None,
     )
     assert ad_service.is_live(ad) is True
+
+    # And the window is still enforced after coercion: a naive start in the
+    # future must not count as live.
+    ad.starts_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(hours=1)
+    assert ad_service.is_live(ad) is False
 
 
 # --------------------------------------------------------------- /go redirect

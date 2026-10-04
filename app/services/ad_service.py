@@ -7,6 +7,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import paginate
+from app.core.timezones import ensure_utc_optional
 from app.models.ad import Ad, AdPosition
 from app.schemas.ad import AdCreate, AdUpdate
 
@@ -59,17 +60,28 @@ async def delete_ad(db: AsyncSession, ad: Ad) -> None:
     await db.commit()
 
 
-def _aware(value: datetime | None) -> datetime | None:
-    if value is not None and value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value
-
-
 def is_live(ad: Ad, now: datetime | None = None) -> bool:
-    """True when the ad is switched on and today falls inside its window."""
+    """True when the ad is switched on and today falls inside its window.
+
+    The window columns are compared through `ensure_utc`, which matters because
+    `now` is always aware and a `DateTime(timezone=True)` column read back from
+    SQLite is not. Without the coercion this raises `TypeError: can't compare
+    offset-naive and offset-aware datetimes` on SQLite and silently works on
+    Postgres — the kind of difference a test suite should not be the thing that
+    discovers.
+
+    Naive therefore means UTC, which is correct because that is the only value we
+    ever write. It is not, and cannot be, "local time": a naive datetime carries
+    no offset, so `datetime.now()`'s value cannot be recovered from it.
+    """
     now = now or datetime.now(UTC)
-    starts, ends = _aware(ad.starts_at), _aware(ad.ends_at)
-    return ad.is_active and (starts is None or starts <= now) and (ends is None or ends > now)
+    starts = ensure_utc_optional(ad.starts_at)
+    ends = ensure_utc_optional(ad.ends_at)
+    return (
+        ad.is_active
+        and (starts is None or starts <= now)
+        and (ends is None or ends > now)
+    )
 
 
 def build_target_url(target_url: str, ad_id: uuid.UUID) -> str | None:

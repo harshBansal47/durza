@@ -1,5 +1,7 @@
 """Tests for the JSON feed adapter, retry helper, and probe retry behaviour."""
 
+from typing import Any
+
 import httpx
 import pytest
 
@@ -131,6 +133,19 @@ async def test_probe_gives_up_after_retries(monkeypatch):
     assert reason is not None
     assert calls["n"] == 3
 
+def _awin_credentials(key: str = "test_key"):
+    """The Awin API key, resolved the way the pipeline resolves it.
+
+    Not passed in `config`. The key is no longer a column value in
+    `sources.config` — it comes from the environment via `Source.credential_ref`
+    and arrives as a `SourceCredentials`. These tests assert the adapter's
+    *behaviour*, so the credential has to arrive the way production delivers it.
+    """
+    from app.ingestion.credentials import SourceCredentials
+
+    return SourceCredentials(values={"AWIN_API_KEY": key}, names=("AWIN_API_KEY",))
+
+
 # ---- Awin adapter ----
 #
 # The Awin adapter is the first real affiliate network integration. It must
@@ -171,10 +186,10 @@ async def test_awin_source_maps_voucher_to_raw_offer():
     source = AwinSource(client=_mock_client(handler))
     offers = await source.fetch(
         {
-            "api_key": "test_key",
             "publisher_id": 123,
             "deal_types": ["coupon"],
-        }
+        },
+        credentials=_awin_credentials(),
     )
 
     assert len(offers) == 1
@@ -209,10 +224,10 @@ async def test_awin_source_skips_voucher_without_code():
     source = AwinSource(client=_mock_client(handler))
     offers = await source.fetch(
         {
-            "api_key": "test_key",
             "publisher_id": 123,
             "deal_types": ["coupon"],
-        }
+        },
+        credentials=_awin_credentials(),
     )
 
     assert offers == []
@@ -225,9 +240,12 @@ async def test_awin_source_maps_deal_to_raw_offer():
         "id": "12347",
         "title": "Up to 50% off sale",
         "description": "Seasonal sale",
-        "dealType": "sale",
         "deepLink": "https://store.awin.com/sale?ref=789",
         "endDate": "2025-11-30",
+        # Awin's deal payload carries one `dealType`; the literal used to declare
+        # it twice, so the earlier value was dead weight. The adapter reads this
+        # field as the discount type and the assertions below expect
+        # "percentage", so that is the value that survives.
         "dealType": "percentage",
         "discountPercentage": 50.0,
         "advertiserName": "Sale Store",
@@ -244,10 +262,10 @@ async def test_awin_source_maps_deal_to_raw_offer():
     source = AwinSource(client=_mock_client(handler))
     offers = await source.fetch(
         {
-            "api_key": "test_key",
             "publisher_id": 123,
             "deal_types": ["sale"],
-        }
+        },
+        credentials=_awin_credentials(),
     )
 
     assert len(offers) == 1
@@ -279,11 +297,11 @@ async def test_awin_source_paginates_through_multiple_pages():
     source = AwinSource(client=_mock_client(handler))
     offers = await source.fetch(
         {
-            "api_key": "test_key",
             "publisher_id": 123,
             "deal_types": ["coupon"],
             "page_size": 2,  # force pagination
-        }
+        },
+        credentials=_awin_credentials(),
     )
 
     assert len(offers) == 4
@@ -306,11 +324,11 @@ async def test_awin_source_filters_by_currency_and_region():
     source = AwinSource(client=_mock_client(handler))
     await source.fetch(
         {
-            "api_key": "test_key",
             "publisher_id": 123,
             "currency": "GBP",
             "regions": ["GB", "IE"],
-        }
+        },
+        credentials=_awin_credentials(),
     )
 
     assert captured["params"]["currency"] == "GBP"
@@ -319,6 +337,17 @@ async def test_awin_source_filters_by_currency_and_region():
 
 @pytest.mark.asyncio
 async def test_awin_source_requires_credentials():
+    """Both halves of the requirement, refused before a request is made.
+
+    The API key comes from the environment via `credential_ref`, so "no key" means
+    `credentials` is `None` or resolved to nothing — not that `config` lacks an
+    `api_key` key. `publisher_id` is the other half: it is not a secret, so it
+    legitimately stays in `config`.
+
+    `calls == 0` is the assertion that matters. The failure mode being guarded
+    against is a request going out with `Authorization: Bearer None`, which returns
+    a 401 that reads like a revoked key rather than a missing configuration.
+    """
     calls = {"n": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -326,11 +355,48 @@ async def test_awin_source_requires_credentials():
         return httpx.Response(200, json={"results": []})
 
     source = AwinSource(client=_mock_client(handler))
-    with pytest.raises(ValueError, match="requires 'api_key' and 'publisher_id'"):
-        await source.fetch({})
 
-    with pytest.raises(ValueError, match="requires 'api_key' and 'publisher_id'"):
-        await source.fetch({"api_key": "x"})
+    # No credential at all.
+    with pytest.raises(ValueError, match="requires an API key"):
+        await source.fetch({"publisher_id": 123})
+
+    from app.ingestion.credentials import SourceCredentials
+
+    # A credential that resolved to nothing.
+    with pytest.raises(ValueError, match="requires an API key"):
+        await source.fetch(
+            {"publisher_id": 123}, credentials=SourceCredentials()
+        )
+
+    # Credential present, publisher_id missing.
+    with pytest.raises(ValueError, match="requires 'publisher_id'"):
+        await source.fetch({}, credentials=_awin_credentials())
+
+    assert calls["n"] == 0
+
+
+@pytest.mark.asyncio
+async def test_awin_source_sends_the_resolved_credential():
+    """The key reaches Awin as a bearer token, and only from `credentials`.
+
+    Asserts the credential is not read out of `config` as well, because that is
+    the regression this replaced: a key in a JSONB column is a key in every
+    backup of that table.
+    """
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["auth"] = request.headers.get("Authorization", "")
+        return httpx.Response(200, json={"results": []})
+
+    source = AwinSource(client=_mock_client(handler))
+    await source.fetch(
+        {"publisher_id": 123, "api_key": "leaked-from-config"},
+        credentials=_awin_credentials("real-key"),
+    )
+
+    assert seen["auth"] == "Bearer real-key"
+    assert "leaked-from-config" not in seen["auth"]
 
 
 # Helper reused from existing tests

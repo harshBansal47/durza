@@ -1,4 +1,4 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -6,29 +6,58 @@ from app.ingestion.base import RawOffer
 from app.ingestion.normalize import offer_from_dict
 from app.ingestion.retry import with_retries
 
+if TYPE_CHECKING:
+    from app.ingestion.credentials import SourceCredentials
+    from app.models.ingestion_run import SyncMode
+
 _TIMEOUT = httpx.Timeout(15.0, connect=5.0)
 _USER_AGENT = "CouponbaseBot/1.0 (+https://couponbase.example.com/bot)"
 
 
 class FeedSource:
-    """Fetches offers from a JSON URL. This is the future of real ingestion:
-    `config = {"url": "https://…/offers.json"}` yields either a JSON list of
-    offer objects or `{"offers": [...]}`. Optional `headers` for API-key auth.
+    """Fetches offers from a JSON URL.
+
+    `config = {"url": "https://…/offers.json"}` yields either a JSON list of offer
+    objects or `{"offers": [...]}`.
+
+    The publisher's token comes from `credentials`, not from `config`. It used to
+    be read out of an optional `config["headers"]` dict, which meant the API key
+    sat in a JSONB column in the database — visible in the admin panel, in every
+    backup, and in any query that dumps a source row. Reading it from the
+    environment instead is the whole reason `credential_ref` exists, so the header
+    dict is gone rather than kept as a second, worse way in.
+
+    The credential is optional: most feeds are public, and `feed` is deliberately
+    not in `credentials.CREDENTIAL_KINDS`. A feed that does set `credential_ref`
+    sends it as a bearer token, and health still requires it to resolve.
     """
 
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         self._client = client
 
-    async def fetch(self, config: dict[str, Any]) -> list[RawOffer]:
+    async def fetch(
+        self,
+        config: dict[str, Any],
+        *,
+        mode: "SyncMode | None" = None,
+        credentials: "SourceCredentials | None" = None,
+    ) -> list[RawOffer]:
+        # `mode` is ignored. A single JSON document is one payload; narrowing it
+        # would have to be done by the publisher, not by us.
         url = config.get("url")
         if not url:
             raise ValueError("feed source config requires a 'url'")
-        headers = {"User-Agent": _USER_AGENT, **(config.get("headers") or {})}
+        headers = {"User-Agent": _USER_AGENT}
+        if credentials is not None and credentials.values:
+            headers["Authorization"] = f"Bearer {credentials.only_value()}"
         owns_client = self._client is None
-        client = self._client or httpx.AsyncClient(timeout=_TIMEOUT, headers=headers)
+        client = self._client or httpx.AsyncClient(timeout=_TIMEOUT)
 
+        # Per request, not baked into the client's defaults: with a client
+        # injected (how every test runs) client-level headers are whatever the
+        # caller configured, so an auth header attached there never arrives.
         async def _get() -> httpx.Response:
-            response = await client.get(url, headers=headers if owns_client else None)
+            response = await client.get(url, headers=headers)
             response.raise_for_status()
             return response
 
