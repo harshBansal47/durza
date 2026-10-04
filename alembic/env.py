@@ -10,24 +10,57 @@ from app.core.database import Base
 
 # Import every model module here so its table is registered on Base.metadata
 # before autogenerate compares it against the live database.
+#
+# This list is explicit and complete on purpose, and there is a test
+# (`tests/test_models_registered.py`) that fails if it ever drifts from
+# `app.models.__all__`. Two real bugs came from an omission here: `conversions`
+# was invisible to autogenerate, so a migration was generated that silently
+# DROPPED it, and `alembic check` reported the database as clean while the
+# drift was present. An unlisted module is a table nobody is checking.
 from app.models import ad as _ad  # noqa: F401
+from app.models import affiliate_destination as _affiliate_destination  # noqa: F401
+from app.models import affiliate_program as _affiliate_program  # noqa: F401
+from app.models import affiliate_provider as _affiliate_provider  # noqa: F401
+from app.models import affiliate_revenue as _affiliate_revenue  # noqa: F401
+from app.models import analytics_session as _analytics_session  # noqa: F401
+from app.models import attribution as _attribution  # noqa: F401
 from app.models import base as _base  # noqa: F401
 from app.models import category as _category  # noqa: F401
+from app.models import click as _click  # noqa: F401
+from app.models import conversion as _conversion  # noqa: F401
 from app.models import coupon as _coupon  # noqa: F401
+from app.models import coupon_impression as _coupon_impression  # noqa: F401
+from app.models import coupon_source as _coupon_source  # noqa: F401
 from app.models import coupon_verification as _coupon_verification  # noqa: F401
+from app.models import daily_stats as _daily_stats  # noqa: F401
 from app.models import ingestion_run as _ingestion_run  # noqa: F401
+from app.models import job as _job  # noqa: F401
 from app.models import page as _page  # noqa: F401
 from app.models import product as _product  # noqa: F401
+from app.models import revenue_event as _revenue_event  # noqa: F401
 from app.models import source as _source  # noqa: F401
+from app.models import sponsored as _sponsored  # noqa: F401
 from app.models import store as _store  # noqa: F401
 from app.models import tracking as _tracking  # noqa: F401
 from app.models import user as _user  # noqa: F401
+from app.models import verification_attempt as _verification_attempt  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+
+# `compare_type=True` is what makes a Postgres ENUM addition visible to
+# autogenerate and to `alembic check`. Without it, adding `awin` to
+# `SourceKind` in Python changes nothing about the database, the migration
+# generated for it has an empty `upgrade()`, and the first attempt to insert a
+# source row fails on an invalid enum value. `compare_server_default` catches
+# the same class of problem for columns added without a server default.
+COMPARE_OPTIONS: dict[str, bool] = {
+    "compare_type": True,
+    "compare_server_default": True,
+}
 
 settings = get_settings()
 # ConfigParser would try to interpolate "%" in e.g. URL-encoded passwords.
@@ -41,13 +74,16 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        **COMPARE_OPTIONS,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection, target_metadata=target_metadata, **COMPARE_OPTIONS
+    )
     with context.begin_transaction():
         context.run_migrations()
 

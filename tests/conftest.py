@@ -51,13 +51,27 @@ from app.main import app
 
 # Ensure every model is registered on Base.metadata before create_all runs.
 from app.models import ad as _ad  # noqa: F401
+from app.models import affiliate_destination as _affiliate_destination  # noqa: F401
+from app.models import affiliate_program as _affiliate_program  # noqa: F401
+from app.models import affiliate_provider as _affiliate_provider  # noqa: F401
+from app.models import affiliate_revenue as _affiliate_revenue  # noqa: F401
+from app.models import analytics_session as _analytics_session  # noqa: F401
+from app.models import attribution as _attribution  # noqa: F401
 from app.models import category as _category  # noqa: F401
+from app.models import click as _click  # noqa: F401
+from app.models import conversion as _conversion  # noqa: F401
 from app.models import coupon as _coupon  # noqa: F401
+from app.models import coupon_impression as _coupon_impression  # noqa: F401
+from app.models import coupon_source as _coupon_source  # noqa: F401
+from app.models import coupon_verification as _coupon_verification  # noqa: F401
+from app.models import daily_stats as _daily_stats  # noqa: F401
 from app.models import ingestion_run as _ingestion_run  # noqa: F401
 from app.models import job as _job  # noqa: F401
 from app.models import page as _page  # noqa: F401
 from app.models import product as _product  # noqa: F401
+from app.models import revenue_event as _revenue_event  # noqa: F401
 from app.models import source as _source  # noqa: F401
+from app.models import sponsored as _sponsored  # noqa: F401
 from app.models import store as _store  # noqa: F401
 from app.models import tracking as _tracking  # noqa: F401
 from app.models import user as _user  # noqa: F401

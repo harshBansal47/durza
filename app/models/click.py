@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Uuid, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -53,4 +53,9 @@ class ClickEvent(Base, UUIDPKMixin):
     # One-way hash, never a raw IP. Nulled by the retention job.
     visitor_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     is_bot: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Fraud score 0.0..1.0 derived from user-agent, src, and burst signals.
+    # Never deletes raw events — just flags them so analytics can filter.
+    fraud_score: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0.0", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
