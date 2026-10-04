@@ -146,6 +146,7 @@ async def reset_password(
 @limiter.limit("1/hour")
 async def delete_account(
     request: Request,
+    payload: UserUpdate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
@@ -155,7 +156,16 @@ async def delete_account(
     alert history, and notification preferences are all removed.
     Verification reports submitted by the user are preserved (without the
     account attached) because they are public attestations.
+
+    Requires the current password to confirm the deletion.
     """
+    if not payload.current_password or not verify_password(
+        payload.current_password, current_user.hashed_password
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The password you entered is not correct."
+        )
     await user_service.delete_user(db, current_user)
     # The response is 204 with no content
 

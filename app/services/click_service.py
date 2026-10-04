@@ -84,6 +84,7 @@ async def record_click(
     if existing is not None:
         return existing, False
 
+    is_bot = looks_like_bot(user_agent)
     event = ClickEvent(
         clickref=new_clickref(),
         coupon_id=coupon.id if coupon else None,
@@ -93,7 +94,8 @@ async def record_click(
         src=normalize_src(src),
         network=affiliate.normalize_network(store.affiliate_network if store else None),
         visitor_hash=visitor_hash,
-        is_bot=looks_like_bot(user_agent),
+        is_bot=is_bot,
+        fraud_score=1.0 if is_bot else 0.0,
     )
     db.add(event)
     if coupon is not None:

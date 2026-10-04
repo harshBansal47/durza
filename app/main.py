@@ -17,6 +17,7 @@ from app.core.security_headers import SecurityHeadersMiddleware
 from app.core.sentry import init_sentry
 from app.routers.api.v1.account import router as account_router
 from app.routers.api.v1.ads import router as ads_router
+from app.routers.api.v1.analytics import router as analytics_router
 from app.routers.api.v1.auth import router as auth_router
 from app.routers.api.v1.categories import router as categories_router
 from app.routers.api.v1.coupons import router as coupons_router
@@ -98,6 +99,7 @@ for _router in (
     pages_router,
     products_router,
     account_router,
+    analytics_router,
 ):
     app.include_router(_router, prefix="/api/v1")
 
