@@ -1,15 +1,17 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import require_role
 from app.core.pagination import Paginated
+from app.core.request_meta import client_ip, hash_ip
 from app.models.ad import Ad, AdPosition
 from app.models.user import Role, User
-from app.schemas.ad import AdCreate, AdRead, AdUpdate
-from app.services import ad_service
+from app.schemas.ad import AdAdminRead, AdCreate, AdRead, AdUpdate
+from app.services import ad_service, click_service
 
 router = APIRouter(prefix="/ads", tags=["ads"])
 
@@ -33,6 +35,31 @@ async def list_ads(
     )
 
 
+@router.get("/{ad_id}/go", response_class=RedirectResponse, status_code=status.HTTP_302_FOUND)
+async def go_to_ad(
+    ad_id: uuid.UUID,
+    request: Request,
+    src: str | None = Query(default=None, max_length=40),
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    """Tracked redirect to the advertiser. The only place `target_url` is revealed."""
+    ad = await ad_service.get_ad(db, ad_id)
+    if ad is None or not ad_service.is_live(ad):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ad not found")
+    target = ad_service.build_target_url(ad.target_url, ad.id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ad not found")
+    await click_service.record_click(
+        db,
+        store=None,
+        ad=ad,
+        src=src,
+        visitor_hash=hash_ip(client_ip(request)),
+        user_agent=request.headers.get("user-agent"),
+    )
+    return RedirectResponse(target, status_code=status.HTTP_302_FOUND)
+
+
 @router.get("/{ad_id}", response_model=AdRead)
 async def get_ad(ad_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> Ad:
     ad = await ad_service.get_ad(db, ad_id)
@@ -41,7 +68,7 @@ async def get_ad(ad_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> Ad:
     return ad
 
 
-@router.post("", response_model=AdRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=AdAdminRead, status_code=status.HTTP_201_CREATED)
 async def create_ad(
     payload: AdCreate,
     db: AsyncSession = Depends(get_db),
@@ -50,7 +77,7 @@ async def create_ad(
     return await ad_service.create_ad(db, payload)
 
 
-@router.patch("/{ad_id}", response_model=AdRead)
+@router.patch("/{ad_id}", response_model=AdAdminRead)
 async def update_ad(
     ad_id: uuid.UUID,
     payload: AdUpdate,

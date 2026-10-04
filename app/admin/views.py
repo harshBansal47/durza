@@ -218,18 +218,32 @@ class AdAdmin(StaffModelView, model=Ad):
     icon = "fa-solid fa-rectangle-ad"
 
     column_list = [
+        Ad.advertiser,
+        Ad.label,
         Ad.position,
         Ad.image_url,
         Ad.target_url,
+        Ad.clicks_count,
         Ad.starts_at,
         Ad.ends_at,
         Ad.is_active,
     ]
-    column_sortable_list = [Ad.position, Ad.starts_at, Ad.ends_at, Ad.is_active, Ad.created_at]
+    column_sortable_list = [
+        Ad.advertiser,
+        Ad.position,
+        Ad.clicks_count,
+        Ad.starts_at,
+        Ad.ends_at,
+        Ad.is_active,
+        Ad.created_at,
+    ]
     column_default_sort = [(Ad.created_at, True)]
     form_columns = [
+        Ad.advertiser,
+        Ad.label,
         Ad.position,
         Ad.image_url,
+        Ad.alt_text,
         Ad.target_url,
         Ad.starts_at,
         Ad.ends_at,

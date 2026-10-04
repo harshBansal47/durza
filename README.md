@@ -405,3 +405,24 @@ tied to an affiliate sale later:
   attribution keeps working.
 - Rapid repeats from the same visitor within 10 seconds are one click and reuse the
   same reference. Bots are flagged on the row (`is_bot`), not dropped.
+
+## Sponsored placements
+
+Paid banners (`/api/v1/ads`) are built so a shopper can always tell they are paid and
+an advertiser can never be served outside what they booked:
+
+- **Always labelled.** `label` is one of `Sponsored` (default), `Partner` or `Ad`;
+  blank or free-text labels are rejected, so the disclosure cannot be edited away.
+- **Scheduled.** An ad is listed and redirectable only while `is_active` is true and
+  now is inside `starts_at`..`ends_at`. `ends_at` must be after `starts_at`.
+- **No bypass.** The public JSON has no `target_url`. The advertiser is reached only via
+  `GET /api/v1/ads/{id}/go?src=<tag>`, which records a `ClickEvent` (with `ad_id`),
+  adds `utm_source=couponbase&utm_medium=sponsored&utm_campaign=<ad id>` (the
+  advertiser's own UTM values are kept) and 302s. Ads whose stored URL is not http(s)
+  never redirect.
+- **URLs are validated** on write: `image_url` and `target_url` must be http(s).
+- Ad clicks reuse the click pipeline: 10-second dedupe, bot flag, 90-day hash scrub.
+  They carry no `store_id` and earn no affiliate commission, so **exclude rows with
+  `ad_id` set from per-store earnings reports.**
+- Impressions are not counted yet (that needs batching rather than a write per page view).
+

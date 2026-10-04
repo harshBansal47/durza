@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.ad import Ad
 from app.models.click import ClickEvent
 from app.models.coupon import Coupon
 from app.models.product import Product
@@ -60,6 +61,7 @@ async def record_click(
     store: Store | None,
     coupon: Coupon | None = None,
     product: Product | None = None,
+    ad: Ad | None = None,
     src: str | None,
     visitor_hash: str,
     user_agent: str | None,
@@ -76,6 +78,7 @@ async def record_click(
         ClickEvent.created_at >= cutoff,
         ClickEvent.coupon_id == (coupon.id if coupon else None),
         ClickEvent.product_id == (product.id if product else None),
+        ClickEvent.ad_id == (ad.id if ad else None),
     )
     existing = (await db.execute(stmt.limit(1))).scalar_one_or_none()
     if existing is not None:
@@ -85,6 +88,7 @@ async def record_click(
         clickref=new_clickref(),
         coupon_id=coupon.id if coupon else None,
         product_id=product.id if product else None,
+        ad_id=ad.id if ad else None,
         store_id=store.id if store else None,
         src=normalize_src(src),
         network=affiliate.normalize_network(store.affiliate_network if store else None),
@@ -94,6 +98,8 @@ async def record_click(
     db.add(event)
     if coupon is not None:
         coupon.clicks_count += 1
+    if ad is not None:
+        ad.clicks_count += 1
     await db.commit()
     await db.refresh(event)
     return event, True

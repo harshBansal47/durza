@@ -40,6 +40,11 @@ class ClickEvent(Base, UUIDPKMixin):
     store_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True
     )
+    # Set for clicks on sponsored placements. These earn no affiliate commission,
+    # so revenue reports must not mix them into per-store earnings.
+    ad_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("ads.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     # Which surface sent the click ("coupon-page", "email", "telegram", ...).
     src: Mapped[str] = mapped_column(String(40), default="unknown", nullable=False)
     # Network the outbound link was built for, frozen at click time so a later
