@@ -41,6 +41,7 @@ async def list_coupons(
     active_only: bool = True,
     sort: coupon_service.CouponSort = coupon_service.CouponSort.newest,
     expires_within_days: int | None = Query(None, ge=1, le=365),
+    verified_within_hours: int | None = Query(None, ge=1, le=24 * 365),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -53,6 +54,7 @@ async def list_coupons(
         active_only=active_only,
         sort=sort,
         expires_within_days=expires_within_days,
+        verified_within_hours=verified_within_hours,
         skip=skip,
         limit=limit,
     )
@@ -115,7 +117,9 @@ async def go_to_coupon(
         # Redirecting to an empty Location resolves against the current path and
         # sends the shopper back into this endpoint, forever. A coupon with
         # nowhere to send them is a broken record, not a redirect.
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Coupon has no destination")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Coupon has no destination"
+        )
     # The clickref parameter name comes from the store, not from the winning
     # source: which sub-ID field a network wants is a per-programme detail an
     # operator configures, and guessing it from a provider's name is how a

@@ -8,7 +8,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from app.models.click import ClickEvent
-from app.models.coupon import Coupon
+from app.models.coupon import Coupon, DiscountType
 
 API = "/api/v1/coupons"
 
@@ -230,3 +230,39 @@ async def test_public_json_shows_verification_status_but_never_the_quality_score
         "failed",
     }
     assert "quality_score" not in item  # internal ranking input, includes a revenue component
+
+
+# ------------------------------------------------- exact counts and biggest %
+
+
+async def test_verified_within_hours_counts_only_the_window(
+    client, admin_headers, async_session_maker
+):
+    store, cat = await _setup(client, admin_headers)
+    today = await _coupon(client, admin_headers, store, cat, "Today")
+    last_week = await _coupon(client, admin_headers, store, cat, "Last week")
+    await _coupon(client, admin_headers, store, cat, "Never")
+    await _set(async_session_maker, today["id"], last_verified_at=_in(hours=-3))
+    await _set(async_session_maker, last_week["id"], last_verified_at=_in(days=-6))
+    resp = await client.get(API, params={"verified_within_hours": 24})
+    body = resp.json()
+    assert [c["title"] for c in body["items"]] == ["Today"]
+    assert body["total"] == 1  # an exact count, not the size of a fetched sample
+
+
+async def test_biggest_discount_ranks_percentages_only(client, admin_headers, async_session_maker):
+    store, cat = await _setup(client, admin_headers)
+    small = await _coupon(client, admin_headers, store, cat, "Ten percent")
+    big = await _coupon(client, admin_headers, store, cat, "Fifty percent")
+    fixed = await _coupon(client, admin_headers, store, cat, "Fixed amount")
+    deal = await _coupon(client, admin_headers, store, cat, "Plain deal")
+    await _set(async_session_maker, small["id"], discount_value=10)
+    await _set(async_session_maker, big["id"], discount_value=50)
+    # A fixed 5000 must not outrank 50%: the two are not comparable without the basket.
+    await _set(
+        async_session_maker, fixed["id"], discount_type=DiscountType.fixed, discount_value=5000
+    )
+    await _set(
+        async_session_maker, deal["id"], discount_type=DiscountType.deal, discount_value=None
+    )
+    assert await _titles(client, sort="biggest_discount") == ["Fifty percent", "Ten percent"]

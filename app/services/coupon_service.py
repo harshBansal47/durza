@@ -11,7 +11,7 @@ from app.core.pagination import paginate
 from app.core.slugs import generate_unique_slug
 from app.models.category import Category
 from app.models.click import ClickEvent
-from app.models.coupon import Coupon
+from app.models.coupon import Coupon, DiscountType
 from app.models.coupon_verification import CouponVerification
 from app.models.store import Store
 from app.schemas.coupon import CouponCreate, CouponUpdate
@@ -36,6 +36,10 @@ class CouponSort(str, enum.Enum):
                        nobody clicked this week are excluded rather than padded in
     most_used          most all-time clicks (explicitly NOT "trending")
     top_rated          highest success rate among coupons with enough reports
+    biggest_discount   highest percentage off. Percentage coupons only: a fixed amount
+                       ("500 off") and a percentage cannot be compared without
+                       knowing the basket, so fixed and code-less deals are excluded
+                       rather than ranked on an invented scale
     """
 
     newest = "newest"
@@ -45,6 +49,7 @@ class CouponSort(str, enum.Enum):
     trending = "trending"
     most_used = "most_used"
     top_rated = "top_rated"
+    biggest_discount = "biggest_discount"
 
 
 async def list_coupons(
@@ -56,6 +61,7 @@ async def list_coupons(
     active_only: bool = True,
     sort: CouponSort = CouponSort.newest,
     expires_within_days: int | None = None,
+    verified_within_hours: int | None = None,
     skip: int = 0,
     limit: int = 20,
 ) -> tuple[Sequence[Coupon], int]:
@@ -81,6 +87,12 @@ async def list_coupons(
             Coupon.expires_at <= now + timedelta(days=expires_within_days),
         )
 
+    if verified_within_hours is not None:
+        stmt = stmt.where(
+            Coupon.last_verified_at.is_not(None),
+            Coupon.last_verified_at >= now - timedelta(hours=verified_within_hours),
+        )
+
     if sort is CouponSort.recommended:
         # The score is computed and stored by the ranking engine; this only reads it.
         stmt = stmt.order_by(Coupon.quality_score.desc(), Coupon.created_at.desc())
@@ -90,6 +102,12 @@ async def list_coupons(
     elif sort is CouponSort.recently_verified:
         stmt = stmt.where(Coupon.last_verified_at.is_not(None))
         stmt = stmt.order_by(Coupon.last_verified_at.desc(), Coupon.created_at.desc())
+    elif sort is CouponSort.biggest_discount:
+        stmt = stmt.where(
+            Coupon.discount_type == DiscountType.percentage,
+            Coupon.discount_value.is_not(None),
+        )
+        stmt = stmt.order_by(Coupon.discount_value.desc(), Coupon.created_at.desc())
     elif sort is CouponSort.most_used:
         stmt = stmt.order_by(Coupon.clicks_count.desc(), Coupon.created_at.desc())
     elif sort is CouponSort.top_rated:

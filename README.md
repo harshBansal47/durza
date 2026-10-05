@@ -438,10 +438,13 @@ inventing signals. Every ordering is backed by data we hold; the frontend only p
 | `ending_soon` | soonest real expiry first | no expiry, already expired |
 | `recently_verified` | most recently confirmed by a shopper | never verified |
 | `trending` | most non-bot outbound clicks in the last 7 days | coupons nobody clicked this week (the list can be empty) |
+| `biggest_discount` | highest percentage off | fixed-amount and code-less deals (not comparable without the basket) |
 | `most_used` | most all-time clicks (not "trending") | |
 | `top_rated` | highest success rate | fewer than 5 reports |
 
-`expires_within_days=N` keeps only coupons that really expire within N days. With
+`expires_within_days=N` keeps only coupons that really expire within N days, and
+`verified_within_hours=N` only those confirmed within the last N hours. The response `total`
+is the exact count for the filter, which is what a "12 verified today" label should use. With
 `active_only=true` (default) a coupon is hidden the instant `expires_at` passes, without
 waiting for the lifecycle job.
 
