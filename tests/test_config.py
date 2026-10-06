@@ -11,7 +11,7 @@ PROD = {
     "environment": "production",
     "secret_key": "x" * 48,
     "database_url": DB,
-    "site_url": "https://couponza.example",
+    "site_url": "https://savevero.example",
 }
 
 
@@ -40,12 +40,12 @@ def test_production_requires_https_site_url():
     # Every alert email links back to the site, and the unsubscribe link travels
     # in the clear over http.
     with pytest.raises(ValidationError, match="SITE_URL"):
-        Settings(**{**PROD, "site_url": "http://couponza.example"})
+        Settings(**{**PROD, "site_url": "http://savevero.example"})
 
 
 def test_production_allows_a_trailing_slash_in_site_url():
     # Validators should not be stricter than the thing they check.
-    Settings(**{**PROD, "site_url": "https://couponza.example/"})
+    Settings(**{**PROD, "site_url": "https://savevero.example/"})
 
 
 def test_production_rejects_smtp_user_without_a_password():

@@ -46,7 +46,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     still running on another replica.
     """
     logger.info(
-        "starting couponbase api",
+        "starting savevero api",
         extra={"environment": settings.environment, "version": app.version},
     )
     init_sentry()
@@ -58,10 +58,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         # job is not still holding a session when the pool closes underneath it.
         await stop_scheduler()
         await engine.dispose()
-        logger.info("couponbase api stopped")
+        logger.info("savevero api stopped")
 
 
-app = FastAPI(title="Couponbase", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Savevero", version="0.1.0", lifespan=lifespan)
 
 # Rate limiting (auth endpoints, coupon verification — see each router).
 app.state.limiter = limiter

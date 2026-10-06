@@ -95,6 +95,65 @@ async def test_filters_and_active_only(client, admin_headers):
     assert (await client.get(API, params={"category_id": cat_id})).json()["total"] == 2
 
 
+async def test_offer_shape_and_trust_filters(client, admin_headers):
+    """Every storefront filter narrows the row set server-side, so `total` is exact."""
+    store_id, cat_id = await _store_and_category(client, admin_headers)
+
+    coded = (
+        await client.post(
+            API, json=_payload(store_id, cat_id, title="Coded percent off"), headers=admin_headers
+        )
+    ).json()
+    deal = (
+        await client.post(
+            API,
+            json=_payload(
+                store_id, cat_id, title="Codeless deal", code=None, discount_type="deal", discount_value=None
+            ),
+            headers=admin_headers,
+        )
+    ).json()
+    fixed = (
+        await client.post(
+            API,
+            json=_payload(store_id, cat_id, title="Flat amount off", discount_type="fixed", discount_value=500),
+            headers=admin_headers,
+        )
+    ).json()
+
+    # One confirmation behind the coded coupon, one failed report behind the deal,
+    # so the success-rate filter has something to separate.
+    assert (
+        await client.post(f"{API}/{coded['id']}/verify", json={"worked": True})
+    ).status_code == 200
+    assert (await client.post(f"{API}/{deal['id']}/verify", json={"worked": False})).status_code == 200
+
+    assert (await client.get(API, params={"discount_type": "percentage"})).json()["total"] == 1
+    assert (await client.get(API, params={"discount_type": "fixed"})).json()["total"] == 1
+    assert (await client.get(API, params={"discount_type": "deal"})).json()["total"] == 1
+    assert (await client.get(API, params={"discount_type": "bogus"})).status_code == 422
+
+    assert (await client.get(API, params={"has_code": True})).json()["total"] == 2
+    assert (await client.get(API, params={"has_code": False})).json()["total"] == 1
+
+    # "Somebody has confirmed this" vs "nobody has tried it yet".
+    assert (await client.get(API, params={"verified": True})).json()["total"] == 2
+    assert (await client.get(API, params={"verified": False})).json()["total"] == 1
+
+    # 1/1 reports passes 0.5; 0/1 fails it; the never-reported coupon has no
+    # rate at all and is excluded even when the threshold is zero.
+    assert (await client.get(API, params={"min_success_rate": 0.0})).json()["total"] == 2
+    assert (await client.get(API, params={"min_success_rate": 0.5})).json()["total"] == 1
+    assert (await client.get(API, params={"min_success_rate": 1.5})).status_code == 422
+
+    # Filters compose: a coded percentage offer at a store, and the count stays exact.
+    combined = await client.get(
+        API, params={"store_id": store_id, "discount_type": "percentage", "has_code": True}
+    )
+    assert combined.json()["total"] == 1
+    assert combined.json()["items"][0]["id"] == coded["id"]
+
+
 async def test_created_by_is_recorded(client, editor_headers, async_session_maker):
     store_id, cat_id = await _store_and_category(client, editor_headers)
     created = await client.post(API, json=_payload(store_id, cat_id), headers=editor_headers)

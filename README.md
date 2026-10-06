@@ -1,11 +1,11 @@
-# Couponbase — Phases 0–5 (backend)
+# Savevero — Phases 0–5 (backend)
 
 Bootstrap (Phase 0), core infra (Phase 1), auth + RBAC (Phase 2), the core
 domain API (Phase 3), the admin back office (Phase 4), and now the public-API
 foundation for the frontend (Phase 5): commission disclosure, community
 verification, and a redirect endpoint that finally hides `destination_url`
 from anonymous requests. The actual public website lives in the sibling
-`couponbase-web` project (Next.js) and calls this API — nothing here renders
+`couponza-web` project (Next.js) and calls this API — nothing here renders
 HTML for visitors.
 
 ## Prerequisites
@@ -143,7 +143,7 @@ An MCP server (`mcp_server/`) exposes the same verified data as the JSON API,
 but as tools any MCP-compatible agent (Claude, or others) can call directly —
 rather than needing to scrape rendered HTML the way a generic web agent
 would. It's a thin layer: `mcp_server/client.py` talks to this API over plain
-HTTP, the same way `couponbase-web` does; no database access, no duplicated
+HTTP, the same way `couponza-web` does; no database access, no duplicated
 business logic.
 
 **Tools exposed:** `search_coupons`, `get_coupon`, `get_store`,
@@ -155,7 +155,7 @@ verification signal a human clicking "Worked" / "Didn't work" would).
 
 ```bash
 pip install -e ".[mcp]"
-export COUPONZA_API_URL=http://localhost:8000/api/v1
+export SAVEVERO_API_URL=http://localhost:8000/api/v1
 python -m mcp_server                    # stdio transport (for a local client)
 MCP_TRANSPORT=streamable-http python -m mcp_server   # for a remote deployment
 ```
@@ -165,10 +165,10 @@ MCP_TRANSPORT=streamable-http python -m mcp_server   # for a remote deployment
 ```json
 {
   "mcpServers": {
-    "couponbase": {
+    "savevero": {
       "command": "python",
       "args": ["-m", "mcp_server"],
-      "env": { "COUPONZA_API_URL": "http://localhost:8000/api/v1" }
+      "env": { "SAVEVERO_API_URL": "http://localhost:8000/api/v1" }
     }
   }
 }
@@ -182,7 +182,7 @@ its user, not just to the rendered page.
 
 ## Frontend
 
-The public website is a separate project: `../couponbase-web` (Next.js). It
+The public website is a separate project: `../couponza-web` (Next.js). It
 calls this API's public endpoints directly and never touches the database.
 See its own README for setup.
 
@@ -417,7 +417,7 @@ an advertiser can never be served outside what they booked:
   now is inside `starts_at`..`ends_at`. `ends_at` must be after `starts_at`.
 - **No bypass.** The public JSON has no `target_url`. The advertiser is reached only via
   `GET /api/v1/ads/{id}/go?src=<tag>`, which records a `ClickEvent` (with `ad_id`),
-  adds `utm_source=couponbase&utm_medium=sponsored&utm_campaign=<ad id>` (the
+  adds `utm_source=savevero&utm_medium=sponsored&utm_campaign=<ad id>` (the
   advertiser's own UTM values are kept) and 302s. Ads whose stored URL is not http(s)
   never redirect.
 - **URLs are validated** on write: `image_url` and `target_url` must be http(s).

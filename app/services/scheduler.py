@@ -1,4 +1,4 @@
-"""The scheduled work Couponbase runs on itself.
+"""The scheduled work Savevero runs on itself.
 
 Replaces the host-level cron scripts. The reason is not elegance: with cron,
 whether ingestion runs at all depends on somebody having configured a crontab

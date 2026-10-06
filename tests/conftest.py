@@ -236,18 +236,18 @@ async def admin_headers(make_headers):
 
 @pytest_asyncio.fixture
 async def mcp_client(async_session_maker):
-    """A CouponbaseClient pointed at the same in-memory test app, via ASGITransport —
+    """A SaveveroClient pointed at the same in-memory test app, via ASGITransport —
     no real network needed, same pattern as the `client` fixture above."""
     from httpx import ASGITransport
 
-    from mcp_server.client import CouponbaseClient
+    from mcp_server.client import SaveveroClient
 
     async def _override_get_db():
         async with async_session_maker() as session:
             yield session
 
     app.dependency_overrides[get_db] = _override_get_db
-    yield CouponbaseClient(base_url="http://testserver/api/v1", transport=ASGITransport(app=app))
+    yield SaveveroClient(base_url="http://testserver/api/v1", transport=ASGITransport(app=app))
     app.dependency_overrides.clear()
 
 

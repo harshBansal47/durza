@@ -60,11 +60,27 @@ async def list_coupons(
     search: str | None = None,
     active_only: bool = True,
     sort: CouponSort = CouponSort.newest,
+    discount_type: DiscountType | None = None,
+    has_code: bool | None = None,
+    verified: bool | None = None,
+    min_success_rate: float | None = None,
     expires_within_days: int | None = None,
     verified_within_hours: int | None = None,
     skip: int = 0,
     limit: int = 20,
 ) -> tuple[Sequence[Coupon], int]:
+    """Listing filters the storefront offers.
+
+    Every one of these narrows the row set *before* pagination, so `total` is
+    the exact number of matches and a filtered page can be paged through. The
+    storefront never filters in the browser: a client-side filter over one
+    page of results reports a count that is wrong for anything past page one.
+
+    `verified` ("somebody has confirmed this at least once") and
+    `verified_within_hours` ("confirmed within the last N hours") are separate
+    questions and both are asked often: the first is a trust signal, the second
+    is recency.
+    """
     now = datetime.now(UTC)
     stmt = select(Coupon)
     if store_id is not None:
@@ -73,6 +89,18 @@ async def list_coupons(
         stmt = stmt.where(Coupon.category_id == category_id)
     if search:
         stmt = stmt.where(Coupon.title.ilike(f"%{search}%"))
+    if discount_type is not None:
+        stmt = stmt.where(Coupon.discount_type == discount_type)
+    if has_code is not None:
+        # NOT: an empty string is a real code-less deal, not "no code given".
+        stmt = stmt.where(Coupon.code.is_not(None) if has_code else Coupon.code.is_(None))
+    if verified is not None:
+        stmt = stmt.where(Coupon.last_verified_at.is_not(None) if verified else Coupon.last_verified_at.is_(None))
+    if min_success_rate is not None:
+        # A rate with no reports behind it is not a rate, so never-verified
+        # coupons cannot pass this filter however high the threshold is.
+        reports = Coupon.success_count + Coupon.fail_count
+        stmt = stmt.where(reports > 0, (Coupon.success_count * 1.0) / reports >= min_success_rate)
     if active_only:
         # The lifecycle job deactivates expired coupons on a schedule; this makes
         # "active" true the instant a coupon expires, not at the next run.

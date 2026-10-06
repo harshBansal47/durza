@@ -52,7 +52,7 @@ async def list_markets(db: AsyncSession = Depends(get_db)) -> list[str]:
     """ISO 3166-1 alpha-2 codes that have at least one active store.
 
     Drives the country switcher. Public on purpose: knowing which markets
-    Couponbase actually serves is the point of the page.
+    Savevero actually serves is the point of the page.
     """
     return await store_service.list_store_countries(db)
 

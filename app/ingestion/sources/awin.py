@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 
 _AWIN_BASE = "https://api.awin.com"
 _TIMEOUT = httpx.Timeout(30.0, connect=10.0)
-_USER_AGENT = "CouponbaseBot/1.0 (+https://couponbase.example.com/bot)"
+_USER_AGENT = "SaveveroBot/1.0 (+https://savevero.example.com/bot)"
 
 
 class AwinSource:

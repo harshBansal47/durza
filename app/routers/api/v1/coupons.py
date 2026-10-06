@@ -10,7 +10,7 @@ from app.core.exceptions import EntityNotFoundError
 from app.core.limiter import limiter
 from app.core.pagination import Paginated
 from app.core.request_meta import client_ip, hash_ip
-from app.models.coupon import Coupon
+from app.models.coupon import Coupon, DiscountType
 from app.models.user import Role, User
 from app.schemas.coupon import CouponCreate, CouponRead, CouponUpdate
 from app.schemas.coupon_public import (
@@ -40,6 +40,10 @@ async def list_coupons(
     search: str | None = None,
     active_only: bool = True,
     sort: coupon_service.CouponSort = coupon_service.CouponSort.newest,
+    discount_type: DiscountType | None = None,
+    has_code: bool | None = None,
+    verified: bool | None = None,
+    min_success_rate: float | None = Query(None, ge=0, le=1),
     expires_within_days: int | None = Query(None, ge=1, le=365),
     verified_within_hours: int | None = Query(None, ge=1, le=24 * 365),
     skip: int = Query(0, ge=0),
@@ -53,6 +57,10 @@ async def list_coupons(
         search=search,
         active_only=active_only,
         sort=sort,
+        discount_type=discount_type,
+        has_code=has_code,
+        verified=verified,
+        min_success_rate=min_success_rate,
         expires_within_days=expires_within_days,
         verified_within_hours=verified_within_hours,
         skip=skip,
