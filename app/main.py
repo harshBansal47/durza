@@ -21,6 +21,7 @@ from app.routers.api.v1.analytics import router as analytics_router
 from app.routers.api.v1.auth import router as auth_router
 from app.routers.api.v1.categories import router as categories_router
 from app.routers.api.v1.coupons import router as coupons_router
+from app.routers.api.v1.earnings import router as earnings_router
 from app.routers.api.v1.pages import router as pages_router
 from app.routers.api.v1.products import router as products_router
 from app.routers.api.v1.stores import router as stores_router
@@ -46,7 +47,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     still running on another replica.
     """
     logger.info(
-        "starting savevero api",
+        "starting BachatBase api",
         extra={"environment": settings.environment, "version": app.version},
     )
     init_sentry()
@@ -58,10 +59,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         # job is not still holding a session when the pool closes underneath it.
         await stop_scheduler()
         await engine.dispose()
-        logger.info("savevero api stopped")
+        logger.info("BachatBase api stopped")
 
 
-app = FastAPI(title="Savevero", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="BachatBase", version="0.1.0", lifespan=lifespan)
 
 # Rate limiting (auth endpoints, coupon verification — see each router).
 app.state.limiter = limiter
@@ -100,6 +101,7 @@ for _router in (
     products_router,
     account_router,
     analytics_router,
+    earnings_router,
 ):
     app.include_router(_router, prefix="/api/v1")
 

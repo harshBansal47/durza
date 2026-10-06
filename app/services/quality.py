@@ -79,25 +79,27 @@ class QualityInputs:
 
 @dataclass(frozen=True)
 class QualityWeights:
-    """Component weights. Must sum to 1.0.
+    """Component weights. Trust and EPC split 70/30.
 
-    Split verification from popularity on purpose. They pull in opposite
-    directions in the real world — the most-clicked coupons are the ones
-    everyone reports broken first — and collapsing them into one "engagement"
-    term hides that trade-off in a way nobody can then reason about.
+    verification_status + community_success (the shopper-vote signals) carry
+    70%, and expected_revenue — normalized 30-day EPC — carries 30%. Every
+    other legacy component is zero-weighted: the recommendation sort optimises
+    for coupons the community trusts that also make us money, nothing else
+    creeps in.
     """
 
-    verification_status: float = 0.28
-    community_success: float = 0.22
-    source_confidence: float = 0.14
-    multi_source: float = 0.10
-    recency: float = 0.08
-    expiry_urgency: float = 0.08
-    conversion_rate: float = 0.06
-    merchant_popularity: float = 0.04
-    # Revenue is a tiebreaker: default to 0 when not enough data exists,
-    # and never let it dominate quality or verification.
-    expected_revenue: float = 0.0
+    verification_status: float = 0.45
+    community_success: float = 0.25
+    source_confidence: float = 0.0
+    multi_source: float = 0.0
+    recency: float = 0.0
+    expiry_urgency: float = 0.0
+    conversion_rate: float = 0.0
+    merchant_popularity: float = 0.0
+    # Hybrid ranking: 70% trust (verification + shopper votes, above), 30%
+    # normalized EPC. The old default of 0.0 meant the revenue tables could
+    # fill forever and the ranking would never notice.
+    expected_revenue: float = 0.30
 
     def normalized(self) -> dict[str, float]:
         """Weights scaled to sum to 1, so an edited setting cannot skew the range."""
@@ -164,7 +166,9 @@ def _community_success(success_rate: float | None, *, samples: int) -> float | N
     return 0.5 + (success_rate - 0.5) * shrinkage
 
 
-def _recency(created_at: datetime | None, last_verified_at: datetime | None, now: datetime) -> float | None:
+def _recency(
+    created_at: datetime | None, last_verified_at: datetime | None, now: datetime
+) -> float | None:
     """1.0 for something confirmed in the last day, decaying to 0 at 30 days.
 
     Uses `last_verified_at` in preference to `created_at`: a coupon created six
@@ -272,7 +276,9 @@ def compute_quality(
     if total_weight <= 0:
         return 0, {name: 0.0 for name in present}
 
-    breakdown = {name: round(value * weights[name] / total_weight, 4) for name, value in present.items()}
+    breakdown = {
+        name: round(value * weights[name] / total_weight, 4) for name, value in present.items()
+    }
     score = round(sum(breakdown.values()) * 100)
     return max(0, min(100, score)), breakdown
 
@@ -327,13 +333,25 @@ def weights_from_settings(settings: Any = None) -> QualityWeights:
     settings = settings or get_settings()
     defaults = QualityWeights()
     return QualityWeights(
-        verification_status=getattr(settings, "quality_weight_verification_status", defaults.verification_status),
-        community_success=getattr(settings, "quality_weight_community_success", defaults.community_success),
-        source_confidence=getattr(settings, "quality_weight_source_confidence", defaults.source_confidence),
+        verification_status=getattr(
+            settings, "quality_weight_verification_status", defaults.verification_status
+        ),
+        community_success=getattr(
+            settings, "quality_weight_community_success", defaults.community_success
+        ),
+        source_confidence=getattr(
+            settings, "quality_weight_source_confidence", defaults.source_confidence
+        ),
         multi_source=getattr(settings, "quality_weight_multi_source", defaults.multi_source),
         recency=getattr(settings, "quality_weight_recency", defaults.recency),
         expiry_urgency=getattr(settings, "quality_weight_expiry_urgency", defaults.expiry_urgency),
-        conversion_rate=getattr(settings, "quality_weight_conversion_rate", defaults.conversion_rate),
-        merchant_popularity=getattr(settings, "quality_weight_merchant_popularity", defaults.merchant_popularity),
-        expected_revenue=getattr(settings, "quality_weight_expected_revenue", defaults.expected_revenue),
+        conversion_rate=getattr(
+            settings, "quality_weight_conversion_rate", defaults.conversion_rate
+        ),
+        merchant_popularity=getattr(
+            settings, "quality_weight_merchant_popularity", defaults.merchant_popularity
+        ),
+        expected_revenue=getattr(
+            settings, "quality_weight_expected_revenue", defaults.expected_revenue
+        ),
     )

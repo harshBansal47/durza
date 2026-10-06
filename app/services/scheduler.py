@@ -1,4 +1,4 @@
-"""The scheduled work Savevero runs on itself.
+"""The scheduled work BachatBase runs on itself.
 
 Replaces the host-level cron scripts. The reason is not elegance: with cron,
 whether ingestion runs at all depends on somebody having configured a crontab
@@ -55,6 +55,7 @@ _LOCK_REFRESH = 0x0C0FFEE1
 _LOCK_ALERTS = 0x0C0FFEE2
 _LOCK_VERIFY = 0x0C0FFEE3
 _LOCK_SCRUB_CLICKS = 0x0C0FFEE4
+_LOCK_CONVERSIONS = 0x0C0FFEE5
 
 
 # A job that fails is recorded and re-raised so the caller can distinguish "ran
@@ -93,12 +94,19 @@ async def _scrub_clicks_job(db: AsyncSession) -> str:
     return f"scrubbed {scrubbed} visitor hash(es)"
 
 
+async def _conversions_job(db: AsyncSession) -> str:
+    from app.services.conversion_sync import sync_conversions
+
+    return await sync_conversions(db)
+
+
 JOBS: dict[str, tuple[Callable[..., Awaitable[str]], int]] = {
     "expire_coupons": (_expire_job, _LOCK_EXPIRE),
     "refresh_prices": (_refresh_job, _LOCK_REFRESH),
     "send_alerts": (_alerts_job, _LOCK_ALERTS),
     "verify_coupons": (_verify_job, _LOCK_VERIFY),
     "scrub_clicks": (_scrub_clicks_job, _LOCK_SCRUB_CLICKS),
+    "sync_conversions": (_conversions_job, _LOCK_CONVERSIONS),
 }
 
 
@@ -143,6 +151,7 @@ def job_interval_seconds(name: str) -> float:
         "refresh_prices": settings.ingestion_interval_hours,
         "verify_coupons": settings.verification_interval_hours,
         "scrub_clicks": settings.click_scrub_interval_hours,
+        "sync_conversions": settings.conversion_sync_interval_hours,
     }
     if name in hourly:
         return hourly[name] * 3600
@@ -410,6 +419,16 @@ def build_scheduler() -> AsyncIOScheduler:
         next_run_time=datetime.now(UTC) + timedelta(seconds=offset + 120),
         replace_existing=True,
     )
+    scheduler.add_job(
+        _fire,
+        IntervalTrigger(hours=settings.conversion_sync_interval_hours),
+        args=["sync_conversions"],
+        id="sync_conversions",
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(UTC) + timedelta(seconds=offset + 150),
+        replace_existing=True,
+    )
     return scheduler
 
 
@@ -433,6 +452,7 @@ async def start_scheduler() -> AsyncIOScheduler | None:
             "expire_every_hours": settings.expire_interval_hours,
             "ingest_every_hours": settings.ingestion_interval_hours,
             "alerts_every_minutes": settings.alert_scan_interval_minutes,
+            "conversions_every_hours": settings.conversion_sync_interval_hours,
         },
     )
     return _scheduler

@@ -1,4 +1,4 @@
-# Prometheus alerting rules for the Couponbase API.
+# Prometheus alerting rules for the BachatBase API.
 #
 # These are written against the metric and label names in `app/core/metrics.py`
 # and `app/services/scheduler.py`. Every threshold below is a judgement, so each

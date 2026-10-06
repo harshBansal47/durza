@@ -85,7 +85,7 @@ def is_live(ad: Ad, now: datetime | None = None) -> bool:
 
 
 def build_target_url(target_url: str, ad_id: uuid.UUID) -> str | None:
-    """Advertiser URL with UTM tags so the advertiser can see Savevero traffic.
+    """Advertiser URL with UTM tags so the advertiser can see BachatBase traffic.
     Existing UTM values the advertiser set are kept. Returns None for anything
     that is not an http(s) URL (legacy rows saved before validation existed)."""
     parts = urlparse(target_url)
@@ -94,7 +94,7 @@ def build_target_url(target_url: str, ad_id: uuid.UUID) -> str | None:
     query = parse_qsl(parts.query, keep_blank_values=True)
     present = {k for k, _ in query}
     for key, value in (
-        ("utm_source", "savevero"),
+        ("utm_source", "BachatBase"),
         ("utm_medium", "sponsored"),
         ("utm_campaign", str(ad_id)),
     ):

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from app.models.ingestion_run import SyncMode
 
 _TIMEOUT = httpx.Timeout(15.0, connect=5.0)
-_USER_AGENT = "SaveveroBot/1.0 (+https://savevero.example.com/bot)"
+_USER_AGENT = "BachatBaseBot/1.0 (+https://BachatBase.example.com/bot)"
 
 
 class FeedSource:

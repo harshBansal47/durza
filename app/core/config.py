@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
     algorithm: str = "HS256"
     # Comma-separated list of origins the frontend is served from, e.g.
-    # "http://localhost:3000,https://savevero.example.com". Without this,
+    # "http://localhost:3000,https://BachatBase.example.com". Without this,
     # browsers block every client-side fetch from the Next.js app to this API
     # (server-side fetches in Next.js Server Components aren't affected —
     # only same-origin-policy-enforcing browser requests are).
@@ -42,14 +42,14 @@ class Settings(BaseSettings):
     # "starttls" for port 587, "ssl" for implicit TLS on 465, "none" for a
     # local relay on 25 (MailHog, python -m smtpd) with no encryption.
     smtp_security: str = "starttls"
-    email_from: str = "alerts@savevero.example"
-    email_from_name: str = "Savevero"
+    email_from: str = "alerts@BachatBase.example"
+    email_from_name: str = "BachatBase"
 
     # ---- Web push (pywebpush) -------------------------------------------
     # Generate with: python -m app.core.push_keys  (prints a VAPID key pair).
     vapid_private_key: str | None = None
     vapid_public_key: str | None = None
-    vapid_subject: str = "mailto:alerts@savevero.example"
+    vapid_subject: str = "mailto:alerts@BachatBase.example"
     # Push payloads over ~4KB are rejected by browsers, so keep bodies small.
     push_ttl_seconds: int = 3600
 
@@ -86,6 +86,21 @@ class Settings(BaseSettings):
     # Only one worker may run a given job at a time. Without this, every
     # uvicorn replica would duplicate the whole ingestion sweep.
     scheduler_lock_ttl_seconds: int = 900
+
+    # ---- Affiliate network credentials & sync --------------------------------
+    # Cuelinks: deeplink wrapper base + our publisher id for outbound links.
+    cuelinks_publisher_id: str | None = None
+    cuelinks_tracker_base: str = "https://go.cuelinks.com/ald"
+    cuelinks_api_key: str | None = None
+    # Awin transaction report credentials.
+    awin_api_key: str | None = None
+    awin_publisher_id: str | None = None
+    # How often the conversion sync job runs, and how far back each sweep
+    # looks. Networks validate sales over a window of days-to-weeks, so the
+    # lookback must be wider than any single validation window to catch
+    # pending -> approved/declined transitions on late reports.
+    conversion_sync_interval_hours: int = 6
+    conversion_sync_lookback_days: int = 45
 
     # ---- Observability --------------------------------------------------
     sentry_dsn: str | None = None

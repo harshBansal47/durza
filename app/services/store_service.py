@@ -20,7 +20,7 @@ async def list_stores(
 ) -> tuple[Sequence[Store], int]:
     """List stores, optionally scoped to one market.
 
-    `country_code` is the per-country listing filter Savevero needs to be
+    `country_code` is the per-country listing filter BachatBase needs to be
     indexable in each market it operates in. It also matches global stores
     (those with no country of their own) so they don't vanish from a
     country-filtered view.

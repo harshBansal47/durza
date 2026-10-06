@@ -109,7 +109,7 @@ class Store(Base, UUIDPKMixin, TimestampMixin):
     cookie_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # ---- Market -------------------------------------------------------------
-    # Market data. Savevero lists stores per country, so a store carries the
+    # Market data. BachatBase lists stores per country, so a store carries the
     # market it belongs to: ISO 3166-1 alpha-2 for routing/sitemaps, ISO 4217
     # for rendering prices. Both nullable — a global store (Amazon) may not
     # belong to one market.

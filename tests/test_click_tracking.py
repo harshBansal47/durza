@@ -45,7 +45,7 @@ def test_existing_reference_is_replaced_not_duplicated():
 
 @pytest.mark.parametrize(
     ("network", "param"),
-    [("cuelinks", "subid"), ("admitad", "subid"), ("impact", "subId1")],
+    [("admitad", "subid"), ("impact", "subId1")],
 )
 def test_other_networks_use_their_own_parameter(network, param):
     url = affiliate.build_outbound_url(

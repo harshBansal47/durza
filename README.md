@@ -1,4 +1,4 @@
-# Savevero — Phases 0–5 (backend)
+# BachatBase — Phases 0–5 (backend)
 
 Bootstrap (Phase 0), core infra (Phase 1), auth + RBAC (Phase 2), the core
 domain API (Phase 3), the admin back office (Phase 4), and now the public-API
@@ -155,7 +155,7 @@ verification signal a human clicking "Worked" / "Didn't work" would).
 
 ```bash
 pip install -e ".[mcp]"
-export SAVEVERO_API_URL=http://localhost:8000/api/v1
+export BachatBase_API_URL=http://localhost:8000/api/v1
 python -m mcp_server                    # stdio transport (for a local client)
 MCP_TRANSPORT=streamable-http python -m mcp_server   # for a remote deployment
 ```
@@ -165,10 +165,10 @@ MCP_TRANSPORT=streamable-http python -m mcp_server   # for a remote deployment
 ```json
 {
   "mcpServers": {
-    "savevero": {
+    "BachatBase": {
       "command": "python",
       "args": ["-m", "mcp_server"],
-      "env": { "SAVEVERO_API_URL": "http://localhost:8000/api/v1" }
+      "env": { "BachatBase_API_URL": "http://localhost:8000/api/v1" }
     }
   }
 }
@@ -417,7 +417,7 @@ an advertiser can never be served outside what they booked:
   now is inside `starts_at`..`ends_at`. `ends_at` must be after `starts_at`.
 - **No bypass.** The public JSON has no `target_url`. The advertiser is reached only via
   `GET /api/v1/ads/{id}/go?src=<tag>`, which records a `ClickEvent` (with `ad_id`),
-  adds `utm_source=savevero&utm_medium=sponsored&utm_campaign=<ad id>` (the
+  adds `utm_source=BachatBase&utm_medium=sponsored&utm_campaign=<ad id>` (the
   advertiser's own UTM values are kept) and 302s. Ads whose stored URL is not http(s)
   never redirect.
 - **URLs are validated** on write: `image_url` and `target_url` must be http(s).

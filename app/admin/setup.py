@@ -20,7 +20,7 @@ def setup_admin(
         engine,
         session_maker=session_maker,
         base_url="/admin",
-        title="Savevero Admin",
+        title="BachatBase Admin",
         authentication_backend=AdminAuth(secret_key, session_maker, https_only=https_only),
         authorization_backend=RoleAuthorization(),
     )

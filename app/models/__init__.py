@@ -20,6 +20,7 @@ from app.models.affiliate_provider import (
     ProviderType,
 )
 from app.models.affiliate_revenue import AffiliateRevenue, RevenueStatus
+from app.models.analytics_event import AnalyticsEvent
 from app.models.analytics_session import (
     AnalyticsSession,
     DeviceType,
@@ -37,7 +38,6 @@ from app.models.coupon import (
     DiscountType,
     VerificationStatus,
 )
-from app.models.analytics_event import AnalyticsEvent
 from app.models.coupon_impression import CouponImpression, ImpressionType
 from app.models.coupon_source import CouponSource, CouponSourceStatus
 from app.models.coupon_verification import CouponVerification
@@ -82,6 +82,7 @@ __all__ = [
     "AffiliateProvider",
     "AffiliateRevenue",
     "AlertEvent",
+    "AnalyticsEvent",
     "AnalyticsSession",
     "AttemptOutcome",
     "Attribution",
@@ -94,7 +95,6 @@ __all__ = [
     "Conversion",
     "ConversionStatus",
     "Coupon",
-    "AnalyticsEvent",
     "CouponImpression",
     "CouponSource",
     "CouponSourceStatus",

@@ -1,6 +1,6 @@
 """store market columns + optional verification note
 
-Savevero lists stores per country, so a store needs to know which market it
+BachatBase lists stores per country, so a store needs to know which market it
 belongs to and which currency its prices are in. Verifications get an optional
 note so a conditional code can explain itself ("works, but excludes sale items").
 
