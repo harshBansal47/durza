@@ -448,3 +448,24 @@ is the exact count for the filter, which is what a "12 verified today" label sho
 `active_only=true` (default) a coupon is hidden the instant `expires_at` passes, without
 waiting for the lifecycle job.
 
+## Shopper events
+
+`POST /api/v1/analytics/event` records interactions that are not impressions (impressions use
+`POST /analytics/impression`). The storefront sends a flat JSON object:
+
+```json
+{"event": "copy_code", "coupon_id": "<uuid>", "ts": "2026-10-06T10:00:00Z"}
+```
+
+- `event` must be one of: `page_view`, `search`, `coupon_click`, `coupon_reveal`, `copy_code`,
+  `save_coupon`, `unsave_coupon`, `follow_store`, `unfollow_store`, `merchant_click`,
+  `filter_change`, `verify_vote`. Anything else is a 422.
+- `coupon_id` / `merchant_id` are stored without foreign keys, and a malformed id only drops that
+  field, so one bad value never loses the event.
+- Extra keys become `props`: at most 10 short scalar values (strings cut at 200 characters).
+  Nested objects and oddly named keys are discarded.
+- Visitor comes from the `cz_vid` cookie and session from the `x-session-id` header, as for
+  impressions. Rate limit: 120/minute per client.
+- For impressions the storefront must send a `page_type` from the `ImpressionType` list and a
+  1-based `position`; anything else is rejected with a 422.
+

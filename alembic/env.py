@@ -29,6 +29,7 @@ from app.models import category as _category  # noqa: F401
 from app.models import click as _click  # noqa: F401
 from app.models import conversion as _conversion  # noqa: F401
 from app.models import coupon as _coupon  # noqa: F401
+from app.models import analytics_event as _analytics_event  # noqa: F401
 from app.models import coupon_impression as _coupon_impression  # noqa: F401
 from app.models import coupon_source as _coupon_source  # noqa: F401
 from app.models import coupon_verification as _coupon_verification  # noqa: F401

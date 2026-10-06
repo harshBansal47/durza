@@ -37,6 +37,7 @@ from app.models.coupon import (
     DiscountType,
     VerificationStatus,
 )
+from app.models.analytics_event import AnalyticsEvent
 from app.models.coupon_impression import CouponImpression, ImpressionType
 from app.models.coupon_source import CouponSource, CouponSourceStatus
 from app.models.coupon_verification import CouponVerification
@@ -93,6 +94,7 @@ __all__ = [
     "Conversion",
     "ConversionStatus",
     "Coupon",
+    "AnalyticsEvent",
     "CouponImpression",
     "CouponSource",
     "CouponSourceStatus",
