@@ -1,9 +1,11 @@
 """Conversion sync: network transaction reports -> Conversion + AffiliateRevenue."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from urllib.parse import parse_qs, urlparse
 
+import httpx
 import pytest
 from sqlalchemy import select
 
@@ -12,6 +14,7 @@ from app.models.click import ClickEvent
 from app.models.conversion import Conversion, ConversionStatus
 from app.models.store import Store
 from app.services.conversion_sync import (
+    AwinTransactionsClient,
     NetworkTransaction,
     map_status,
     sync_conversions,
@@ -44,6 +47,62 @@ class FakeClient:
 
     async def fetch(self, *, since):
         return self._rows
+
+
+def test_awin_normalises_documented_transaction_shape():
+    client = AwinTransactionsClient(api_key="key", publisher_id="publisher")
+
+    txn = client._normalise(
+        {
+            "transactionId": "awin-txn-1",
+            "clickRefs": {"clickRef": "abc123def456"},
+            "commissionStatus": "approved",
+            "saleAmount": {"amount": "2499.00", "currency": "INR"},
+            "publisherCommission": {"amount": "99.96", "currency": "INR"},
+            "transactionDate": "2026-10-01T10:00:00Z",
+            "validationDate": "2026-10-03T10:00:00Z",
+        }
+    )
+
+    assert txn is not None
+    assert txn.network_txn_id == "awin-txn-1"
+    assert txn.clickref == "abc123def456"
+    assert txn.raw_status == "approved"
+    assert txn.sale_amount == Decimal("2499.00")
+    assert txn.commission_amount == Decimal("99.96")
+    assert txn.currency == "INR"
+    assert txn.transaction_at == datetime(2026, 10, 1, 10, tzinfo=UTC)
+    assert txn.validated_at == datetime(2026, 10, 3, 10, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_awin_requests_use_utc_and_at_most_31_days_per_window():
+    requests = []
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(parse_qs(urlparse(str(request.url)).query))
+        return httpx.Response(200, json=[])
+
+    since = datetime.now(UTC) - timedelta(days=40)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http_client:
+        client = AwinTransactionsClient(api_key="key", publisher_id="publisher", client=http_client)
+        assert await client.fetch(since=since) == []
+
+    assert len(requests) == 2
+    windows = [
+        (
+            datetime.fromisoformat(params["startDate"][0]).date(),
+            datetime.fromisoformat(params["endDate"][0]).date(),
+        )
+        for params in requests
+    ]
+    assert windows[0][0] == since.date()
+    assert windows[-1][1] == datetime.now(UTC).date()
+    for index, (start, end) in enumerate(windows):
+        assert (end - start).days < 31
+        assert requests[index]["timezone"] == ["UTC"]
+        assert requests[index]["pageSize"] == ["100"]
+    assert windows[0][1] + timedelta(days=1) == windows[1][0]
 
 
 @pytest.mark.asyncio

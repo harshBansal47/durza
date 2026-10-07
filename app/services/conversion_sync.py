@@ -43,6 +43,7 @@ logger = get_logger("couponbase.conversion_sync")
 
 _TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 _USER_AGENT = "BachatBaseBot/1.0 (+https://bachatbase.example.com/bot)"
+_AWIN_MAX_WINDOW_DAYS = 31
 
 
 # ---- Report shape --------------------------------------------------------
@@ -101,6 +102,14 @@ def _decimal(value: Any) -> Decimal | None:
         return None
 
 
+def _amount_and_currency(value: Any) -> tuple[Decimal | None, str | None]:
+    if isinstance(value, dict):
+        amount = _decimal(value.get("amount"))
+        currency = value.get("currency")
+        return amount, str(currency) if currency else None
+    return _decimal(value), None
+
+
 def _parse_dt(value: Any) -> datetime | None:
     if not value or not isinstance(value, str):
         return None
@@ -149,36 +158,54 @@ class AwinTransactionsClient:
         owns_client = self._client is None
         client = self._client or httpx.AsyncClient(timeout=_TIMEOUT)
         try:
-            page = 1
             out: list[NetworkTransaction] = []
-            while True:
+            end_date = datetime.now(UTC).date()
+            window_start = since.date()
+            while window_start <= end_date:
+                window_end = min(window_start + timedelta(days=_AWIN_MAX_WINDOW_DAYS - 1), end_date)
+                page = 1
+                while True:
 
-                async def _request(page: int = page) -> httpx.Response:
-                    return await client.get(
-                        f"{self._base_url}/publishers/{self._publisher_id}/transactions",
-                        params={
-                            "startDate": since.date().isoformat(),
-                            "endDate": datetime.now(UTC).date().isoformat(),
-                            "page": page,
-                            "pageSize": 100,
-                        },
-                        headers=headers,
-                    )
+                    async def _request(
+                        page: int = page,
+                        start_date=window_start,
+                        end_date=window_end,
+                    ) -> httpx.Response:
+                        return await client.get(
+                            f"{self._base_url}/publishers/{self._publisher_id}/transactions",
+                            params={
+                                "startDate": start_date.isoformat(),
+                                "endDate": end_date.isoformat(),
+                                "timezone": "UTC",
+                                "page": page,
+                                "pageSize": 100,
+                            },
+                            headers=headers,
+                        )
 
-                response = await with_retries(_request)
-                response.raise_for_status()
-                payload = response.json()
-                rows = payload.get("transactions", payload if isinstance(payload, list) else [])
-                for row in rows:
-                    txn = self._normalise(row)
-                    if txn is not None:
-                        out.append(txn)
-                total_pages = payload.get("totalPages") if isinstance(payload, dict) else None
-                if total_pages is not None and page >= int(total_pages):
-                    break
-                if len(rows) < 100:
-                    break
-                page += 1
+                    response = await with_retries(_request)
+                    response.raise_for_status()
+                    payload = response.json()
+                    if isinstance(payload, list):
+                        rows = payload
+                        total_pages = None
+                    elif isinstance(payload, dict):
+                        rows = payload.get("transactions", [])
+                        total_pages = payload.get("totalPages")
+                    else:
+                        raise TypeError("Awin transactions response must be a list or object")
+                    if not isinstance(rows, list):
+                        raise TypeError("Awin transactions response 'transactions' must be a list")
+                    for row in rows:
+                        txn = self._normalise(row)
+                        if txn is not None:
+                            out.append(txn)
+                    if total_pages is not None and page >= int(total_pages):
+                        break
+                    if len(rows) < 100:
+                        break
+                    page += 1
+                window_start = window_end + timedelta(days=1)
             return out
         finally:
             if owns_client:
@@ -188,20 +215,37 @@ class AwinTransactionsClient:
         txn_id = row.get("transactionId") or row.get("transaction_id") or row.get("id")
         if txn_id is None:
             return None
+        click_refs = row.get("clickRefs")
+        clickref = (
+            click_refs.get("clickRef") or click_refs.get("clickref")
+            if isinstance(click_refs, dict)
+            else None
+        )
+        sale_amount, sale_currency = _amount_and_currency(
+            row.get("saleAmount") or row.get("orderAmount") or row.get("sale_amount")
+        )
+        commission_amount, commission_currency = _amount_and_currency(
+            row.get("publisherCommission") or row.get("commission") or row.get("commission_amount")
+        )
         return NetworkTransaction(
             network=self.network,
             network_txn_id=str(txn_id),
-            clickref=row.get("clickRef") or row.get("clickref") or row.get("click_ref"),
-            raw_status=str(row.get("status") or row.get("transactionStatus") or ""),
-            sale_amount=_decimal(
-                row.get("saleAmount") or row.get("orderAmount") or row.get("sale_amount")
+            clickref=clickref or row.get("clickRef") or row.get("clickref") or row.get("click_ref"),
+            raw_status=str(
+                row.get("commissionStatus")
+                or row.get("status")
+                or row.get("transactionStatus")
+                or ""
             ),
-            commission_amount=_decimal(
-                row.get("publisherCommission")
-                or row.get("commission")
-                or row.get("commission_amount")
+            sale_amount=sale_amount,
+            commission_amount=commission_amount,
+            currency=(
+                sale_currency
+                or commission_currency
+                or row.get("currency")
+                or row.get("saleCurrency")
+                or None
             ),
-            currency=(row.get("currency") or row.get("saleCurrency") or None),
             transaction_at=_parse_dt(row.get("transactionDate") or row.get("transaction_at")),
             validated_at=_parse_dt(row.get("validationDate") or row.get("validated_at")),
             decline_reason=row.get("declineReason") or row.get("decline_reason"),
@@ -322,19 +366,21 @@ async def upsert_transaction(
     touched_coupons: set | None = None,
 ) -> str:
     """Insert or update one transaction and its revenue row. Returns the outcome."""
-    click = None
+    click: ClickEvent | None = None
     if txn.clickref:
-        result = await db.execute(select(ClickEvent).where(ClickEvent.clickref == txn.clickref))
-        click = result.scalars().first()
+        click_result = await db.execute(
+            select(ClickEvent).where(ClickEvent.clickref == txn.clickref)
+        )
+        click = click_result.scalars().first()
     if click is not None and click.coupon_id is not None and touched_coupons is not None:
         touched_coupons.add(click.coupon_id)
 
-    result = await db.execute(
+    conversion_result = await db.execute(
         select(Conversion).where(
             Conversion.network == txn.network, Conversion.network_txn_id == txn.network_txn_id
         )
     )
-    conversion = result.scalars().first()
+    conversion: Conversion | None = conversion_result.scalars().first()
     status = map_status(txn.raw_status)
     if conversion is None:
         conversion = Conversion(
@@ -373,10 +419,10 @@ async def upsert_transaction(
     # Revenue row: one per conversion, refreshed in place. A pending txn carries
     # a "pending" revenue row; declined/deleted flip it to "reversed" with the
     # reason preserved for audit.
-    result = await db.execute(
+    revenue_result = await db.execute(
         select(AffiliateRevenue).where(AffiliateRevenue.conversion_id == conversion.id)
     )
-    revenue = result.scalars().first()
+    revenue: AffiliateRevenue | None = revenue_result.scalars().first()
     gross = float(txn.commission_amount or 0)
     if revenue is None:
         revenue = AffiliateRevenue(conversion_id=conversion.id)

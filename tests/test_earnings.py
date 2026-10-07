@@ -5,8 +5,10 @@ from datetime import UTC, datetime
 
 from app.models.ad import Ad, AdPosition
 from app.models.affiliate_revenue import AffiliateRevenue, RevenueStatus
+from app.models.category import Category
 from app.models.click import ClickEvent
 from app.models.conversion import Conversion, ConversionStatus
+from app.models.coupon import Coupon, DiscountType
 from app.models.store import Store
 
 
@@ -108,5 +110,63 @@ async def test_epc_excludes_ad_clicks_and_pending_revenue(
     assert response.status_code == 200
     body = response.json()
     # Pending revenue must not count, and the sponsored click must not pad the base.
-    assert body["by_store"] == []
-    assert body["by_source"] == []
+    assert body["by_store"][0]["clicks"] == 1
+    assert body["by_store"][0]["commission"] == 0.0
+    assert body["by_store"][0]["currency"] is None
+    assert body["by_source"][0]["clicks"] == 1
+    assert body["by_source"][0]["commission"] == 0.0
+    assert body["by_source"][0]["currency"] is None
+
+
+async def test_epc_includes_clicks_without_confirmed_revenue(
+    client, async_session_maker, admin_headers
+):
+    async with async_session_maker() as db:
+        store = Store(
+            name="No Earnings",
+            slug=f"no-earnings-{uuid.uuid4().hex[:6]}",
+            normalized_name="no earnings",
+            normalized_domain="no-earnings.example",
+        )
+        category = Category(
+            name="Test",
+            slug=f"test-{uuid.uuid4().hex[:6]}",
+        )
+        db.add_all([store, category])
+        await db.flush()
+        coupon = Coupon(
+            title="No earning offer",
+            slug=f"no-earning-{uuid.uuid4().hex[:6]}",
+            discount_type=DiscountType.percentage,
+            store_id=store.id,
+            category_id=category.id,
+            destination_url="https://merchant.example/offer",
+        )
+        db.add(coupon)
+        await db.flush()
+        db.add(
+            ClickEvent(
+                clickref=uuid.uuid4().hex[:32],
+                src="coupon-page",
+                network="awin",
+                store_id=store.id,
+                coupon_id=coupon.id,
+            )
+        )
+        await db.commit()
+
+    response = await client.get("/api/v1/earnings/epc?days=30", headers=admin_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    rows = (
+        next(item for item in body["by_store"] if item["store_name"] == "No Earnings"),
+        next(item for item in body["by_source"] if item["source"] == "coupon-page"),
+        body["by_coupon"][0],
+    )
+    for row in rows:
+        assert row["clicks"] == 1
+        assert row["conversions"] == 0
+        assert row["commission"] == 0.0
+        assert row["epc"] == 0.0
+        assert row["currency"] is None

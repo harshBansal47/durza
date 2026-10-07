@@ -75,7 +75,7 @@ async def earnings_per_click(
     )
     stores = {s.id: s for s in (await db.execute(select(Store))).scalars().all()}
     rev_rows = (await db.execute(_revenue_stmt(group_col=ClickEvent.store_id, since=since))).all()
-    rev_by_store: dict[uuid.UUID, dict[str, dict]] = {}
+    rev_by_store: dict[uuid.UUID, dict[str | None, dict]] = {}
     for store_id, currency, total, conversions in rev_rows:
         rev_by_store.setdefault(store_id, {})[currency] = {
             "commission": round(float(total), 2),
@@ -85,7 +85,8 @@ async def earnings_per_click(
     by_store = []
     for store_id in store_ids:
         clicks = clicks_by_store.get(store_id, 0)
-        for currency, agg in rev_by_store.get(store_id, {}).items():
+        currencies = rev_by_store.get(store_id) or {None: {"commission": 0.0, "conversions": 0}}
+        for currency, agg in currencies.items():
             by_store.append(
                 {
                     "store_id": str(store_id),
@@ -104,7 +105,7 @@ async def earnings_per_click(
         (await db.execute(_clicks_stmt(group_col=ClickEvent.src, since=since))).all()
     )
     rev_rows = (await db.execute(_revenue_stmt(group_col=ClickEvent.src, since=since))).all()
-    rev_by_src: dict[str, dict[str, dict]] = {}
+    rev_by_src: dict[str, dict[str | None, dict]] = {}
     for src, currency, total, conversions in rev_rows:
         rev_by_src.setdefault(src, {})[currency] = {
             "commission": round(float(total), 2),
@@ -114,7 +115,8 @@ async def earnings_per_click(
     by_source = []
     for src in srcs:
         clicks = clicks_by_src.get(src, 0)
-        for currency, agg in rev_by_src.get(src, {}).items():
+        currencies = rev_by_src.get(src) or {None: {"commission": 0.0, "conversions": 0}}
+        for currency, agg in currencies.items():
             by_source.append(
                 {
                     "source": src,
@@ -132,7 +134,7 @@ async def earnings_per_click(
         (await db.execute(_clicks_stmt(group_col=ClickEvent.coupon_id, since=since))).all()
     )
     rev_rows = (await db.execute(_revenue_stmt(group_col=ClickEvent.coupon_id, since=since))).all()
-    rev_by_coupon: dict = {}
+    rev_by_coupon: dict[uuid.UUID, dict[str | None, dict]] = {}
     for coupon_id, currency, total, conversions in rev_rows:
         rev_by_coupon.setdefault(coupon_id, {})[currency] = {
             "commission": round(float(total), 2),
@@ -142,7 +144,8 @@ async def earnings_per_click(
     by_coupon = []
     for coupon_id in coupon_ids:
         clicks = clicks_by_coupon.get(coupon_id, 0)
-        for currency, agg in rev_by_coupon.get(coupon_id, {}).items():
+        currencies = rev_by_coupon.get(coupon_id) or {None: {"commission": 0.0, "conversions": 0}}
+        for currency, agg in currencies.items():
             by_coupon.append(
                 {
                     "coupon_id": str(coupon_id),
