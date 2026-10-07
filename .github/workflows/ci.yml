@@ -1,0 +1,80 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: couponza
+          POSTGRES_PASSWORD: couponza
+          POSTGRES_DB: couponza_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U couponza"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install
+        run: uv sync --frozen --extra dev
+
+      - name: Ruff lint
+        run: uv run ruff check app/ tests/ mcp_server/
+
+      - name: Ruff format check
+        run: uv run ruff format --check app/ tests/ mcp_server/
+
+      - name: Type check
+        run: uv run mypy app --ignore-missing-imports --no-strict-optional
+
+      - name: Tests
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://couponza:couponza@localhost:5432/couponza_test
+          ENVIRONMENT: test
+          SCHEDULER_ENABLED: "false"
+        run: uv run pytest tests/ -q --cov=app
+
+      - name: Destructive-migration guard
+        # A migration whose upgrade() drops a table or column must not merge
+        # without an explicit, human override. See
+        # scripts/check_destructive_migrations.py for the override flag and the
+        # documented allow-list.
+        run: uv run python scripts/check_destructive_migrations.py
+
+      - name: Migrations apply cleanly to an empty database
+        env:
+          DATABASE_URL: postgresql+asyncpg://couponza:couponza@localhost:5432/couponza_test
+        run: uv run alembic upgrade head
+
+      - name: Models and migrations have not drifted
+        run: |
+          uv run alembic check || (
+            echo "::error::Models have changed without a migration. Run 'alembic revision --autogenerate -m ...'."
+            exit 1
+          )

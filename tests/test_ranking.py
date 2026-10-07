@@ -20,9 +20,10 @@ def test_expected_revenue_component_none_for_no_data():
 
 
 def test_expected_revenue_component_scales():
-    assert _expected_revenue(10.0) == 1.0
-    assert _expected_revenue(5.0) == 0.5
-    assert _expected_revenue(0.5) == 0.05
+    # With enough clicks, the full mapping applies
+    assert _expected_revenue(10.0, clicks=100) == 1.0
+    assert _expected_revenue(5.0, clicks=100) == 0.5
+    assert _expected_revenue(0.5, clicks=100) == 0.05
 
 
 def test_cold_start_new_coupon_is_not_penalized():
@@ -97,3 +98,57 @@ def test_revenue_cannot_dominate():
     good_score, _ = compute_quality(good_coupon)
 
     assert good_score >= high_score
+
+
+def test_low_sample_epc_gets_reduced_influence():
+    """EPC from very low click counts must not receive full ranking influence.
+
+    A coupon with 3 clicks and a high EPC should score lower on the
+    expected_revenue component than one with 30+ clicks and the same EPC.
+    """
+    high_epc_low_clicks = QualityInputs(
+        verification_status="verified",
+        success_rate=0.8,
+        clicks_count=3,
+        expected_revenue=10.0,
+    )
+    _, low_breakdown = compute_quality(high_epc_low_clicks)
+
+    high_epc_high_clicks = QualityInputs(
+        verification_status="verified",
+        success_rate=0.8,
+        clicks_count=100,
+        expected_revenue=10.0,
+    )
+    _, high_breakdown = compute_quality(high_epc_high_clicks)
+
+    # The low-click coupon's expected_revenue component should be much smaller
+    assert low_breakdown["expected_revenue"] < high_breakdown["expected_revenue"] * 0.2
+
+
+def test_large_sample_epc_behaves_normally():
+    """With enough clicks, EPC receives full influence (no penalty)."""
+    inputs = QualityInputs(
+        verification_status="verified",
+        success_rate=0.8,
+        clicks_count=1000,
+        expected_revenue=5.0,
+    )
+    _, breakdown = compute_quality(inputs)
+    # 5.0 EPC maps to 0.5, and with 1000 clicks there is no reduction
+    assert abs(breakdown["expected_revenue"] - 0.5 * 0.30) < 0.01
+
+
+def test_ranking_output_is_deterministic():
+    """Same inputs always produce the same score."""
+    inputs = QualityInputs(
+        verification_status="verified",
+        success_rate=0.9,
+        source_count=3,
+        source_confidence=0.9,
+        clicks_count=500,
+        expected_revenue=2.0,
+    )
+    score1, _ = compute_quality(inputs)
+    score2, _ = compute_quality(inputs)
+    assert score1 == score2

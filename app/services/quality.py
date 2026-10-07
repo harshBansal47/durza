@@ -224,16 +224,32 @@ def _merchant_popularity(value: float | None) -> float | None:
     return None if value is None else max(0.0, min(1.0, value))
 
 
-def _expected_revenue(value: float | None) -> float | None:
+#: Minimum clicks before EPC receives full ranking influence. Below this,
+#: the EPC signal is scaled linearly toward zero, so a single lucky sale on
+#: a 2-click coupon cannot outrank a proven earner with thousands of clicks.
+#: This is the simplest statistically robust guard: it does not invent a
+#: prior, it just refuses to trust small samples.
+MIN_EPC_CLICKS = 30
+
+
+def _expected_revenue(value: float | None, *, clicks: int = 0) -> float | None:
     """Map expected revenue per click onto 0..1.
 
     A cap of ₹10 per click → 1.0. Below ₹1 → near zero. When None
     (insufficient data), returns None so its weight is redistributed.
-    This never lets revenue dominate user intent — it is a tiebreaker.
+
+    Low-sample protection: when `clicks` is below MIN_EPC_CLICKS, the
+    mapped value is scaled by `clicks / MIN_EPC_CLICKS`. A coupon with
+    15 clicks gets half the influence; one with 3 clicks gets a tenth.
+    This prevents a single high-value sale on a barely-trafficked coupon
+    from dominating the ranking.
     """
     if value is None or value <= 0:
         return None
-    return min(1.0, value / 10.0)
+    mapped = min(1.0, value / 10.0)
+    if clicks < MIN_EPC_CLICKS:
+        mapped *= clicks / MIN_EPC_CLICKS
+    return mapped
 
 
 def compute_quality(
@@ -265,7 +281,7 @@ def compute_quality(
         "expiry_urgency": _expiry_urgency(inputs.expires_at, now),
         "conversion_rate": _conversion_rate(inputs.clicks_count, inputs.conversions_count),
         "merchant_popularity": _merchant_popularity(inputs.merchant_popularity),
-        "expected_revenue": _expected_revenue(inputs.expected_revenue),
+        "expected_revenue": _expected_revenue(inputs.expected_revenue, clicks=inputs.clicks_count),
     }
 
     present = {name: value for name, value in components.items() if value is not None}

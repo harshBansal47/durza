@@ -69,6 +69,18 @@ def get_or_create_visitor_id(request: Request, response: Response) -> str:
 
     If the cookie is missing or invalid, a new visitor ID is generated
     and set as a first-party cookie on the response.
+
+    NOTE: This function is intentionally NOT called anywhere yet. Visitor
+    identification cookies are not strictly required — analytics events are
+    correlated via the `x-session-id` header (set by the frontend on every
+    API request) and the `AnalyticsSession` table. Creating a long-lived
+    `cz_vid` cookie before consent is granted would violate the consent-first
+    model: the frontend gates all tracking on an explicit opt-in, and the
+    backend should not set tracking cookies until that opt-in exists.
+
+    When consent is wired end-to-end (frontend sends a consent signal or the
+    cookie is set only after acceptance), this function can be called from
+    the analytics endpoints to establish the visitor identity.
     """
     visitor_id = request.cookies.get(VISITOR_COOKIE)
     if visitor_id and len(visitor_id) == 64:
