@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.services.affiliate import AffiliateNetwork
 
@@ -43,17 +44,33 @@ def _validate_template(value: str | None) -> str | None:
     return template
 
 
+class StoreFAQInput(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+    answer: str = Field(min_length=1)
+    sort_order: int = Field(default=0, ge=0)
+
+
 class StoreCreate(BaseModel):
     name: str = Field(min_length=1, max_length=150)
     logo_url: str | None = None
     website_url: str | None = None
     description: str | None = None
+    pricing_summary: dict[str, Any] | None = None
+    pricing_checked_at: datetime | None = None
     commission_disclosure: str | None = None
     country_code: str | None = None
     currency: str | None = None
     affiliate_network: str | None = Field(default=None)
     link_template: str | None = Field(default=None, max_length=1000)
     cookie_days: int | None = Field(default=None, ge=0, le=365)
+    faqs: list[StoreFAQInput] = Field(default_factory=list)
+    alternative_store_ids: list[uuid.UUID] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def unique_alternatives(self) -> "StoreCreate":
+        if len(self.alternative_store_ids) != len(set(self.alternative_store_ids)):
+            raise ValueError("alternative_store_ids must be unique")
+        return self
 
     _check_country = field_validator("country_code")(_validate_country)
     _check_currency = field_validator("currency")(_validate_currency)
@@ -66,6 +83,8 @@ class StoreUpdate(BaseModel):
     logo_url: str | None = None
     website_url: str | None = None
     description: str | None = None
+    pricing_summary: dict[str, Any] | None = None
+    pricing_checked_at: datetime | None = None
     is_active: bool | None = None
     commission_disclosure: str | None = None
     country_code: str | None = None
@@ -73,6 +92,16 @@ class StoreUpdate(BaseModel):
     affiliate_network: str | None = None
     link_template: str | None = Field(default=None, max_length=1000)
     cookie_days: int | None = Field(default=None, ge=0, le=365)
+    faqs: list[StoreFAQInput] | None = None
+    alternative_store_ids: list[uuid.UUID] | None = None
+
+    @model_validator(mode="after")
+    def unique_alternatives(self) -> "StoreUpdate":
+        if self.alternative_store_ids is not None and len(self.alternative_store_ids) != len(
+            set(self.alternative_store_ids)
+        ):
+            raise ValueError("alternative_store_ids must be unique")
+        return self
 
     _check_country = field_validator("country_code")(_validate_country)
     _check_currency = field_validator("currency")(_validate_currency)
@@ -89,6 +118,8 @@ class StoreRead(BaseModel):
     logo_url: str | None
     website_url: str | None
     description: str | None
+    pricing_summary: dict[str, Any] | None
+    pricing_checked_at: datetime | None
     is_active: bool
     commission_disclosure: str | None
     country_code: str | None

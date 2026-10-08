@@ -65,6 +65,7 @@ from app.models import coupon_impression as _coupon_impression  # noqa: F401
 from app.models import coupon_source as _coupon_source  # noqa: F401
 from app.models import coupon_verification as _coupon_verification  # noqa: F401
 from app.models import daily_stats as _daily_stats  # noqa: F401
+from app.models import editorial as _editorial  # noqa: F401
 from app.models import ingestion_run as _ingestion_run  # noqa: F401
 from app.models import job as _job  # noqa: F401
 from app.models import page as _page  # noqa: F401
