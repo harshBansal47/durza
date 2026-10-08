@@ -47,6 +47,14 @@ from app.models.daily_stats import (
     DailyProviderStats,
     DailyTrafficStats,
 )
+from app.models.editorial import (
+    EditorialContent,
+    EditorialEntityLink,
+    EditorialFAQ,
+    EditorialRelation,
+    StoreFAQ,
+    StoreRelationship,
+)
 from app.models.ingestion_run import IngestionRun, RunStatus, SyncMode
 from app.models.job import JobRun, JobStatus
 from app.models.page import Page
@@ -107,6 +115,10 @@ __all__ = [
     "DestinationStatus",
     "DeviceType",
     "DiscountType",
+    "EditorialContent",
+    "EditorialEntityLink",
+    "EditorialFAQ",
+    "EditorialRelation",
     "ImpressionType",
     "IngestionRun",
     "JobRun",
@@ -132,6 +144,8 @@ __all__ = [
     "SponsoredOffer",
     "SponsoredPlacement",
     "Store",
+    "StoreFAQ",
+    "StoreRelationship",
     "StoreStatus",
     "SyncMode",
     "TrackAlertState",

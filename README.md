@@ -1,5 +1,9 @@
 # BachatBase — Phases 0–5 (backend)
 
+The incremental Smart Savings Platform sitemap, editorial API architecture,
+page wireframes, monetization rules, and migration plan are documented in
+[docs/SMART_SAVINGS_PLATFORM.md](docs/SMART_SAVINGS_PLATFORM.md).
+
 Bootstrap (Phase 0), core infra (Phase 1), auth + RBAC (Phase 2), the core
 domain API (Phase 3), the admin back office (Phase 4), and now the public-API
 foundation for the frontend (Phase 5): commission disclosure, community
@@ -468,4 +472,3 @@ waiting for the lifecycle job.
   impressions. Rate limit: 120/minute per client.
 - For impressions the storefront must send a `page_type` from the `ImpressionType` list and a
   1-based `position`; anything else is rejected with a 422.
-
