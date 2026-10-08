@@ -1,0 +1,101 @@
+[project]
+name = "couponza"
+version = "0.1.0"
+description = "Coupon & deals platform backend (FastAPI)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "passlib[bcrypt]>=1.7",
+    "bcrypt>=4.0.1,<4.1",
+    "python-jose[cryptography]>=3.3",
+    "python-multipart>=0.0.9",
+    "email-validator>=2.0",
+    "python-slugify>=8.0",
+    "sqladmin>=0.32",
+    "itsdangerous>=2.1",
+    "slowapi>=0.1.10",
+    "redis>=5.0",
+    "jinja2>=3.1",
+    # Real delivery: aiosmtplib sends alert emails, pywebpush sends browser
+    # push. Both are optional at runtime — a channel with no credentials logs
+    # and reports "queued" rather than failing the job that triggered it.
+    "aiosmtplib>=3.0",
+    "pywebpush>=2.0",
+    # In-process scheduler so the API refreshes prices and fires alerts itself,
+    # rather than depending on a host-level cron that nobody remembers to set up.
+    "apscheduler>=3.10,<4",
+    "sentry-sdk[fastapi,httpx]>=2.0",
+    "prometheus-client>=0.20",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    # CI reports coverage. Without this the flag is silently rejected and the
+    # suite still passes, which is the worst possible failure for a reporting
+    # step: it looks like coverage ran.
+    "pytest-cov>=5.0",
+    "httpx>=0.27",
+    "aiosqlite>=0.20",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+mcp = [
+    "mcp>=2.0",
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app", "mcp_server"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# B008: FastAPI's Depends()-as-default-argument is the intended DI pattern, not a bug.
+# RUF012: sqladmin's ModelView reads plain list class attributes (column_list, etc.);
+#         they're read-only framework config, never mutated, so ClassVar wouldn't help.
+ignore = ["B008", "RUF012"]
+
+[tool.ruff.lint.per-file-ignores]
+# DTZ001: this test's whole point is exercising the naive-datetime code path.
+"tests/test_admin.py" = ["DTZ001"]
+
+[tool.coverage.run]
+# Branch coverage, not line coverage. Line coverage is fully satisfied by an `if`
+# with no `else`, which is exactly where a missing error path hides — and a
+# missing error path in a price-alert or delivery code is not a style nit.
+branch = true
+# Only the app. `alembic/` is excluded because a migration is exercised by
+# running it, not by importing it, so counting it as uncovered would push the
+# number down for a directory nothing measures.
+source = ["app"]
+omit = ["alembic/*", "mcp_server/*"]
+
+[tool.coverage.report]
+# A floor, not a target. It exists so a change that deletes a test and the
+# coverage together is caught in CI rather than noticed in a quarter. Raising it
+# is a deliberate act — a floor that drifts upward on its own trains everyone to
+# ignore it, and a floor set above today's number turns every PR red.
+fail_under = 80
+show_missing = true
+exclude_also = [
+    '\.venv/',
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

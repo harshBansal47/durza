@@ -1,0 +1,246 @@
+# Prometheus alerting rules for the BachatBase API.
+#
+# These are written against the metric and label names in `app/core/metrics.py`
+# and `app/services/scheduler.py`. Every threshold below is a judgement, so each
+# one carries the reasoning rather than just the number — an alert whose
+# threshold nobody can justify is one everybody learns to ignore.
+#
+# The file is inert until it is mounted into a Prometheus config:
+#
+#     rule_files:
+#       - /etc/prometheus/rules/couponbase.yml
+#
+# and the alertmanager wired to route to somewhere real. It is committed
+# separately from any deployment because a rule that lives inside a deploy
+# pipeline is a rule nobody reviews.
+
+groups:
+  # --------------------------------------------------------------------------
+  # The alert engine stopped.
+  #
+  # Every other rule in this file assumes the scheduler is running. This group
+  # is the one that notices when it is not — which is the failure mode the
+  # in-process scheduler was adopted to eliminate, so it deserves the only rule
+  # that pages rather than tickets.
+  # --------------------------------------------------------------------------
+  - name: couponbase-alerting-pipeline
+    interval: 1m
+    rules:
+      - alert: CouponbaseAlertsNotRunning
+        expr: |
+          time() - max(couponbase_job_last_success_timestamp_seconds{job="send_alerts"}) > 7200
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "Price alerts have not been delivered for over two hours"
+          description: >-
+            The last successful send_alerts run was {{ $value | humanizeDuration }} ago.
+            Users are not being told about price drops. Check /health/deep on the API,
+            then the Job Runs table in /admin.
+          runbook: /admin/job-run/list?search=send_alerts
+
+      # `absent()` rather than a comparison: a job that has *never* run produces
+      # no series at all, and `max(series) < threshold` is silently true when the
+      # series is missing. This is the difference between "never started" and
+      # "stopped", which are different pages.
+      - alert: CouponbaseSchedulerNeverStarted
+        expr: absent(couponbase_job_last_success_timestamp_seconds)
+        for: 15m
+        labels:
+          severity: page
+        annotations:
+          summary: "No scheduled job has ever succeeded"
+          description: >-
+            The scheduler is enabled but no job has completed. Either it is disabled
+            (SCHEDULER_ENABLED), or every job is failing at startup.
+
+      - alert: CouponbaseJobFailingRepeatedly
+        expr: increase(couponbase_job_runs_total{outcome="failed"}[30m]) >= 3
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "{{ $labels.job }} has failed {{ $value }} times in 30 minutes"
+          description: >-
+            The job is failing faster than its backoff can help. Backoff caps at 64x the
+            job interval, so a rate this high means the failures are not transient and
+            waiting will not fix them. The exception text is in the detail column of the
+            Job Runs table.
+
+  # --------------------------------------------------------------------------
+  # Background work has stalled.
+  #
+  # These do not page. The site still serves coupons; something is just quietly
+  # going stale, and paging a human at 3am for it teaches the pager to be noise.
+  # --------------------------------------------------------------------------
+  - name: couponbase-jobs
+    interval: 5m
+    rules:
+      - alert: CouponbaseIngestionStalled
+        expr: |
+          time() - max(couponbase_job_last_success_timestamp_seconds{job="refresh_prices"}) > 216000
+        for: 1h
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Price ingestion has not completed in over two days"
+          description: >-
+            Product prices on the site are as old as the last successful run. Every
+            page still renders, which is exactly why this needs a metric to notice.
+
+      - alert: CouponbaseExpirySweepStalled
+        expr: |
+          time() - max(couponbase_job_last_success_timestamp_seconds{job="expire_coupons"}) > 21600
+        for: 1h
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Expired coupons are not being retired"
+          description: >-
+            Users are being shown offers that no longer work. Compare against
+            couponbase_stale_coupons, which is set by this same job — if the gauge is
+            falling while this fires, the job is running and the database is the problem.
+
+      # Verification is a background quality signal, not a user-visible promise,
+      # so the threshold is deliberately slack. A missed sweep costs nothing for a
+      # day; a week of silence means codes are being served unchecked.
+      - alert: CouponbaseVerificationStalled
+        expr: |
+          time() - max(couponbase_job_last_success_timestamp_seconds{job="verify_coupons"}) > 345600
+        for: 6h
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Coupon verification has not run in over a week"
+          description: >-
+            Codes are being served without a freshness check. Nothing user-visible is
+            broken yet, which is the problem: a retired code stays on the site until
+            somebody reports it. Check whether a checker is registered at all —
+            CHECKERS being empty is a successful no-op by design, not a fault.
+
+      # A single slow run is normal; a job that is consistently slow is not, and
+      # it is the leading indicator of the interval no longer being achievable.
+      - alert: CouponbaseJobGettingSlow
+        expr: couponbase_job_duration_seconds_count > 0 and couponbase_job_duration_seconds_sum / couponbase_job_duration_seconds_count > 600
+        for: 30m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "{{ $labels.job }} averages over ten minutes per run"
+          description: >-
+            Either the job has outgrown its interval or an upstream source has started
+            responding slowly. Nothing is broken yet; this fires while there is still
+            time to widen the interval rather than have max_instances=1 drop ticks.
+
+  # --------------------------------------------------------------------------
+  # Data quality.
+  #
+  # These are the rules that protect the product's actual promise: the number
+  # shown is the current number. A silently stale price is worse than an outage,
+  # because the outage is visible.
+  # --------------------------------------------------------------------------
+  - name: couponbase-data-quality
+    interval: 5m
+    rules:
+      - alert: CouponbaseStaleCouponBacklogGrowing
+        # The gauge is set by the expiry job, not at scrape time, so this cannot
+        # be computed from a table scan at scrape resolution. That was a
+        # deliberate trade: a monitoring query that can take the database down is
+        # not monitoring.
+        expr: increase(couponbase_coupons_expired_total[6h]) < 0
+        for: 1h
+        labels:
+          severity: ticket
+        annotations:
+          summary: "No coupons are being expired"
+          description: >-
+            Cross-check against couponbase_stale_coupons. If the gauge is falling, the
+            sweep is running and there is simply nothing to retire; if it is pinned
+            above zero while this counter is flat, the sweep is not reaching the rows.
+
+      - alert: CouponbaseHighIngestionFailureRate
+        # Ratio rather than a raw count: 20 failures out of 20 is a broken adapter,
+        # 20 out of 20,000 is not.
+        expr: |
+          sum(rate(couponbase_ingestion_runs_total{outcome="failed"}[1h]))
+            / clamp_min(sum(rate(couponbase_ingestion_runs_total[1h])), 0.001) > 0.25
+        for: 30m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Over a quarter of ingestion runs are failing"
+          description: >-
+            Usually one adapter against one network rather than everything at once —
+            filter by the `source` label in the Ingestion Runs table before assuming
+            the pipeline itself is broken.
+
+      - alert: CouponbasePriceCaptureGap
+        # A price point every 30 minutes is the design assumption behind the
+        # 90-day low calculation. Below that, `lowest_price_90d` is confidently
+        # wrong, and it is displayed on every product card.
+        expr: |
+          time() - max(couponbase_price_last_captured_timestamp_seconds) > 7200
+        for: 2h
+        labels:
+          severity: ticket
+        annotations:
+          summary: "No price has been captured in over two hours"
+          description: >-
+            The 90-day low shown on every product card is computed from captured
+            points, so a capture gap makes it confidently wrong rather than obviously
+            absent. The gauge resets on restart, so a freshly deployed process with no
+            traffic yet will trip this once.
+
+  # --------------------------------------------------------------------------
+  # The service itself.
+  # --------------------------------------------------------------------------
+  - name: couponbase-http
+    interval: 1m
+    rules:
+      - alert: CouponbaseHighErrorRate
+        # 5xx only. 4xx is a client error and a high rate of them usually means a
+        # bot or a broken integration, not that the API is unhealthy.
+        expr: |
+          sum(rate(couponbase_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(couponbase_http_requests_total[5m])), 0.001) > 0.05
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "Over 5% of requests are returning 5xx"
+          description: >-
+            4xx is excluded deliberately — a client error or a bot is not this alert.
+            Break down by `route` and `status` to find whether it is one endpoint or
+            the whole service.
+
+      - alert: CouponbaseHighLatency
+        # p95 rather than the mean: one slow query drags a mean past any threshold
+        # worth acting on, and p95 is what a user waiting on a page experiences.
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(couponbase_http_request_duration_seconds_bucket[5m]))
+          ) > 1.5
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "p95 request latency is above 1.5s"
+          description: >-
+            Check the `route` label first. Ingestion-adjacent routes are legitimately
+            slow; a public coupon listing at this p95 is what a user experiences as
+            the site being down.
+
+      # A pod that has gone away without draining takes its in-flight requests
+      # with it. `up` catches it; this catches the slower version, where a
+      # container is running but not serving.
+      - alert: CouponbaseMetricsMissing
+        expr: absent(couponbase_http_requests_total)
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "The API is not reporting metrics"
+          description: >-
+            Either the process is down or METRICS_ENABLED is off. Check /health first.
