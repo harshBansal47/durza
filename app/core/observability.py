@@ -1,6 +1,6 @@
 """Structured logging.
 
-Everything BachatBase emits in production is JSON on stdout, one object per
+Everything Durza emits in production is JSON on stdout, one object per
 line, so a log shipper can index it without a grok pattern. Locally it stays
 human-readable, because reading a stack trace out of escaped JSON during
 development is miserable and serves nobody.

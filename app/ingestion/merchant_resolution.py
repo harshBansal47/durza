@@ -39,7 +39,7 @@ from app.ingestion import merchants
 from app.ingestion.normalize import NormalizedOffer
 from app.models.store import Store, StoreStatus
 
-logger = get_logger("couponza.ingestion.merchants")
+logger = get_logger("durza.ingestion.merchants")
 
 #: Above this, two normalized names are treated as the same merchant for
 #: *review purposes only*. Deliberately high: the goal is to surface

@@ -78,7 +78,7 @@ async def test_store_autocomplete_limit(client, admin_headers):
 
 
 async def test_store_market_fields_round_trip(client, admin_headers):
-    """BachatBase lists per country, so a store carries its market and currency."""
+    """Durza lists per country, so a store carries its market and currency."""
     created = await client.post(
         API,
         json={

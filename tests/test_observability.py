@@ -32,7 +32,7 @@ def _text() -> TextFormatter:
 
 def _record(msg: str, level: int = logging.INFO) -> logging.LogRecord:
     return logging.LogRecord(
-        name="couponbase.test",
+        name="durza.test",
         level=level,
         pathname=__file__,
         lineno=1,
@@ -50,7 +50,7 @@ def test_json_formatter_emits_one_line_of_valid_json() -> None:
     payload = json.loads(JsonFormatter().format(_record("hello")))
     assert payload["message"] == "hello"
     assert payload["level"] == "INFO"
-    assert payload["logger"] == "couponbase.test"
+    assert payload["logger"] == "durza.test"
     assert payload["ts"]
     assert "\n" not in JsonFormatter().format(_record("hello"))
 
@@ -191,7 +191,7 @@ def test_bind_returns_a_token_that_restores_the_previous_value() -> None:
 
 
 def test_get_logger_returns_a_named_logger() -> None:
-    assert get_logger("couponbase.example").name == "couponbase.example"
+    assert get_logger("durza.example").name == "durza.example"
 
 
 # ---- Prometheus alert rules ----
@@ -210,8 +210,8 @@ def _registered_metric_names() -> set[str]:
     `metrics.py` or `registry.collect()`, because that payload is literally what
     Prometheus scrapes. It matters: `prometheus_client` strips the `_total`
     suffix from a Counter's internal name and re-adds it on output, so
-    `collect()` reports `couponbase_job_runs` where the wire format says
-    `couponbase_job_runs_total`. Checking against `collect()` would reject rules
+    `collect()` reports `durza_job_runs` where the wire format says
+    `durza_job_runs_total`. Checking against `collect()` would reject rules
     that are perfectly correct.
     """
     import re
@@ -236,7 +236,7 @@ def _metrics_named_in_rules() -> set[str]:
     # client library from the histogram's own name, so the base name is what
     # has to be registered.
     return {
-        re.sub(r"_(bucket|sum|count)$", "", name) for name in re.findall(r"couponbase_[a-z_]+", text)
+        re.sub(r"_(bucket|sum|count)$", "", name) for name in re.findall(r"durza_[a-z_]+", text)
     }
 
 
@@ -279,4 +279,4 @@ def test_the_alert_rules_parse_the_metrics_they_reference() -> None:
     # The staleness rules are the ones that matter most, so they must exist and
     # must key off the timestamp gauge rather than a rate.
     names = {r["alert"] for g in document["groups"] for r in g["rules"]}
-    assert {"CouponbaseAlertsNotRunning", "CouponbaseSchedulerNeverStarted"} <= names
+    assert {"DurzaAlertsNotRunning", "DurzaSchedulerNeverStarted"} <= names

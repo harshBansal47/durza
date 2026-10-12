@@ -1,4 +1,4 @@
-"""Thin async HTTP client over BachatBase's public JSON API.
+"""Thin async HTTP client over Durza's public JSON API.
 
 Deliberately separate from the FastAPI app's own service layer: this talks to
 the API the same way any external agent would, over HTTP, using only public
@@ -10,10 +10,10 @@ from typing import Any
 
 import httpx
 
-API_URL = os.environ.get("BachatBase_API_URL", "http://localhost:8000/api/v1")
+API_URL = os.environ.get("DURZA_API_URL", "http://localhost:8000/api/v1")
 
 
-class BachatBaseClient:
+class DurzaClient:
     def __init__(
         self, base_url: str = API_URL, transport: httpx.AsyncBaseTransport | None = None
     ) -> None:

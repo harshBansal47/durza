@@ -25,7 +25,7 @@ from typing import Any
 from app.core.config import get_settings
 from app.core.observability import get_logger
 
-logger = get_logger("couponbase.email")
+logger = get_logger("durza.email")
 
 # RFC 5322 recommends 78 characters; longer lines get hard-wrapped by some
 # clients, which breaks the unsubscribe URL we care most about.
@@ -83,7 +83,7 @@ class ResetPasswordContent:
 
 def render_reset_text(content: ResetPasswordContent, recipient: str) -> str:
     lines = [
-        "Reset your BachatBase password",
+        "Reset your Durza password",
         "",
         f"Someone requested a password reset for {recipient}.",
         f"This link expires in {content.expires_hours} hours:",
@@ -92,7 +92,7 @@ def render_reset_text(content: ResetPasswordContent, recipient: str) -> str:
         "",
         "If you did not request this, you can ignore this email.",
         "",
-        "— BachatBase",
+        "— Durza",
         "",
     ]
     return _wrap("\n".join(lines))
@@ -110,18 +110,18 @@ def render_reset_html(content: ResetPasswordContent, recipient: str) -> str:
     return f"""<!doctype html>
 <html lang="en">
 <body style="margin:0;padding:24px;background:#f6f5f2;font-family:Georgia,'Times New Roman',serif;color:#1c1b18">
-  <span style="display:none;max-height:0;overflow:hidden">Reset your BachatBase password</span>
+  <span style="display:none;max-height:0;overflow:hidden">Reset your Durza password</span>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border:1px solid #dcd8d0">
-        <tr><td style="padding:24px 28px 8px">
-          <p style="margin:0;font:700 12px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#6b675f">BachatBase</p>
+        <tr><td style="padding:18px 28px;background:#EE5A0B">
+          <p style="margin:0;font:700 22px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:-.02em;color:#ffffff">Durza <span style="font:500 13px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:0;margin-left:6px">Coupon &amp; Deals</span></p>
         </td></tr>
         <tr><td style="padding:8px 28px 24px">
           <h1 style="margin:0 0 12px;font:26px/1.2 Georgia,serif">Reset your password</h1>
           <p style="margin:0 0 12px;font:15px/1.6 ui-sans-serif,system-ui,sans-serif;color:#3d3a34">Someone requested a password reset for {esc(recipient)}. This link expires in {content.expires_hours} hours.</p>
           <p style="margin:0 0 24px">
-            <a href="{esc(content.reset_url)}" style="display:inline-block;padding:11px 18px;background:#1c1b18;color:#fff;text-decoration:none;font:600 14px ui-sans-serif,system-ui,sans-serif">Reset password</a>
+            <a href="{esc(content.reset_url)}" style="display:inline-block;padding:11px 18px;background:#C2410C;color:#fff;text-decoration:none;font:600 14px ui-sans-serif,system-ui,sans-serif">Reset password</a>
           </p>
         </td></tr>
         <tr><td style="padding:16px 28px;border-top:1px solid #e6e2da">
@@ -139,7 +139,7 @@ def render_reset_html(content: ResetPasswordContent, recipient: str) -> str:
 def build_reset_message(to: str, content: ResetPasswordContent) -> EmailMessage:
     settings = get_settings()
     message = EmailMessage()
-    message["Subject"] = "Reset your BachatBase password"
+    message["Subject"] = "Reset your Durza password"
     message["From"] = formataddr((settings.email_from_name, settings.email_from))
     message["To"] = to
     message["Date"] = formatdate(localtime=True)
@@ -199,7 +199,7 @@ def render_text(alert: AlertContent, recipient: str) -> str:
         "",
         f"{alert.cta_label}: {alert.cta_url}",
         "",
-        "— BachatBase",
+        "— Durza",
         "",
         "You are getting this because you tracked something or followed a store.",
         f"Change what you hear about: {unsubscribe_url(recipient)}",
@@ -239,8 +239,8 @@ def render_html(alert: AlertContent, recipient: str) -> str:
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border:1px solid #dcd8d0">
-        <tr><td style="padding:24px 28px 8px">
-          <p style="margin:0;font:700 12px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#6b675f">BachatBase</p>
+        <tr><td style="padding:18px 28px;background:#EE5A0B">
+          <p style="margin:0;font:700 22px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:-.02em;color:#ffffff">Durza <span style="font:500 13px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:0;margin-left:6px">Coupon &amp; Deals</span></p>
         </td></tr>
         <tr><td style="padding:8px 28px 24px">
           <h1 style="margin:0 0 12px;font:26px/1.2 Georgia,serif">{esc(alert.headline)}</h1>
@@ -248,12 +248,12 @@ def render_html(alert: AlertContent, recipient: str) -> str:
           {price_row}
           {code_row}
           <p style="margin:0 0 24px">
-            <a href="{esc(alert.cta_url)}" style="display:inline-block;padding:11px 18px;background:#1c1b18;color:#fff;text-decoration:none;font:600 14px ui-sans-serif,system-ui,sans-serif">{esc(alert.cta_label)}</a>
+            <a href="{esc(alert.cta_url)}" style="display:inline-block;padding:11px 18px;background:#C2410C;color:#fff;text-decoration:none;font:600 14px ui-sans-serif,system-ui,sans-serif">{esc(alert.cta_label)}</a>
           </p>
         </td></tr>
         <tr><td style="padding:16px 28px;border-top:1px solid #e6e2da">
           <p style="margin:0;font:12px/1.6 ui-sans-serif,system-ui,sans-serif;color:#6b675f">
-            You are getting this because you tracked something or followed a store on BachatBase.
+            You are getting this because you tracked something or followed a store on Durza.
             <a href="{esc(unsubscribe)}" style="color:#1c4b8f">Stop email alerts</a>
           </p>
         </td></tr>

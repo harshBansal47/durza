@@ -25,14 +25,14 @@ from prometheus_client.openmetrics.exposition import CONTENT_TYPE_LATEST as OPEN
 registry = CollectorRegistry()
 
 http_requests = Counter(
-    "couponbase_http_requests_total",
+    "durza_http_requests_total",
     "HTTP requests, by method, route and status.",
     ["method", "route", "status"],
     registry=registry,
 )
 
 http_duration = Histogram(
-    "couponbase_http_request_duration_seconds",
+    "durza_http_request_duration_seconds",
     "Request latency in seconds, by method and route.",
     ["method", "route"],
     # Buckets chosen around what a JSON API actually does: a cache hit is ~5ms,
@@ -43,14 +43,14 @@ http_duration = Histogram(
 )
 
 job_runs = Counter(
-    "couponbase_job_runs_total",
+    "durza_job_runs_total",
     "Scheduled job executions, by job name and outcome.",
     ["job", "outcome"],
     registry=registry,
 )
 
 job_duration = Histogram(
-    "couponbase_job_duration_seconds",
+    "durza_job_duration_seconds",
     "Scheduled job duration in seconds, by job name.",
     ["job"],
     buckets=(0.1, 0.5, 1.0, 5.0, 15.0, 60.0, 300.0, 900.0),
@@ -58,21 +58,21 @@ job_duration = Histogram(
 )
 
 alerts_sent = Counter(
-    "couponbase_alerts_total",
+    "durza_alerts_total",
     "Alert deliveries attempted, by channel and outcome.",
     ["channel", "outcome"],
     registry=registry,
 )
 
 stale_coupons = Gauge(
-    "couponbase_stale_coupons",
+    "durza_stale_coupons",
     "Coupons past their expiry date but still marked active.",
     registry=registry,
 )
 
 # A unix timestamp rather than a duration, because the alerting question is "how
 # long since the last success", which Prometheus expresses as
-# `time() - couponbase_job_last_success_timestamp_seconds`. Computing the duration
+# `time() - durza_job_last_success_timestamp_seconds`. Computing the duration
 # in-process would need a "now" that Prometheus then has to take on trust, and
 # would go wrong the moment a scrape is delayed.
 #
@@ -80,27 +80,27 @@ stale_coupons = Gauge(
 # the alert that matters uses `absent()` — "never ran" and "stopped running" are
 # different problems, and `absent()` is the only way to tell them apart.
 job_last_success = Gauge(
-    "couponbase_job_last_success_timestamp_seconds",
+    "durza_job_last_success_timestamp_seconds",
     "Unix timestamp of the last successful run of each scheduled job.",
     ["job"],
     registry=registry,
 )
 
 coupons_expired = Counter(
-    "couponbase_coupons_expired_total",
+    "durza_coupons_expired_total",
     "Coupons retired by the expiry sweep, ever.",
     registry=registry,
 )
 
 ingestion_runs = Counter(
-    "couponbase_ingestion_runs_total",
+    "durza_ingestion_runs_total",
     "Ingestion pipeline executions, by source and outcome.",
     ["source", "outcome"],
     registry=registry,
 )
 
 price_last_captured = Gauge(
-    "couponbase_price_last_captured_timestamp_seconds",
+    "durza_price_last_captured_timestamp_seconds",
     "Unix timestamp of the most recent price point capture, ever.",
     registry=registry,
 )

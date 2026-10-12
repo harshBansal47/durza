@@ -26,7 +26,7 @@ from app.models.job import JobStatus
 from app.services.scheduler import backoff_state, last_run
 
 router = APIRouter(tags=["system"])
-logger = get_logger("couponza.health")
+logger = get_logger("durza.health")
 
 # A job that has not run within this many multiples of its interval is stale.
 # The multipliers differ because the jobs have wildly different cadences — a

@@ -31,7 +31,7 @@ from app.core.observability import get_logger
 from app.models.coupon import Coupon, CouponStatus
 from app.models.verification_attempt import AttemptOutcome, VerificationAttempt
 
-logger = get_logger("couponza.verification")
+logger = get_logger("durza.verification")
 
 # How far back a checker looks when deciding whether a code is dead. Three days
 # is roughly one week of hourly checks: long enough that a single bad weekend at

@@ -1,5 +1,5 @@
 [project]
-name = "couponza"
+name = "durza"
 version = "0.1.0"
 description = "Coupon & deals platform backend (FastAPI)"
 requires-python = ">=3.12"

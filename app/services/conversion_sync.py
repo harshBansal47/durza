@@ -39,10 +39,10 @@ from app.models.affiliate_revenue import AffiliateRevenue, RevenueStatus
 from app.models.click import ClickEvent
 from app.models.conversion import Conversion, ConversionStatus
 
-logger = get_logger("couponbase.conversion_sync")
+logger = get_logger("durza.conversion_sync")
 
 _TIMEOUT = httpx.Timeout(30.0, connect=10.0)
-_USER_AGENT = "BachatBaseBot/1.0 (+https://bachatbase.example.com/bot)"
+_USER_AGENT = "DurzaBot/1.0 (+https://durza.in/bot)"
 _AWIN_MAX_WINDOW_DAYS = 31
 
 

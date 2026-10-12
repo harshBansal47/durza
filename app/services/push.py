@@ -17,7 +17,7 @@ from typing import Any
 from app.core.config import get_settings
 from app.core.observability import get_logger
 
-logger = get_logger("couponza.push")
+logger = get_logger("durza.push")
 
 
 class PushSubscriptionGone(Exception):

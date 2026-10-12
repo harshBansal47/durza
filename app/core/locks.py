@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.observability import get_logger
 
-logger = get_logger("couponza.locks")
+logger = get_logger("durza.locks")
 
 #: Set in every id produced by `source_lock_id`, which makes the result negative
 #: once read as a signed 64-bit integer. The scheduler's job locks are all small

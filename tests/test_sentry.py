@@ -44,22 +44,22 @@ def test_before_send_drops_the_query_string() -> None:
     # default keeps the whole URL.
     event = {
         "request": {
-            "url": "https://api.BachatBase.example/go?subid=aff-9182&uid=user-42",
+            "url": "https://api.durza.in/go?subid=aff-9182&uid=user-42",
             "query_string": "subid=aff-9182&uid=user-42",
         }
     }
     result = _strip_query_secrets(event, {})
 
-    assert result["request"]["url"] == "https://api.BachatBase.example/go"
+    assert result["request"]["url"] == "https://api.durza.in/go"
     assert result["request"]["query_string"] == ""
 
 
 def test_before_send_leaves_a_url_without_a_query_string_alone() -> None:
     # Idempotence matters: this runs on every event, and a mangled URL would
     # break grouping for the requests that carry no secrets at all.
-    event = {"request": {"url": "https://api.BachatBase.example/health", "query_string": ""}}
+    event = {"request": {"url": "https://api.durza.in/health", "query_string": ""}}
     assert _strip_query_secrets(event, {})["request"]["url"] == (
-        "https://api.BachatBase.example/health"
+        "https://api.durza.in/health"
     )
 
 

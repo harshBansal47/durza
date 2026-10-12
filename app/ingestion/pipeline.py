@@ -80,7 +80,7 @@ from app.models.coupon_source import CouponSource, CouponSourceStatus
 from app.models.ingestion_run import IngestionRun, RunStatus, SyncMode
 from app.models.source import Source
 
-logger = get_logger("couponza.ingestion.pipeline")
+logger = get_logger("durza.ingestion.pipeline")
 
 #: Records processed between progress flushes. A flush is a round trip, so doing
 #: one per record turns a 40,000-record run into 40,000 round trips; doing none

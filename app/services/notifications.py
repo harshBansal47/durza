@@ -22,7 +22,7 @@ from app.services import email as email_service
 from app.services import push as push_service
 from app.services.email import AlertContent
 
-logger = get_logger("couponza.notifications")
+logger = get_logger("durza.notifications")
 
 
 class Sender(Protocol):

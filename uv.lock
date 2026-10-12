@@ -580,7 +580,7 @@ wheels = [
 ]
 
 [[package]]
-name = "couponza"
+name = "durza"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

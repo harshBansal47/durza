@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 from app.core.observability import get_logger
 
-logger = get_logger("couponza.ingestion.credentials")
+logger = get_logger("durza.ingestion.credentials")
 
 
 class MissingCredentialError(RuntimeError):

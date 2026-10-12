@@ -209,7 +209,7 @@ async def test_go_redirects_with_utm_and_records_the_click(
     assert loc.netloc == "advertiser.example.com"
     q = parse_qs(loc.query)
     assert q["a"] == ["1"]  # the advertiser's own parameter survives
-    assert q["utm_source"] == ["BachatBase"]
+    assert q["utm_source"] == ["durza"]
     assert q["utm_medium"] == ["sponsored"]
     assert q["utm_campaign"] == [ad["id"]]
 

@@ -1,7 +1,7 @@
-"""MCP server exposing BachatBase's verified deals to any MCP-compatible agent.
+"""MCP server exposing Durza's verified deals to any MCP-compatible agent.
 
 Run with: python -m mcp_server
-Set BachatBase_API_URL to point at a running BachatBase backend (defaults to
+Set DURZA_API_URL to point at a running Durza backend (defaults to
 http://localhost:8000/api/v1). Set MCP_TRANSPORT=streamable-http to serve
 over HTTP instead of stdio, for a remotely-hosted deployment.
 """
@@ -10,24 +10,24 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
-from mcp_server.client import BachatBaseClient
+from mcp_server.client import DurzaClient
 
 mcp = MCPServer(
-    name="BachatBase",
-    title="BachatBase — community-verified deals",
+    name="Durza",
+    title="Durza — community-verified deals",
     instructions=(
-        "Search and read coupons/deals from BachatBase. Every coupon carries a "
+        "Search and read coupons/deals from Durza. Every coupon carries a "
         "success_rate computed from real user reports, not a static listing — "
         "prefer higher success_rate and more recent last_verified_at when a "
         "person asks for 'the best' or 'a working' deal. Every store's "
-        "commission_disclosure states plainly whether BachatBase earns anything "
+        "commission_disclosure states plainly whether Durza earns anything "
         "if the deal is used; surface that disclosure whenever you recommend "
         "a specific coupon, not just the discount. Use redeem_url — never "
         "guess or fabricate a store URL yourself."
     ),
 )
 
-client = BachatBaseClient()
+client = DurzaClient()
 
 
 @mcp.tool()
@@ -63,7 +63,7 @@ async def get_store(slug: str) -> dict[str, Any]:
 
 @mcp.tool()
 async def list_categories() -> list[dict[str, Any]]:
-    """List every deal category available on BachatBase."""
+    """List every deal category available on Durza."""
     return await client.list_categories()
 
 

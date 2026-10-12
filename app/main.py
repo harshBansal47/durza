@@ -34,7 +34,7 @@ settings = get_settings()
 # raised before the handler is installed would be reported by the default
 # lastResort handler as a bare traceback with no timestamp.
 configure_logging(level=settings.log_level, fmt=settings.log_format)
-logger = get_logger("couponbase")
+logger = get_logger("durza")
 
 
 @asynccontextmanager
@@ -47,7 +47,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     still running on another replica.
     """
     logger.info(
-        "starting BachatBase api",
+        "starting Durza api",
         extra={"environment": settings.environment, "version": app.version},
     )
     init_sentry()
@@ -59,10 +59,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         # job is not still holding a session when the pool closes underneath it.
         await stop_scheduler()
         await engine.dispose()
-        logger.info("BachatBase api stopped")
+        logger.info("Durza api stopped")
 
 
-app = FastAPI(title="BachatBase", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Durza: Coupon & Deals API", version="0.1.0", lifespan=lifespan)
 
 # Rate limiting (auth endpoints, coupon verification — see each router).
 app.state.limiter = limiter

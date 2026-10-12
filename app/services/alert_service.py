@@ -37,7 +37,7 @@ from app.services.email import AlertContent
 from app.services.price_service import effective_price
 from app.services.push import PushSubscriptionGone
 
-logger = get_logger("couponza.alerts")
+logger = get_logger("durza.alerts")
 
 
 def _money(amount: float, currency: str) -> str:

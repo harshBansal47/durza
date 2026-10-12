@@ -22,7 +22,7 @@ ALERT = AlertContent(
     headline="A price drop",
     detail="Sony WH-1000XM5 fell from $319.00 USD to $279.00 USD.",
     cta_label="See the price",
-    cta_url="https://BachatBase.example/products/sony-wh-1000xm5",
+    cta_url="https://durza.in/products/sony-wh-1000xm5",
     price_line="$319.00 USD → $279.00 USD after the code",
     code="SAVE20",
 )
@@ -33,7 +33,7 @@ def test_text_body_carries_the_actionable_facts() -> None:
     assert "A price drop" in body
     assert "$279.00 USD" in body
     assert "SAVE20" in body
-    assert "https://BachatBase.example/products/sony-wh-1000xm5" in body
+    assert "https://durza.in/products/sony-wh-1000xm5" in body
 
 
 def test_text_body_always_offers_an_way_out() -> None:
@@ -51,7 +51,7 @@ def test_text_lines_are_wrapped_to_78_columns() -> None:
         headline="h",
         detail="word " * 80,
         cta_label="Go",
-        cta_url="https://BachatBase.example/x",
+        cta_url="https://durza.in/x",
     )
     for line in render_text(alert, "a@example.com").splitlines():
         assert len(line) <= 78, line
@@ -66,7 +66,7 @@ def test_html_escapes_store_supplied_text() -> None:
         headline="<img src=x onerror=alert(1)>",
         detail="A & B < C",
         cta_label="Go",
-        cta_url="https://BachatBase.example/?a=1&b=2",
+        cta_url="https://durza.in/?a=1&b=2",
         code="<script>bad()</script>",
     )
     html = render_html(alert, "a@example.com")

@@ -46,7 +46,7 @@ from app.core.observability import get_logger
 from app.models.ingestion_run import RunStatus
 from app.models.source import Source, SourceStatus
 
-logger = get_logger("couponza.ingestion.health")
+logger = get_logger("durza.ingestion.health")
 
 #: One failure is `degraded`. Low on purpose: a single failed run is worth
 #: surfacing, and a source that is flaky enough to reach the next threshold will

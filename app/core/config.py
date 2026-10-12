@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
     algorithm: str = "HS256"
     # Comma-separated list of origins the frontend is served from, e.g.
-    # "http://localhost:3000,https://BachatBase.example.com". Without this,
+    # "http://localhost:3000,https://durza.in". Without this,
     # browsers block every client-side fetch from the Next.js app to this API
     # (server-side fetches in Next.js Server Components aren't affected —
     # only same-origin-policy-enforcing browser requests are).
@@ -42,14 +42,14 @@ class Settings(BaseSettings):
     # "starttls" for port 587, "ssl" for implicit TLS on 465, "none" for a
     # local relay on 25 (MailHog, python -m smtpd) with no encryption.
     smtp_security: str = "starttls"
-    email_from: str = "alerts@BachatBase.example"
-    email_from_name: str = "BachatBase"
+    email_from: str = "alerts@durza.in"
+    email_from_name: str = "Durza"
 
     # ---- Web push (pywebpush) -------------------------------------------
     # Generate with: python -m app.core.push_keys  (prints a VAPID key pair).
     vapid_private_key: str | None = None
     vapid_public_key: str | None = None
-    vapid_subject: str = "mailto:alerts@BachatBase.example"
+    vapid_subject: str = "mailto:alerts@durza.in"
     # Push payloads over ~4KB are rejected by browsers, so keep bodies small.
     push_ttl_seconds: int = 3600
 

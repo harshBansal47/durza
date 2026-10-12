@@ -1,4 +1,4 @@
-"""The scheduled work BachatBase runs on itself.
+"""The scheduled work Durza runs on itself.
 
 Replaces the host-level cron scripts. The reason is not elegance: with cron,
 whether ingestion runs at all depends on somebody having configured a crontab
@@ -46,7 +46,7 @@ from app.services.alert_service import run_alert_scan
 from app.services.lifecycle_service import expire_stale_coupons, refresh_coupon_prices
 from app.services.verification_service import run_sweep as run_verification_sweep
 
-logger = get_logger("couponbase.scheduler")
+logger = get_logger("durza.scheduler")
 
 # Postgres advisory locks take a signed 64-bit integer. Any stable constant
 # works; these just need to be distinct from each other.
@@ -314,7 +314,7 @@ async def run_job(name: str, *, ignore_backoff: bool = False, **job_kwargs: obje
             metrics.job_runs.labels(name, JobStatus.success.value).inc()
             metrics.job_duration.labels(name).observe(elapsed)
             # Set here rather than derived from the job_runs table at scrape
-            # time: `couponza_job_last_success_timestamp_seconds` is what the
+            # time: `durza_job_last_success_timestamp_seconds` is what the
             # "the alert engine stopped" rule fires on, and it has to exist
             # without putting a query on the metrics path.
             metrics.job_last_success.labels(name).set(time.time())

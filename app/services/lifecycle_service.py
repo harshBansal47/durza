@@ -36,7 +36,7 @@ from app.models.coupon import Coupon, CouponStatus
 from app.models.ingestion_run import IngestionRun, RunStatus, SyncMode
 from app.models.source import Source
 
-logger = logging.getLogger("couponza.lifecycle")
+logger = logging.getLogger("durza.lifecycle")
 
 #: How many sources one sweep ingests at the same time.
 #:

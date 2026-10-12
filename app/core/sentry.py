@@ -5,7 +5,7 @@ phone home and never pay the instrumentation cost.
 
 Two choices worth stating:
 
-* **No PII scrubbing by default, but PII is not sent.** BachatBase's API handles
+* **No PII scrubbing by default, but PII is not sent.** Durza's API handles
   email addresses and passwords. `send_default_pii=False` (the default here) is
   what keeps them out of Sentry; turning it on would ship every user's address
   to a third party on every error, which is a privacy incident and a
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     # which is exactly what this module exists to avoid.
     from sentry_sdk.types import Event
 
-logger = get_logger("couponbase.sentry")
+logger = get_logger("durza.sentry")
 
 _initialised = False
 

@@ -209,7 +209,7 @@ async def test_metrics_renders_when_enabled(client: AsyncClient, monkeypatch) ->
     monkeypatch.setattr(get_settings(), "metrics_enabled", True, raising=False)
     response = await client.get("/metrics")
     assert response.status_code == 200
-    assert "couponbase_http_requests_total" in response.text
+    assert "durza_http_requests_total" in response.text
 
 
 @pytest.mark.asyncio
@@ -233,14 +233,14 @@ async def test_requests_are_counted_by_route_template_not_path(
 @pytest.mark.asyncio
 async def test_metrics_include_the_stale_coupon_gauge(client: AsyncClient, monkeypatch) -> None:
     monkeypatch.setattr(get_settings(), "metrics_enabled", True, raising=False)
-    assert "couponbase_stale_coupons" in await body_of(client)
+    assert "durza_stale_coupons" in await body_of(client)
 
 
 def test_metric_registry_is_not_the_global_default() -> None:
     # A private registry keeps test runs from leaking counters into each other.
     assert metrics.registry is not None
     payload, _ = metrics.render()
-    assert b"couponbase_job_runs_total" in payload
+    assert b"durza_job_runs_total" in payload
 
 
 # ---- Push endpoints ----
@@ -392,7 +392,7 @@ async def _sample_count(client: AsyncClient, route: str, status: str) -> float:
     a label.
     """
     match = re.search(
-        rf'couponbase_http_requests_total\{{method="GET",route="{re.escape(route)}",'
+        rf'durza_http_requests_total\{{method="GET",route="{re.escape(route)}",'
         rf'status="{status}"\}} ([0-9.]+)',
         await body_of(client),
     )

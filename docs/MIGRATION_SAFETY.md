@@ -14,7 +14,7 @@ reviewed decision rather than an accident.
 ## Running Locally
 
 ```bash
-# From the couponza/ directory
+# From the durza/ directory
 uv run python scripts/check_destructive_migrations.py
 ```
 
