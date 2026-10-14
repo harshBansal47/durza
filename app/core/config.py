@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     # to be the thing that works everywhere. Set it explicitly when running more
     # than one replica — see `app/core/limiter.py`.
     redis_url: str | None = None
+    # Production: Neon Postgres (serverless, needs sslmode=require) and
+    # Upstash Redis (TLS, rediss://). When ENVIRONMENT=production these
+    # override DATABASE_URL/REDIS_URL.
+    neon_database_url: str | None = None
+    upstash_redis_url: str | None = None
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
     algorithm: str = "HS256"
@@ -172,6 +177,26 @@ class Settings(BaseSettings):
             raise ValueError("SMTP_USER is set but SMTP_PASSWORD is not")
         if bool(self.vapid_private_key) != bool(self.vapid_public_key):
             raise ValueError("VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY must both be set")
+        return self
+
+    @model_validator(mode="after")
+    def _apply_production_overrides(self) -> "Settings":
+        """In production, prefer Neon Postgres and Upstash Redis.
+
+        The Neon URL arrives as `postgresql://` (sync driver) but SQLAlchemy
+        async needs `postgresql+asyncpg://`. Upstash uses `rediss://` (TLS),
+        which slowapi/limits accepts directly. Local dev keeps using the
+        plain DATABASE_URL / REDIS_URL so nothing changes on a laptop.
+        """
+        if not self.is_production:
+            return self
+        if self.neon_database_url:
+            # Convert sync postgresql:// to asyncpg:// for SQLAlchemy async
+            self.database_url = self.neon_database_url.replace(
+                "postgresql://", "postgresql+asyncpg://", 1
+            )
+        if self.upstash_redis_url:
+            self.redis_url = self.upstash_redis_url
         return self
 
 
