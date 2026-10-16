@@ -14,6 +14,10 @@
     backend:
       name: backend
       runs-on: ubuntu-latest
+      # Backstop: GitHub's default job timeout is 6 hours, which is how a stuck
+      # test run can burn an hour-plus before anyone notices. Tests time out as
+      # failing tests (see the Tests step); this only catches everything else.
+      timeout-minutes: 40
 
       # Tests use a throwaway Postgres inside CI, never your Neon database.
       services:
@@ -51,11 +55,15 @@
           run: uv run mypy app --ignore-missing-imports --no-strict-optional
 
         - name: Tests
+          # If the suite ever wedges again, the step fails at 20 minutes with
+          # the log showing exactly which test stalled - rather than sitting
+          # green-adjacent for an hour. `--durations` prints the slowest tests.
+          timeout-minutes: 20
           env:
             TEST_DATABASE_URL: postgresql+asyncpg://durza:durza@localhost:5432/durza_test
             ENVIRONMENT: test
             SCHEDULER_ENABLED: "false"
-          run: uv run pytest tests/ -q --cov=app
+          run: uv run pytest tests/ -q --durations=25 --cov=app
 
         - name: Destructive-migration guard
           run: uv run python scripts/check_destructive_migrations.py

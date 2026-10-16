@@ -125,8 +125,14 @@ async def test_create_reset_token_invalidates_previous_tokens(async_session_make
 
         rows = (await db.execute(select(PasswordResetToken))).scalars().all()
 
-    assert len(rows) == 1  # the first was superseded
-    assert await user_service.consume_password_reset_token(db, first) is None
+        # Both assertions run on the live session. `db` must never be used
+        # after this block: the session is closed there, and a closed session
+        # opened again leaves its connection — and any transaction on it —
+        # checked out past the end of the test, where the next test's DDL
+        # waits on its row locks. That is the exact shape of the Postgres-only
+        # hang that parked CI for over an hour.
+        assert len(rows) == 1  # the first was superseded
+        assert await user_service.consume_password_reset_token(db, first) is None
 
 
 async def test_consume_token_returns_user_once_then_none(async_session_maker):

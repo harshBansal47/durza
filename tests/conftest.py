@@ -1,3 +1,4 @@
+import asyncio
 import os
 import uuid
 
@@ -129,10 +130,20 @@ def _build_engine():
         # No StaticPool: a single connection would serialise every test and, more
         # importantly, a shared connection cannot hold two sessions at once, which
         # is exactly the situation the advisory-lock tests need.
-        connect_args: dict = {}
+        server_settings: dict = {
+            # Bounded, not open-ended. A lock held by a leaked session or a
+            # query stuck behind one fails a single named test within seconds
+            # and prints why, instead of parking the whole suite — which is
+            # how a CI run once sat at "86%" for an hour with nothing to point
+            # at. These limits are far above any real test query.
+            "lock_timeout": "15000",
+            "statement_timeout": "60000",
+        }
         if TEST_DATABASE_SCHEMA:
-            connect_args["server_settings"] = {"search_path": TEST_DATABASE_SCHEMA}
-        return create_async_engine(TEST_DATABASE_URL, connect_args=connect_args)
+            server_settings["search_path"] = TEST_DATABASE_SCHEMA
+        return create_async_engine(
+            TEST_DATABASE_URL, connect_args={"server_settings": server_settings}
+        )
 
     engine = create_async_engine(
         TEST_DATABASE_URL,
@@ -167,32 +178,75 @@ _database.engine = _build_engine()
 _database.AsyncSessionLocal = async_sessionmaker(_database.engine, expire_on_commit=False)
 
 
+# One schema per process beats one per test on Postgres.
+#
+# The old code ran `create_all` before and `drop_all` after *every* test, which
+# on Postgres is ~150 DDL statements over a socket per test — the single largest
+# cost in CI, where the database is a service container rather than in-process
+# SQLite. Built once and blanked between tests with one `TRUNCATE`, every test
+# still sees a clean database for two round trips instead of hundreds.
+#
+# SQLite keeps the per-test create/drop: in-memory DDL costs microseconds, and
+# a fresh schema per test is one fewer class of shared state to reason about.
+_pg_schema_ready = False
+
+
+async def _blank_slate_postgres(engine) -> None:
+    """First call builds the schema; every call leaves every table empty."""
+    global _pg_schema_ready
+
+    if _pg_schema_ready:
+        async with engine.begin() as conn:
+            names = ", ".join(f'"{name}"' for name in Base.metadata.tables)
+            await conn.execute(text(f"TRUNCATE {names} CASCADE"))
+        return
+
+    async with engine.begin() as conn:
+        if TEST_DATABASE_SCHEMA:
+            # The schema has to exist before `search_path` can resolve into it.
+            await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{TEST_DATABASE_SCHEMA}"'))
+        # Normalise whatever a previous run — possibly a crashed one — left
+        # behind, then build the current schema once. `drop_all` also drops the
+        # enum types it created; leaving those behind is what makes a later
+        # `create_all` fail with "type already exists".
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+
+    _pg_schema_ready = True
+
+
 @pytest_asyncio.fixture
 async def engine():
     engine = _build_engine()
 
-    if USING_POSTGRES and TEST_DATABASE_SCHEMA:
-        # The schema has to exist before `search_path` points at it, and it is
-        # created outside the metadata so `drop_all` below does not try to drop a
-        # schema it never created.
+    if USING_POSTGRES:
+        await _blank_slate_postgres(engine)
+    else:
         async with engine.begin() as conn:
-            await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{TEST_DATABASE_SCHEMA}"'))
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(Base.metadata.create_all)
 
     yield engine
 
-    if USING_POSTGRES and TEST_DATABASE_SCHEMA:
-        async with engine.begin() as conn:
-            await conn.execute(text(f'DROP SCHEMA IF EXISTS "{TEST_DATABASE_SCHEMA}" CASCADE'))
-    elif USING_POSTGRES:
-        # Drop rather than truncate: enum types created by `create_all` are not
-        # removed by `DROP TABLE`, and leaving them behind makes the next run fail
-        # with "type already exists".
+    # Postgres only: a session that was never closed keeps its connection
+    # checked out, and with it every lock its open transaction holds. The next
+    # test's TRUNCATE needs a lock on every table, so it waits on this one —
+    # the shape of the CI run that sat at "86%" for an hour. Failing here names
+    # the test that actually leaked instead of its innocent successor.
+    # The SQLite StaticPool has no `checkedout` and needs none: every test gets
+    # its own throwaway in-memory database, so a leak cannot cross tests.
+    leaked = engine.pool.checkedout() if USING_POSTGRES else 0
+
+    if not USING_POSTGRES:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
+
+    if leaked:
+        pytest.fail(
+            f"this test left {leaked} database connection(s) checked out — a session was "
+            "not closed. Close it (`async with`, or `await session.close()`) before the "
+            "test ends; otherwise its next-table locks leak into other tests."
+        )
 
 
 @pytest_asyncio.fixture
@@ -259,3 +313,35 @@ async def editor_headers(make_headers):
 @pytest_asyncio.fixture
 async def user_headers(make_headers):
     return await make_headers(Role.user)
+
+
+def pytest_sessionfinish(session, exitstatus) -> None:
+    """Leave the shared Postgres database the way the per-test drop used to.
+
+    Runs only when this process actually prepared the schema, so
+    `--collect-only` and the SQLite path never open a connection. A hard crash
+    skips this; the next run's first `engine` fixture normalises whatever was
+    left behind, so nothing here is load-bearing for correctness.
+    """
+    if not (USING_POSTGRES and _pg_schema_ready):
+        return
+
+    async def _cleanup() -> None:
+        engine = _build_engine()
+        try:
+            if TEST_DATABASE_SCHEMA:
+                async with engine.begin() as conn:
+                    await conn.execute(
+                        text(f'DROP SCHEMA IF EXISTS "{TEST_DATABASE_SCHEMA}" CASCADE')
+                    )
+            else:
+                async with engine.begin() as conn:
+                    await conn.run_sync(Base.metadata.drop_all)
+        finally:
+            await engine.dispose()
+
+    try:
+        asyncio.run(_cleanup())
+    except Exception as exc:  # noqa: BLE001
+        # Cleanup is best-effort: a failure here must not turn a green run red.
+        print(f"warning: could not clean up the test database: {exc!r}")
