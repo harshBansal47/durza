@@ -43,15 +43,9 @@ class DailyCouponStats(Base, UUIDPKMixin, TimestampMixin):
         ForeignKey("coupons.id", ondelete="CASCADE"), nullable=False
     )
 
-    impressions: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False
-    )
-    clicks: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False
-    )
-    conversions: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False
-    )
+    impressions: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    clicks: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    conversions: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
 
     revenue: Mapped[float] = mapped_column(
         Numeric(12, 2, asdecimal=False),
@@ -71,7 +65,9 @@ class DailyCouponStats(Base, UUIDPKMixin, TimestampMixin):
     )
 
     ctr: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False), nullable=True)
-    conversion_rate: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False), nullable=True)
+    conversion_rate: Mapped[float | None] = mapped_column(
+        Numeric(10, 4, asdecimal=False), nullable=True
+    )
     epc: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False), nullable=True)
 
     coupon: Mapped["Coupon"] = relationship()
@@ -95,15 +91,9 @@ class DailyMerchantStats(Base, UUIDPKMixin, TimestampMixin):
         ForeignKey("stores.id", ondelete="CASCADE"), nullable=False
     )
 
-    impressions: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False
-    )
-    clicks: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False
-    )
-    conversions: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False
-    )
+    impressions: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    clicks: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    conversions: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
 
     revenue: Mapped[float] = mapped_column(
         Numeric(12, 2, asdecimal=False),
@@ -123,7 +113,9 @@ class DailyMerchantStats(Base, UUIDPKMixin, TimestampMixin):
     )
 
     ctr: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False), nullable=True)
-    conversion_rate: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False), nullable=True)
+    conversion_rate: Mapped[float | None] = mapped_column(
+        Numeric(10, 4, asdecimal=False), nullable=True
+    )
     epc: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False), nullable=True)
 
     merchant: Mapped["Store"] = relationship()
@@ -147,12 +139,8 @@ class DailyProviderStats(Base, UUIDPKMixin, TimestampMixin):
         ForeignKey("affiliate_providers.id", ondelete="CASCADE"), nullable=False
     )
 
-    clicks: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False
-    )
-    conversions: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False
-    )
+    clicks: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    conversions: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
 
     commission: Mapped[float] = mapped_column(
         Numeric(12, 2, asdecimal=False),
@@ -171,7 +159,9 @@ class DailyProviderStats(Base, UUIDPKMixin, TimestampMixin):
         String(3), default="USD", server_default="USD", nullable=False
     )
 
-    conversion_rate: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False), nullable=True)
+    conversion_rate: Mapped[float | None] = mapped_column(
+        Numeric(10, 4, asdecimal=False), nullable=True
+    )
     epc: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False), nullable=True)
 
     provider: Mapped["AffiliateProvider"] = relationship()
@@ -193,15 +183,9 @@ class DailyTrafficStats(Base, UUIDPKMixin, TimestampMixin):
     date: Mapped[date] = mapped_column(Date, nullable=False)
     source: Mapped[str] = mapped_column(String(50), nullable=False)
 
-    impressions: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False
-    )
-    clicks: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False
-    )
-    conversions: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False
-    )
+    impressions: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    clicks: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    conversions: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
 
     revenue: Mapped[float] = mapped_column(
         Numeric(12, 2, asdecimal=False),
@@ -215,7 +199,9 @@ class DailyTrafficStats(Base, UUIDPKMixin, TimestampMixin):
     )
 
     ctr: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False), nullable=True)
-    conversion_rate: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False), nullable=True)
+    conversion_rate: Mapped[float | None] = mapped_column(
+        Numeric(10, 4, asdecimal=False), nullable=True
+    )
     epc: Mapped[float | None] = mapped_column(Numeric(10, 4, asdecimal=False), nullable=True)
 
     def __str__(self) -> str:

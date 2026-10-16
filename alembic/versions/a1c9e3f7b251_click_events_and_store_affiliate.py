@@ -5,9 +5,10 @@ Revises: ef06a153c119
 Create Date: 2026-10-03 12:00:00.000000
 
 """
-from alembic import op
+
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "a1c9e3f7b251"
@@ -36,7 +37,10 @@ def upgrade() -> None:
         sa.Column("visitor_hash", sa.String(length=64), nullable=True),
         sa.Column("is_bot", sa.Boolean(), nullable=False),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["coupon_id"], ["coupons.id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["product_id"], ["products.id"], ondelete="SET NULL"),

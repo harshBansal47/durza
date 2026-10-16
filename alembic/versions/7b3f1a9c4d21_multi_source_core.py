@@ -11,8 +11,9 @@ applied it needs scripts/repair_dropped_conversions.sql first.
 """
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision = "7b3f1a9c4d21"
 down_revision = "d7a2b5c8e913"
@@ -50,9 +51,9 @@ def _add_enum_values(enum_name: str, *values: str) -> None:
 
 def upgrade() -> None:
     # ---- New enum types, created before the columns that use them ----------
-    postgresql.ENUM(
-        "active", "pending", "inactive", "merged", name="store_status"
-    ).create(op.get_bind(), checkfirst=True)
+    postgresql.ENUM("active", "pending", "inactive", "merged", name="store_status").create(
+        op.get_bind(), checkfirst=True
+    )
     postgresql.ENUM(
         "unverified",
         "pending",
@@ -140,9 +141,7 @@ def upgrade() -> None:
     # "Every source backing this coupon" — coupon detail page and AffiliateRouter.
     # Composed with status so the router can ask "active sources only" from the
     # same index instead of filtering after the fact.
-    op.create_index(
-        "ix_coupon_sources_coupon_status", "coupon_sources", ["coupon_id", "status"]
-    )
+    op.create_index("ix_coupon_sources_coupon_status", "coupon_sources", ["coupon_id", "status"])
 
     # ---- stores: canonical merchant identity -------------------------------
     op.add_column("stores", sa.Column("normalized_name", sa.String(length=160), nullable=True))
@@ -176,14 +175,16 @@ def upgrade() -> None:
     # A NULL domain must not collide: providers that give a name but no usable
     # domain leave it NULL, and both Postgres and SQLite treat NULLs as distinct
     # in a UNIQUE constraint. Every store that *has* a domain owns it.
-    op.create_unique_constraint(
-        "uq_store_normalized_domain", "stores", ["normalized_domain"]
-    )
+    op.create_unique_constraint("uq_store_normalized_domain", "stores", ["normalized_domain"])
     op.create_index("ix_stores_normalized_name", "stores", ["normalized_name"])
 
     # ---- sources: precedence, scope, credentials, health -------------------
-    op.add_column("sources", sa.Column("priority", sa.Integer(), server_default="100", nullable=False))
-    op.add_column("sources", sa.Column("confidence", sa.Float(), server_default="0.5", nullable=False))
+    op.add_column(
+        "sources", sa.Column("priority", sa.Integer(), server_default="100", nullable=False)
+    )
+    op.add_column(
+        "sources", sa.Column("confidence", sa.Float(), server_default="0.5", nullable=False)
+    )
     op.add_column("sources", sa.Column("countries", sa.ARRAY(sa.String(length=2)), nullable=True))
     op.add_column("sources", sa.Column("credential_ref", sa.String(length=120), nullable=True))
     op.add_column("sources", sa.Column("rate_limit_per_minute", sa.Integer(), nullable=True))
@@ -221,8 +222,12 @@ def upgrade() -> None:
         sa.Column("consecutive_failures", sa.Integer(), server_default="0", nullable=False),
     )
     op.add_column("sources", sa.Column("last_sync_at", sa.DateTime(timezone=True), nullable=True))
-    op.add_column("sources", sa.Column("last_success_at", sa.DateTime(timezone=True), nullable=True))
-    op.add_column("sources", sa.Column("last_failure_at", sa.DateTime(timezone=True), nullable=True))
+    op.add_column(
+        "sources", sa.Column("last_success_at", sa.DateTime(timezone=True), nullable=True)
+    )
+    op.add_column(
+        "sources", sa.Column("last_failure_at", sa.DateTime(timezone=True), nullable=True)
+    )
     op.add_column("sources", sa.Column("last_error", sa.Text(), nullable=True))
     op.execute("UPDATE sources SET countries = '{}' WHERE countries IS NULL")
     op.alter_column("sources", "countries", nullable=False)

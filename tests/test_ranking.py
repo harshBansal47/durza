@@ -5,7 +5,6 @@ dominating user intent, and that new coupons with no revenue data
 are treated fairly (cold-start).
 """
 
-
 from app.services.quality import (
     QualityInputs,
     QualityWeights,
@@ -61,9 +60,7 @@ def test_high_epc_improves_score():
     )
     base_score, _ = compute_quality(base)
 
-    with_epc = QualityInputs(
-        **{**base.__dict__, "expected_revenue": 10.0}
-    )
+    with_epc = QualityInputs(**{**base.__dict__, "expected_revenue": 10.0})
     epc_score, breakdown = compute_quality(with_epc, weights=QualityWeights(expected_revenue=0.2))
     assert epc_score > base_score
     assert "expected_revenue" in breakdown

@@ -117,11 +117,17 @@ class CouponSource(Base, UUIDPKMixin, TimestampMixin):
 
     # Last time this source's data was actively confirmed rather than merely
     # re-reported.
-    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Source-side timestamps, which routinely disagree with ours.
-    source_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    source_created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    source_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     coupon: Mapped["Coupon"] = relationship(back_populates="sources")
     source: Mapped["Source"] = relationship(back_populates="coupon_sources")

@@ -247,6 +247,7 @@ async def test_impression_cascade_delete_coupon(async_session_maker):
     # Delete the coupon
     async with async_session_maker() as db:
         from app.models.coupon import Coupon
+
         coupon_obj = await db.get(Coupon, coupon.id)
         await db.delete(coupon_obj)
         await db.commit()

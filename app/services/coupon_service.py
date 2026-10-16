@@ -95,7 +95,9 @@ async def list_coupons(
         # NOT: an empty string is a real code-less deal, not "no code given".
         stmt = stmt.where(Coupon.code.is_not(None) if has_code else Coupon.code.is_(None))
     if verified is not None:
-        stmt = stmt.where(Coupon.last_verified_at.is_not(None) if verified else Coupon.last_verified_at.is_(None))
+        stmt = stmt.where(
+            Coupon.last_verified_at.is_not(None) if verified else Coupon.last_verified_at.is_(None)
+        )
     if min_success_rate is not None:
         # A rate with no reports behind it is not a rate, so never-verified
         # coupons cannot pass this filter however high the threshold is.

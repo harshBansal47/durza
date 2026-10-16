@@ -14,6 +14,7 @@ Reversible for the same reason.
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "b3c4d5e6f7a8"

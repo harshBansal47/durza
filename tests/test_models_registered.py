@@ -54,8 +54,10 @@ def _init_exported_modules() -> set[str]:
     tree = ast.parse((MODELS_DIR / "__init__.py").read_text())
     imported: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith(
-            "app.models."
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and node.module.startswith("app.models.")
         ):
             imported.add(node.module.removeprefix("app.models."))
     return imported

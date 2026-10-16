@@ -62,9 +62,7 @@ class AffiliateProvider(Base, UUIDPKMixin, TimestampMixin):
 
     __tablename__ = "affiliate_providers"
 
-    __table_args__ = (
-        UniqueConstraint("slug", name="uq_affiliate_provider_slug"),
-    )
+    __table_args__ = (UniqueConstraint("slug", name="uq_affiliate_provider_slug"),)
 
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     slug: Mapped[str] = mapped_column(String(140), unique=True, index=True, nullable=False)

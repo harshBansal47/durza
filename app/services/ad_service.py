@@ -77,11 +77,7 @@ def is_live(ad: Ad, now: datetime | None = None) -> bool:
     now = now or datetime.now(UTC)
     starts = ensure_utc_optional(ad.starts_at)
     ends = ensure_utc_optional(ad.ends_at)
-    return (
-        ad.is_active
-        and (starts is None or starts <= now)
-        and (ends is None or ends > now)
-    )
+    return ad.is_active and (starts is None or starts <= now) and (ends is None or ends > now)
 
 
 def build_target_url(target_url: str, ad_id: uuid.UUID) -> str | None:

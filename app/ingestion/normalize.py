@@ -307,7 +307,11 @@ def _to_float(value: str | float | Decimal | None) -> float | None:
         return None
     if "," in text and "." in text:
         # Whichever separator comes last is the decimal one.
-        text = text.replace(".", "").replace(",", ".") if text.rfind(",") > text.rfind(".") else text.replace(",", "")
+        text = (
+            text.replace(".", "").replace(",", ".")
+            if text.rfind(",") > text.rfind(".")
+            else text.replace(",", "")
+        )
     else:
         text = text.replace(",", ".")
     try:
@@ -375,9 +379,7 @@ def normalize_offer(raw: RawOffer) -> NormalizedOffer:
     if not store_slug:
         raise NormalizeError("offer has no usable store identity")
 
-    category_slug = raw.category_slug or (
-        slugify(raw.category_name) if raw.category_name else None
-    )
+    category_slug = raw.category_slug or (slugify(raw.category_name) if raw.category_name else None)
 
     currency = normalize_currency((raw.extra or {}).get("currency"))
     country = normalize_country((raw.extra or {}).get("country"))

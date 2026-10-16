@@ -133,9 +133,7 @@ async def _resolve_category(
             return category
 
     if offer.category_name:
-        result = await db.execute(
-            select(Category).where(Category.name.ilike(offer.category_name))
-        )
+        result = await db.execute(select(Category).where(Category.name.ilike(offer.category_name)))
         return result.scalar_one_or_none()
     return None
 
@@ -361,14 +359,13 @@ async def _iter_offers(
             yield offer, pages
         return
 
-    raw_offers = await adapter.fetch(
-        source.config, mode=mode, credentials=creds
-    )
+    raw_offers = await adapter.fetch(source.config, mode=mode, credentials=creds)
     # A plain loop rather than `yield from`: `yield from` over a synchronous
     # generator inside an async generator is legal but reads as if it were
     # delegating to another coroutine, which it is not.
     for offer in raw_offers:
         yield offer, 1
+
 
 # ---------------------------------------------------------------------------
 # The run
@@ -442,9 +439,7 @@ async def run_ingestion(
         run.error = partial.reason[:2000]
         run.finished_at = datetime.now(UTC)
         run.duration_ms = _elapsed_ms(monotonic)
-        await record_outcome(
-            db, await _managed_source(db, source_id), RunStatus.partial
-        )
+        await record_outcome(db, await _managed_source(db, source_id), RunStatus.partial)
         await db.commit()
         await db.refresh(run)
         # Labelled by source slug, not name: the slug is the stable identifier,
@@ -458,9 +453,7 @@ async def run_ingestion(
         run.cancel_requested = True
         run.finished_at = datetime.now(UTC)
         run.duration_ms = _elapsed_ms(monotonic)
-        await record_outcome(
-            db, await _managed_source(db, source_id), RunStatus.cancelled
-        )
+        await record_outcome(db, await _managed_source(db, source_id), RunStatus.cancelled)
         await db.commit()
         await db.refresh(run)
         metrics.ingestion_runs.labels(slug, RunStatus.cancelled.value).inc()
@@ -568,16 +561,20 @@ async def _record_failure(
     operator's to-do list, not evidence that a provider is unhealthy, and they
     still write the run row and the `last_error`, so nothing is hidden.
     """
-    counts = {
-        "fetched": run.fetched,
-        "created": run.created,
-        "updated": run.updated,
-        "duplicated": run.duplicated,
-        "malformed": run.malformed,
-        "failed": run.failed,
-        "expired": run.expired,
-        "pages_fetched": run.pages_fetched,
-    } if keep_counts else {}
+    counts = (
+        {
+            "fetched": run.fetched,
+            "created": run.created,
+            "updated": run.updated,
+            "duplicated": run.duplicated,
+            "malformed": run.malformed,
+            "failed": run.failed,
+            "expired": run.expired,
+            "pages_fetched": run.pages_fetched,
+        }
+        if keep_counts
+        else {}
+    )
     mode = run.mode
 
     await db.rollback()
@@ -631,9 +628,7 @@ async def _execute(
     if not source.is_enabled:
         raise _IngestionAbort(f"Source {source.slug} is disabled")
 
-    if not credentials.credentials_satisfied(
-        source.kind.value, source.credential_ref
-    ):
+    if not credentials.credentials_satisfied(source.kind.value, source.credential_ref):
         # "Not configured" is not a failure: nobody has supplied credentials
         # yet, and counting it as one would depress a health score for an
         # unfinished deployment step. It is its own status precisely so an
@@ -871,9 +866,7 @@ async def _resolve_merchant(db: AsyncSession, offer: NormalizedOffer, source: So
         else None
     )
 
-    match = await merchant_resolution.resolve_or_create(
-        db, offer, program_ids=program_ids
-    )
+    match = await merchant_resolution.resolve_or_create(db, offer, program_ids=program_ids)
     if match.is_new:
         logger.info(
             "merchant created",
@@ -975,11 +968,7 @@ async def recompute_totals(db: AsyncSession, coupon_ids: list) -> None:
     counts = {coupon_id: count for coupon_id, count in rows}
 
     coupons = list(
-        (
-            await db.execute(select(Coupon).where(Coupon.id.in_(unique_ids)))
-        )
-        .scalars()
-        .all()
+        (await db.execute(select(Coupon).where(Coupon.id.in_(unique_ids)))).scalars().all()
     )
 
     from app.services import quality

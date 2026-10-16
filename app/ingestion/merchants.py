@@ -36,9 +36,28 @@ from urllib.parse import urlparse
 # far less harmful than collapsing `shop.example.com.au` into one merchant.
 _MULTI_PART_SUFFIXES = frozenset(
     {
-        "co.uk", "org.uk", "me.uk", "ac.uk", "gov.uk", "co.jp", "or.jp", "ne.jp",
-        "com.au", "net.au", "org.au", "co.nz", "com.br", "com.mx", "co.in",
-        "co.za", "com.sg", "com.tr", "co.kr", "com.cn", "com.hk", "com.tw",
+        "co.uk",
+        "org.uk",
+        "me.uk",
+        "ac.uk",
+        "gov.uk",
+        "co.jp",
+        "or.jp",
+        "ne.jp",
+        "com.au",
+        "net.au",
+        "org.au",
+        "co.nz",
+        "com.br",
+        "com.mx",
+        "co.in",
+        "co.za",
+        "com.sg",
+        "com.tr",
+        "co.kr",
+        "com.cn",
+        "com.hk",
+        "com.tw",
     }
 )
 

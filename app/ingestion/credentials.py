@@ -149,7 +149,9 @@ def is_configured(source_credential_ref: str | None) -> bool:
     """
     if not source_credential_ref:
         return False
-    return any(os.environ.get(name, "").strip() for name in _referenced_names(source_credential_ref))
+    return any(
+        os.environ.get(name, "").strip() for name in _referenced_names(source_credential_ref)
+    )
 
 
 #: Source kinds whose adapters authenticate to a remote API and therefore cannot

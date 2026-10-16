@@ -250,9 +250,7 @@ async def test_a_source_that_no_longer_claims_the_coupon_is_never_used(
     coupon = await _coupon(async_session_maker, world["store"], world["category"])
     trusted = await _source(async_session_maker, "trusted", priority=1)
     ordinary = await _source(async_session_maker, "ordinary", priority=90)
-    await _claim(
-        async_session_maker, coupon, trusted, "https://gone.example/deep", status=status
-    )
+    await _claim(async_session_maker, coupon, trusted, "https://gone.example/deep", status=status)
     await _claim(async_session_maker, coupon, ordinary, "https://ordinary.example/deep")
 
     routed = await _route(async_session_maker, coupon)
@@ -305,9 +303,7 @@ async def test_a_broken_ingest_api_does_not_take_a_link_offline(
 
 
 async def test_a_source_outside_the_coupons_market_is_skipped(async_session_maker, world):
-    coupon = await _coupon(
-        async_session_maker, world["store"], world["category"], country="US"
-    )
+    coupon = await _coupon(async_session_maker, world["store"], world["category"], country="US")
     wrong_market = await _source(async_session_maker, "german", priority=1, countries=["DE"])
     right_market = await _source(async_session_maker, "american", priority=90, countries=["US"])
     await _claim(async_session_maker, coupon, wrong_market, "https://de.example/deep")
@@ -323,19 +319,17 @@ async def test_a_source_with_no_markets_is_eligible_everywhere(async_session_mak
     than a mislabelled one; excluding it would discard good links on a technicality
     no operator ever set.
     """
-    coupon = await _coupon(
-        async_session_maker, world["store"], world["category"], country="US"
-    )
+    coupon = await _coupon(async_session_maker, world["store"], world["category"], country="US")
     unscoped = await _source(async_session_maker, "global", priority=90, countries=[])
     await _claim(async_session_maker, coupon, unscoped, "https://global.example/deep")
 
     assert (await _route(async_session_maker, coupon)).url == "https://global.example/deep"
 
 
-async def test_no_source_in_the_market_falls_back_rather_than_routing_wrong(async_session_maker, world):
-    coupon = await _coupon(
-        async_session_maker, world["store"], world["category"], country="US"
-    )
+async def test_no_source_in_the_market_falls_back_rather_than_routing_wrong(
+    async_session_maker, world
+):
+    coupon = await _coupon(async_session_maker, world["store"], world["category"], country="US")
     only_de = await _source(async_session_maker, "german", priority=1, countries=["DE"])
     await _claim(async_session_maker, coupon, only_de, "https://de.example/deep")
 
@@ -435,11 +429,11 @@ async def test_the_redirect_uses_the_routed_link_and_never_leaks_the_provider(
 ):
     """End to end: the shopper lands on the winning source's URL, and the
     response says nothing at all about which provider that was."""
-    store = (await client.post("/api/v1/stores", json={"name": "Nike"}, headers=admin_headers)).json()
+    store = (
+        await client.post("/api/v1/stores", json={"name": "Nike"}, headers=admin_headers)
+    ).json()
     cat = (
-        await client.post(
-            "/api/v1/categories", json={"name": "Shoes"}, headers=admin_headers
-        )
+        await client.post("/api/v1/categories", json={"name": "Shoes"}, headers=admin_headers)
     ).json()
     created = (
         await client.post(
@@ -465,9 +459,7 @@ async def test_the_redirect_uses_the_routed_link_and_never_leaks_the_provider(
     await _claim(async_session_maker, real, ordinary, "https://ordinary.example/deep")
     await _claim(async_session_maker, real, trusted, "https://trusted.example/deep")
 
-    resp = await client.get(
-        f"/api/v1/coupons/{created['id']}/go", follow_redirects=False
-    )
+    resp = await client.get(f"/api/v1/coupons/{created['id']}/go", follow_redirects=False)
 
     assert resp.status_code == 302
     assert resp.headers["location"] == "https://trusted.example/deep"
@@ -508,8 +500,12 @@ async def test_a_coupon_with_nowhere_to_go_is_404_not_a_redirect_loop(
 async def test_eligible_sources_returns_rows_most_trusted_first(async_session_maker, world):
     """The public helper and the routing decision must not disagree about order."""
     coupon = await _coupon(async_session_maker, world["store"], world["category"])
-    second = await _source(async_session_maker, "second", slug=f"s-{uuid.uuid4().hex[:6]}", priority=50)
-    first = await _source(async_session_maker, "first", slug=f"f-{uuid.uuid4().hex[:6]}", priority=10)
+    second = await _source(
+        async_session_maker, "second", slug=f"s-{uuid.uuid4().hex[:6]}", priority=50
+    )
+    first = await _source(
+        async_session_maker, "first", slug=f"f-{uuid.uuid4().hex[:6]}", priority=10
+    )
     await _claim(async_session_maker, coupon, second, "https://second.example/deep")
     await _claim(async_session_maker, coupon, first, "https://first.example/deep")
 

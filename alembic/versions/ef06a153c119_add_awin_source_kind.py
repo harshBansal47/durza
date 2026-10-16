@@ -5,13 +5,10 @@ Revises: ddad468e6fdb
 Create Date: 2026-10-03 05:13:48.478301
 
 """
-from alembic import op
-import sqlalchemy as sa
-
 
 # revision identifiers, used by Alembic.
-revision = 'ef06a153c119'
-down_revision = 'ddad468e6fdb'
+revision = "ef06a153c119"
+down_revision = "ddad468e6fdb"
 branch_labels = None
 depends_on = None
 

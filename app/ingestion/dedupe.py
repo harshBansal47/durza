@@ -174,9 +174,7 @@ def same_coupon(left: NormalizedOffer, right: NormalizedOffer) -> bool:
     return dedup_key(left).value == dedup_key(right).value
 
 
-def describe_conflict(
-    winner: NormalizedOffer, loser: NormalizedOffer
-) -> dict[str, str]:
+def describe_conflict(winner: NormalizedOffer, loser: NormalizedOffer) -> dict[str, str]:
     """Field-level differences between two providers' view of one coupon.
 
     Used to build the audit trail when conflict resolution picks a winner. Without

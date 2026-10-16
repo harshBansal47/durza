@@ -131,9 +131,7 @@ async def test_attribution_cascade_delete_click(async_session_maker):
 
     # Attribution should still exist with NULL click_event_id
     async with async_session_maker() as db:
-        result = await db.execute(
-            select(Attribution).where(Attribution.id == attribution_id)
-        )
+        result = await db.execute(select(Attribution).where(Attribution.id == attribution_id))
         attr = result.scalar_one_or_none()
         assert attr is not None
         assert attr.click_event_id is None

@@ -128,9 +128,7 @@ async def record_outcome(
     # `static`, `csv` and key-less `feed` sources read data that needs no
     # authentication, so asking whether one has a credential would report every
     # perfectly healthy local source as `unconfigured`.
-    credentials_present = credentials_satisfied(
-        source.kind.value, source.credential_ref
-    )
+    credentials_present = credentials_satisfied(source.kind.value, source.credential_ref)
 
     if not count:
         source.last_sync_at = now

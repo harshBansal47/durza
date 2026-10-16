@@ -108,7 +108,12 @@ async def test_offer_shape_and_trust_filters(client, admin_headers):
         await client.post(
             API,
             json=_payload(
-                store_id, cat_id, title="Codeless deal", code=None, discount_type="deal", discount_value=None
+                store_id,
+                cat_id,
+                title="Codeless deal",
+                code=None,
+                discount_type="deal",
+                discount_value=None,
             ),
             headers=admin_headers,
         )
@@ -116,7 +121,9 @@ async def test_offer_shape_and_trust_filters(client, admin_headers):
     # Fixed-amount coupon — created for the discount_type filter assertions below.
     await client.post(
         API,
-        json=_payload(store_id, cat_id, title="Flat amount off", discount_type="fixed", discount_value=500),
+        json=_payload(
+            store_id, cat_id, title="Flat amount off", discount_type="fixed", discount_value=500
+        ),
         headers=admin_headers,
     )
 
@@ -125,7 +132,9 @@ async def test_offer_shape_and_trust_filters(client, admin_headers):
     assert (
         await client.post(f"{API}/{coded['id']}/verify", json={"worked": True})
     ).status_code == 200
-    assert (await client.post(f"{API}/{deal['id']}/verify", json={"worked": False})).status_code == 200
+    assert (
+        await client.post(f"{API}/{deal['id']}/verify", json={"worked": False})
+    ).status_code == 200
 
     assert (await client.get(API, params={"discount_type": "percentage"})).json()["total"] == 1
     assert (await client.get(API, params={"discount_type": "fixed"})).json()["total"] == 1

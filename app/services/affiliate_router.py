@@ -107,9 +107,7 @@ def _covers_country(source: Source, country: str | None) -> bool:
     return not markets or country.upper() in markets
 
 
-async def eligible_sources(
-    db: AsyncSession, coupon: Coupon
-) -> list[tuple[CouponSource, Source]]:
+async def eligible_sources(db: AsyncSession, coupon: Coupon) -> list[tuple[CouponSource, Source]]:
     """This coupon's source rows that could win, most trusted first.
 
     Fetched by the indexed `(coupon_id, status)` lookup and then ordered in
@@ -131,11 +129,7 @@ async def eligible_sources(
     )
     rows = [(row, source) for row, source in (await db.execute(stmt)).all()]
 
-    eligible = [
-        (row, source)
-        for row, source in rows
-        if _covers_country(source, coupon.country)
-    ]
+    eligible = [(row, source) for row, source in rows if _covers_country(source, coupon.country)]
 
     # `active` outranks `expired` ahead of the source ordering. A deep link from
     # a provider that still calls the coupon live is a better destination than

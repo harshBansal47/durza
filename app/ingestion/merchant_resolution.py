@@ -344,9 +344,10 @@ def should_fuzzy_match(left: str, right: str) -> bool:
     the moment someone wires it into `resolve_or_create` is a visible decision
     rather than an accident. It is not used there.
     """
-    return merchants.name_similarity(
-        merchants.normalize_name(left), merchants.normalize_name(right)
-    ) >= FUZZY_CANDIDATE_THRESHOLD
+    return (
+        merchants.name_similarity(merchants.normalize_name(left), merchants.normalize_name(right))
+        >= FUZZY_CANDIDATE_THRESHOLD
+    )
 
 
 def merge_stores(primary: Store, duplicate: Store, *, reason: str) -> None:
@@ -381,7 +382,9 @@ async def get_store_for_offer(db: AsyncSession, offer: NormalizedOffer) -> Store
         found = await _by_domain(db, offer.store_domain)
         if found is not None:
             return found
-    return await _by_name(db, offer.store_normalized_name or merchants.normalize_name(offer.store_name))
+    return await _by_name(
+        db, offer.store_normalized_name or merchants.normalize_name(offer.store_name)
+    )
 
 
 def search_terms_for(store: Store) -> list[str]:

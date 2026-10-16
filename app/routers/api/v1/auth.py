@@ -164,7 +164,7 @@ async def delete_account(
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The password you entered is not correct."
+            detail="The password you entered is not correct.",
         )
     await user_service.delete_user(db, current_user)
     # The response is 204 with no content

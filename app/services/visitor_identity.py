@@ -39,14 +39,28 @@ UTM_PARAMS = ("utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_te
 
 # Known social platforms for traffic source classification
 SOCIAL_DOMAINS = {
-    "facebook.com", "twitter.com", "x.com", "instagram.com", "linkedin.com",
-    "pinterest.com", "tiktok.com", "youtube.com", "reddit.com", "t.co",
+    "facebook.com",
+    "twitter.com",
+    "x.com",
+    "instagram.com",
+    "linkedin.com",
+    "pinterest.com",
+    "tiktok.com",
+    "youtube.com",
+    "reddit.com",
+    "t.co",
 }
 
 # Known search engines for traffic source classification
 SEARCH_ENGINES = {
-    "google.com", "bing.com", "yahoo.com", "duckduckgo.com", "baidu.com",
-    "yandex.com", "ask.com", "aol.com",
+    "google.com",
+    "bing.com",
+    "yahoo.com",
+    "duckduckgo.com",
+    "baidu.com",
+    "yandex.com",
+    "ask.com",
+    "aol.com",
 }
 
 

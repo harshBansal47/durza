@@ -100,12 +100,8 @@ class RevenueEvent(Base, UUIDPKMixin, TimestampMixin):
     )
 
     # ---- Dates -----------------------------------------------------------
-    event_date: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    confirmed_date: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    event_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    confirmed_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # ---- Normalized revenue (optional) -----------------------------------
     normalized_amount: Mapped[float | None] = mapped_column(

@@ -58,9 +58,7 @@ def test_before_send_leaves_a_url_without_a_query_string_alone() -> None:
     # Idempotence matters: this runs on every event, and a mangled URL would
     # break grouping for the requests that carry no secrets at all.
     event = {"request": {"url": "https://api.durza.in/health", "query_string": ""}}
-    assert _strip_query_secrets(event, {})["request"]["url"] == (
-        "https://api.durza.in/health"
-    )
+    assert _strip_query_secrets(event, {})["request"]["url"] == ("https://api.durza.in/health")
 
 
 def test_before_send_passes_through_an_event_with_no_request() -> None:

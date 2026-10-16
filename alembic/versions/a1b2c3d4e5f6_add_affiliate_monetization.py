@@ -5,9 +5,11 @@ Revises: 7b3f1a9c4d21
 Create Date: 2026-10-04 17:30:00.000000
 
 """
-from alembic import op
+
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "a1b2c3d4e5f6"
@@ -39,8 +41,12 @@ def upgrade() -> None:
         sa.Column(
             "api_status",
             sa.Enum(
-                "active", "degraded", "paused", "unconfigured",
-                name="provider_status", native_enum=True,
+                "active",
+                "degraded",
+                "paused",
+                "unconfigured",
+                name="provider_status",
+                native_enum=True,
             ),
             server_default="unconfigured",
             nullable=False,
@@ -48,8 +54,12 @@ def upgrade() -> None:
         sa.Column(
             "tracking_status",
             sa.Enum(
-                "active", "degraded", "paused", "unconfigured",
-                name="provider_tracking_status", native_enum=True,
+                "active",
+                "degraded",
+                "paused",
+                "unconfigured",
+                name="provider_tracking_status",
+                native_enum=True,
             ),
             server_default="unconfigured",
             nullable=False,
@@ -61,8 +71,18 @@ def upgrade() -> None:
         sa.Column("default_cookie_days", sa.Integer(), nullable=True),
         sa.Column("notes", sa.Text(), nullable=True),
         sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("slug", name="uq_affiliate_provider_slug"),
     )
@@ -77,8 +97,12 @@ def upgrade() -> None:
         sa.Column(
             "status",
             sa.Enum(
-                "active", "pending", "paused", "terminated",
-                name="program_status", native_enum=True,
+                "active",
+                "pending",
+                "paused",
+                "terminated",
+                name="program_status",
+                native_enum=True,
             ),
             server_default="active",
             nullable=False,
@@ -87,13 +111,21 @@ def upgrade() -> None:
         sa.Column(
             "commission_type",
             sa.Enum(
-                "percentage", "fixed", "tiered",
-                name="commission_type", native_enum=True,
+                "percentage",
+                "fixed",
+                "tiered",
+                name="commission_type",
+                native_enum=True,
             ),
             server_default="percentage",
             nullable=False,
         ),
-        sa.Column("commission_value", sa.Numeric(precision=10, scale=4, asdecimal=False), nullable=False, server_default="0.0"),
+        sa.Column(
+            "commission_value",
+            sa.Numeric(precision=10, scale=4, asdecimal=False),
+            nullable=False,
+            server_default="0.0",
+        ),
         sa.Column("cookie_duration_days", sa.Integer(), nullable=False, server_default="30"),
         sa.Column("deeplink_supported", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("tracking_supported", sa.Boolean(), nullable=False, server_default=sa.true()),
@@ -101,15 +133,29 @@ def upgrade() -> None:
         sa.Column("last_verified_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("metadata", sa.JSON(), nullable=True),
         sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["merchant_id"], ["stores.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["provider_id"], ["affiliate_providers.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("merchant_id", "provider_id", "country", name="uq_affiliate_program"),
     )
-    op.create_index("ix_affiliate_programs_merchant_status", "affiliate_programs", ["merchant_id", "status"])
-    op.create_index("ix_affiliate_programs_provider_status", "affiliate_programs", ["provider_id", "status"])
+    op.create_index(
+        "ix_affiliate_programs_merchant_status", "affiliate_programs", ["merchant_id", "status"]
+    )
+    op.create_index(
+        "ix_affiliate_programs_provider_status", "affiliate_programs", ["provider_id", "status"]
+    )
 
     # ---- affiliate_destinations ----
     op.create_table(
@@ -121,8 +167,11 @@ def upgrade() -> None:
         sa.Column(
             "status",
             sa.Enum(
-                "active", "paused", "invalid",
-                name="destination_status", native_enum=True,
+                "active",
+                "paused",
+                "invalid",
+                name="destination_status",
+                native_enum=True,
             ),
             server_default="active",
             nullable=False,
@@ -130,14 +179,32 @@ def upgrade() -> None:
         sa.Column("country", sa.String(length=2), nullable=True),
         sa.Column("deep_link", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["merchant_id"], ["stores.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["program_id"], ["affiliate_programs.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_affiliate_destinations_merchant_program", "affiliate_destinations", ["merchant_id", "program_id"])
-    op.create_index("ix_affiliate_destinations_merchant_status", "affiliate_destinations", ["merchant_id", "status"])
+    op.create_index(
+        "ix_affiliate_destinations_merchant_program",
+        "affiliate_destinations",
+        ["merchant_id", "program_id"],
+    )
+    op.create_index(
+        "ix_affiliate_destinations_merchant_status",
+        "affiliate_destinations",
+        ["merchant_id", "status"],
+    )
 
 
 def downgrade() -> None:

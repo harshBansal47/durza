@@ -117,9 +117,7 @@ class AwinSource:
         }
 
         async def _page(endpoint: str, params: dict[str, Any]) -> list[dict[str, Any]]:
-            response = await client.get(
-                f"{_AWIN_BASE}{endpoint}", params=params, headers=headers
-            )
+            response = await client.get(f"{_AWIN_BASE}{endpoint}", params=params, headers=headers)
             response.raise_for_status()
             payload = response.json()
             if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
@@ -148,7 +146,9 @@ class AwinSource:
                     while True:
                         try:
                             results = await with_retries(
-                                lambda ep=endpoint, p={**params, "page": page, "pageSize": page_size}: _page(ep, p),
+                                lambda ep=endpoint, p={**params, "page": page, "pageSize": page_size}: (
+                                    _page(ep, p)
+                                ),
                                 retryable=(httpx.HTTPError, TypeError),
                             )
                         except (httpx.HTTPError, TypeError) as exc:
@@ -234,9 +234,7 @@ class AwinSource:
         cares about partial results must use `stream`.
         """
         collected: list[RawOffer] = []
-        async for offer, _pages in self.stream(
-            config, mode=mode, credentials=credentials
-        ):
+        async for offer, _pages in self.stream(config, mode=mode, credentials=credentials):
             collected.append(offer)
         return collected
 

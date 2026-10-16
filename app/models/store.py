@@ -72,7 +72,9 @@ class Store(Base, UUIDPKMixin, TimestampMixin):
     # ---- Canonical identity -------------------------------------------------
     # Casefolded, punctuation-stripped name. Used to match providers that give a
     # name but no usable domain.
-    normalized_name: Mapped[str] = mapped_column(String(160), index=True, nullable=False, default="")
+    normalized_name: Mapped[str] = mapped_column(
+        String(160), index=True, nullable=False, default=""
+    )
 
     # Registrable-ish hostname, lowercased, without scheme, port, path, "www."
     # or leading "m." — the single most reliable cross-provider identity signal.

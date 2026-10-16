@@ -79,9 +79,7 @@ class AffiliateProgram(Base, UUIDPKMixin, TimestampMixin):
         # One program per (merchant, provider, country). A merchant may have
         # different terms per market, but not two active programs in the same
         # market on the same provider.
-        UniqueConstraint(
-            "merchant_id", "provider_id", "country", name="uq_affiliate_program"
-        ),
+        UniqueConstraint("merchant_id", "provider_id", "country", name="uq_affiliate_program"),
         # "All active programs for this merchant" — the router's primary lookup.
         Index("ix_affiliate_programs_merchant_status", "merchant_id", "status"),
         # "All active programs on this provider" — for provider health dashboards.
@@ -137,9 +135,7 @@ class AffiliateProgram(Base, UUIDPKMixin, TimestampMixin):
     )
 
     # When the merchant joined this program.
-    joined_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # When the program terms were last verified with the provider.
     last_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

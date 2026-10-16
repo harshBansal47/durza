@@ -130,15 +130,9 @@ class AffiliateRevenue(Base, UUIDPKMixin, TimestampMixin):
     )
 
     # ---- Dates -----------------------------------------------------------
-    conversion_date: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    reported_date: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    confirmed_date: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    conversion_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reported_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    confirmed_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # ---- Normalized revenue (optional) -----------------------------------
     # When revenue needs to be compared across currencies, the normalized

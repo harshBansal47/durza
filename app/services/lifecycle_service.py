@@ -228,9 +228,7 @@ async def _run_target(target: _Target) -> IngestionRun | None:
     return await refresh_source(target.source_id, triggered_by="scheduler")
 
 
-def _summarise(
-    targets: list[_Target], results: list[IngestionRun | None | Exception]
-) -> int:
+def _summarise(targets: list[_Target], results: list[IngestionRun | None | Exception]) -> int:
     """Log every outcome and count the successes. Never raises."""
     succeeded = 0
     for target, result in zip(targets, results, strict=True):

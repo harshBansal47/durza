@@ -229,9 +229,7 @@ def test_a_naive_last_sync_at_is_read_as_utc() -> None:
     # `timestamptz` columns. Comparing that with an aware `now()` raises
     # `TypeError` deep inside a function that has nothing to do with timezones.
     now = datetime.now(UTC)
-    source = _unsaved_source(
-        last_sync_at=(now - timedelta(minutes=500)).replace(tzinfo=None)
-    )
+    source = _unsaved_source(last_sync_at=(now - timedelta(minutes=500)).replace(tzinfo=None))
     assert is_source_due(source, now=now) is True
 
 
@@ -293,9 +291,7 @@ async def test_a_disabled_source_is_not_swept_at_all(async_session_maker, catego
     assert await _coupon_titles(async_session_maker) == set()
 
 
-async def test_one_failing_source_does_not_stop_the_others(
-    async_session_maker, category
-) -> None:
+async def test_one_failing_source_does_not_stop_the_others(async_session_maker, category) -> None:
     # Ordered by slug, so the broken one is genuinely in the middle: a shared
     # session would leave every source after it failing for the wrong reason.
     await _add_source(async_session_maker, slug="a-ok", offers=[_offer("ashop")])
@@ -404,9 +400,7 @@ async def test_a_partial_run_is_not_counted_as_a_success(
     assert await _coupon_titles(async_session_maker) == {"Kept deal"}
 
 
-async def test_a_sweep_with_nothing_due_still_says_so(
-    async_session_maker, caplog
-) -> None:
+async def test_a_sweep_with_nothing_due_still_says_so(async_session_maker, caplog) -> None:
     # Silence here would be indistinguishable from a scheduler that stopped.
     await _add_source(
         async_session_maker,
@@ -418,9 +412,7 @@ async def test_a_sweep_with_nothing_due_still_says_so(
     async with async_session_maker() as db:
         assert await refresh_coupon_prices(db) == 0
 
-    assert any(
-        "source refresh sweep starting" in r.getMessage() for r in caplog.records
-    )
+    assert any("source refresh sweep starting" in r.getMessage() for r in caplog.records)
 
 
 async def test_the_sweep_does_not_hold_its_read_transaction_open(
@@ -482,9 +474,7 @@ async def test_refresh_source_releases_its_lock_even_when_ingestion_raises(
 
 
 async def test_refresh_source_stamps_the_run_with_who_asked(async_session_maker, category) -> None:
-    source_id = await _add_source(
-        async_session_maker, slug="traced", offers=[_offer("traceshop")]
-    )
+    source_id = await _add_source(async_session_maker, slug="traced", offers=[_offer("traceshop")])
     await lifecycle_service.refresh_source(source_id, triggered_by="admin")
     assert [r.triggered_by for r in await _runs(async_session_maker, source_id)] == ["admin"]
 

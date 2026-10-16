@@ -83,15 +83,9 @@ class SponsoredCampaign(Base, UUIDPKMixin, TimestampMixin):
         server_default=CampaignStatus.draft.value,
         nullable=False,
     )
-    start_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    end_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    budget: Mapped[float | None] = mapped_column(
-        Numeric(12, 2, asdecimal=False), nullable=True
-    )
+    start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    budget: Mapped[float | None] = mapped_column(Numeric(12, 2, asdecimal=False), nullable=True)
     currency: Mapped[str] = mapped_column(
         String(3), default="USD", server_default="USD", nullable=False
     )
@@ -143,12 +137,8 @@ class SponsoredPlacement(Base, UUIDPKMixin, TimestampMixin):
     status: Mapped[str] = mapped_column(
         String(20), default="active", server_default="active", nullable=False
     )
-    start_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    end_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Frequency capping: max impressions per visitor per day
     max_impressions_per_visitor_per_day: Mapped[int] = mapped_column(
         Integer, default=3, server_default="3", nullable=False

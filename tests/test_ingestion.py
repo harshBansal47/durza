@@ -412,9 +412,7 @@ async def test_creating_a_merchant_does_not_expire_the_caller_s_own_objects(
         assert match.store.slug == "freshshop"
 
 
-async def test_two_merchants_without_a_domain_are_not_collapsed(
-    async_session_maker, category
-):
+async def test_two_merchants_without_a_domain_are_not_collapsed(async_session_maker, category):
     # `normalized_domain` is nullable and both databases treat NULLs as distinct,
     # which is what lets a provider that gives a name but no usable domain still
     # get its own row. The `ON CONFLICT (normalized_domain)` in

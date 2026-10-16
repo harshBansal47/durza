@@ -102,7 +102,9 @@ class Source(Base, UUIDPKMixin, TimestampMixin):
     # Lower number wins a metadata conflict (0 = most trusted). Kept as an
     # explicit integer rather than derived from `kind` so operators can express
     # "we trust this advertiser's CJ feed more than their Rakuten feed".
-    priority: Mapped[int] = mapped_column(Integer, default=100, server_default="100", nullable=False)
+    priority: Mapped[int] = mapped_column(
+        Integer, default=100, server_default="100", nullable=False
+    )
 
     # 0..1. How much this provider's *own metadata* is trusted when resolving
     # conflicts, after priority. Separated from priority because a provider can

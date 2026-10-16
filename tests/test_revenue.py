@@ -159,9 +159,7 @@ async def test_revenue_cascade_delete_store(async_session_maker):
 
     # Revenue should still exist with NULL merchant_id
     async with async_session_maker() as db:
-        result = await db.execute(
-            select(AffiliateRevenue).where(AffiliateRevenue.id == revenue_id)
-        )
+        result = await db.execute(select(AffiliateRevenue).where(AffiliateRevenue.id == revenue_id))
         rev = result.scalar_one_or_none()
         assert rev is not None
         assert rev.merchant_id is None
@@ -278,9 +276,7 @@ async def test_revenue_event_cascade_delete_store(async_session_maker):
 
     # Revenue event should still exist with NULL merchant_id
     async with async_session_maker() as db:
-        result = await db.execute(
-            select(RevenueEvent).where(RevenueEvent.id == event_id)
-        )
+        result = await db.execute(select(RevenueEvent).where(RevenueEvent.id == event_id))
         ev = result.scalar_one_or_none()
         assert ev is not None
         assert ev.merchant_id is None

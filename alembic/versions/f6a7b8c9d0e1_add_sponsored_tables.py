@@ -5,8 +5,10 @@ Revises: e5f6a7b8c9d0
 Create Date: 2026-10-04 20:00:00.000000
 
 """
-from alembic import op
+
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "f6a7b8c9d0e1"
 down_revision = "e5f6a7b8c9d0"
@@ -32,14 +34,32 @@ def upgrade() -> None:
         sa.Column("priority", sa.Integer(), nullable=False, server_default="100"),
         sa.Column(
             "campaign_model",
-            sa.Enum("cpm", "cpc", "cpa", "fixed_placement", "fixed_monthly", name="campaign_model", native_enum=True),
+            sa.Enum(
+                "cpm",
+                "cpc",
+                "cpa",
+                "fixed_placement",
+                "fixed_monthly",
+                name="campaign_model",
+                native_enum=True,
+            ),
             server_default="fixed_placement",
             nullable=False,
         ),
         sa.Column("targeting_rules", sa.JSON(), nullable=True),
         sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["merchant_id"], ["stores.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -50,7 +70,16 @@ def upgrade() -> None:
         sa.Column("merchant_id", sa.Uuid(), nullable=False),
         sa.Column(
             "placement_type",
-            sa.Enum("homepage", "merchant_page", "category_page", "search", "coupon_list", "featured_section", name="placement_type", native_enum=True),
+            sa.Enum(
+                "homepage",
+                "merchant_page",
+                "category_page",
+                "search",
+                "coupon_list",
+                "featured_section",
+                name="placement_type",
+                native_enum=True,
+            ),
             nullable=False,
         ),
         sa.Column("page_type", sa.String(length=50), nullable=False),
@@ -60,10 +89,22 @@ def upgrade() -> None:
         sa.Column("status", sa.String(length=20), nullable=False, server_default="active"),
         sa.Column("start_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("end_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("max_impressions_per_visitor_per_day", sa.Integer(), nullable=False, server_default="3"),
+        sa.Column(
+            "max_impressions_per_visitor_per_day", sa.Integer(), nullable=False, server_default="3"
+        ),
         sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["campaign_id"], ["sponsored_campaigns.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["merchant_id"], ["stores.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -75,8 +116,18 @@ def upgrade() -> None:
         sa.Column("merchant_id", sa.Uuid(), nullable=False),
         sa.Column("coupon_id", sa.Uuid(), nullable=True),
         sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["campaign_id"], ["sponsored_campaigns.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["merchant_id"], ["stores.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["coupon_id"], ["coupons.id"], ondelete="SET NULL"),

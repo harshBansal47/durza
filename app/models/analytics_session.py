@@ -89,12 +89,8 @@ class AnalyticsSession(Base, UUIDPKMixin, TimestampMixin):
     visitor_id: Mapped[str] = mapped_column(String(64), nullable=False)
 
     # When the session started and was last seen.
-    started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    last_seen_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     # ---- Landing page ---------------------------------------------------
     landing_page: Mapped[str | None] = mapped_column(String(500), nullable=True)

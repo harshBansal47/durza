@@ -133,6 +133,7 @@ async def test_probe_gives_up_after_retries(monkeypatch):
     assert reason is not None
     assert calls["n"] == 3
 
+
 def _awin_credentials(key: str = "test_key"):
     """The Awin API key, resolved the way the pipeline resolves it.
 
@@ -280,7 +281,15 @@ async def test_awin_source_maps_deal_to_raw_offer():
 @pytest.mark.asyncio
 async def test_awin_source_paginates_through_multiple_pages():
     # The adapter should keep fetching until an empty page.
-    page1 = [{"id": str(i), "title": f"Deal {i}", "voucherCode": f"CODE{i}", "deepLink": f"https://x/{i}"} for i in range(3)]
+    page1 = [
+        {
+            "id": str(i),
+            "title": f"Deal {i}",
+            "voucherCode": f"CODE{i}",
+            "deepLink": f"https://x/{i}",
+        }
+        for i in range(3)
+    ]
     page2 = [{"id": "3", "title": "Deal 3", "voucherCode": "CODE3", "deepLink": "https://x/3"}]
     page3: list[dict] = []
 
@@ -364,9 +373,7 @@ async def test_awin_source_requires_credentials():
 
     # A credential that resolved to nothing.
     with pytest.raises(ValueError, match="requires an API key"):
-        await source.fetch(
-            {"publisher_id": 123}, credentials=SourceCredentials()
-        )
+        await source.fetch({"publisher_id": 123}, credentials=SourceCredentials())
 
     # Credential present, publisher_id missing.
     with pytest.raises(ValueError, match="requires 'publisher_id'"):

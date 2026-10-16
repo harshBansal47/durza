@@ -25,9 +25,7 @@ async def find_attribution_by_click(
     click_id: str,
 ) -> Attribution | None:
     """Find an existing attribution record by click ID."""
-    result = await db.execute(
-        select(Attribution).where(Attribution.click_id == click_id)
-    )
+    result = await db.execute(select(Attribution).where(Attribution.click_id == click_id))
     return result.scalar_one_or_none()
 
 
@@ -85,9 +83,7 @@ async def record_conversion_attribution(
         return None
 
     # Find the matching click
-    result = await db.execute(
-        select(ClickEvent).where(ClickEvent.clickref == conversion.clickref)
-    )
+    result = await db.execute(select(ClickEvent).where(ClickEvent.clickref == conversion.clickref))
     click = result.scalar_one_or_none()
     if not click:
         return None

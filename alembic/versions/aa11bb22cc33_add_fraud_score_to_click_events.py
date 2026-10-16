@@ -5,8 +5,10 @@ Revises: f6a7b8c9d0e1
 Create Date: 2026-10-04 21:00:00.000000
 
 """
-from alembic import op
+
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "aa11bb22cc33"
 down_revision = "f6a7b8c9d0e1"
@@ -15,7 +17,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("click_events", sa.Column("fraud_score", sa.Float(), server_default="0.0", nullable=False))
+    op.add_column(
+        "click_events", sa.Column("fraud_score", sa.Float(), server_default="0.0", nullable=False)
+    )
 
 
 def downgrade() -> None:

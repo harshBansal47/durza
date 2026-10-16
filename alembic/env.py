@@ -22,6 +22,7 @@ from app.models import affiliate_destination as _affiliate_destination  # noqa: 
 from app.models import affiliate_program as _affiliate_program  # noqa: F401
 from app.models import affiliate_provider as _affiliate_provider  # noqa: F401
 from app.models import affiliate_revenue as _affiliate_revenue  # noqa: F401
+from app.models import analytics_event as _analytics_event  # noqa: F401
 from app.models import analytics_session as _analytics_session  # noqa: F401
 from app.models import attribution as _attribution  # noqa: F401
 from app.models import base as _base  # noqa: F401
@@ -29,7 +30,6 @@ from app.models import category as _category  # noqa: F401
 from app.models import click as _click  # noqa: F401
 from app.models import conversion as _conversion  # noqa: F401
 from app.models import coupon as _coupon  # noqa: F401
-from app.models import analytics_event as _analytics_event  # noqa: F401
 from app.models import coupon_impression as _coupon_impression  # noqa: F401
 from app.models import coupon_source as _coupon_source  # noqa: F401
 from app.models import coupon_verification as _coupon_verification  # noqa: F401
@@ -82,9 +82,7 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection) -> None:
-    context.configure(
-        connection=connection, target_metadata=target_metadata, **COMPARE_OPTIONS
-    )
+    context.configure(connection=connection, target_metadata=target_metadata, **COMPARE_OPTIONS)
     with context.begin_transaction():
         context.run_migrations()
 

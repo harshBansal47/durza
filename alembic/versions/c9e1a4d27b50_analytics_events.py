@@ -5,9 +5,10 @@ Revises: b3c4d5e6f7a8
 Create Date: 2026-10-06 12:00:00.000000
 
 """
-from alembic import op
+
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "c9e1a4d27b50"
@@ -28,7 +29,10 @@ def upgrade() -> None:
         sa.Column("page_type", sa.String(length=30), nullable=True),
         sa.Column("props", sa.JSON(), nullable=True),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.PrimaryKeyConstraint("id"),
     )

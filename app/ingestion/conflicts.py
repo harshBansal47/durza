@@ -196,7 +196,7 @@ def resolve(claims: list[SourceClaim]) -> ResolvedCoupon:
     title = take(lambda o: o.title or None, "title", ordered[0].offer.title)
     description = take(lambda o: o.description or None, "description", None)
     discount_type = take(
-        lambda o: (o.discount_type if o.discount_value is not None or o.discount_type else None),
+        lambda o: o.discount_type if o.discount_value is not None or o.discount_type else None,
         "discount_type",
         ordered[0].offer.discount_type,
     )
@@ -484,12 +484,15 @@ def resolve_from_stored(
       trusted source *period*: a priority-1 source that sent no URL must not
       leave the coupon pointing at a priority-50 fallback.
     """
-    pool = [*stored, StoredClaim(
-        source=incoming_source,
-        source_expires_at=incoming_expires_at,
-        affiliate_url=incoming_destination,
-        status=CouponSourceStatus.active,
-    )]
+    pool = [
+        *stored,
+        StoredClaim(
+            source=incoming_source,
+            source_expires_at=incoming_expires_at,
+            affiliate_url=incoming_destination,
+            status=CouponSourceStatus.active,
+        ),
+    ]
     ordered = sorted(pool, key=lambda c: c.source.precedence)
 
     # ---- Expiry ------------------------------------------------------------
@@ -505,9 +508,7 @@ def resolve_from_stored(
     if stated:
         best_priority = stated[0].source.priority
         tier = [
-            ensure_utc(c.source_expires_at)
-            for c in stated
-            if c.source.priority == best_priority
+            ensure_utc(c.source_expires_at) for c in stated if c.source.priority == best_priority
         ]
         expires_at = min(tier)
 

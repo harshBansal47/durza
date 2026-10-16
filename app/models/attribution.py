@@ -123,17 +123,11 @@ class Attribution(Base, UUIDPKMixin, TimestampMixin):
 
     # ---- Timestamps -----------------------------------------------------
     # When the first touch happened (first impression or click in this session).
-    first_touch_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    first_touch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # When the last touch happened (last click before conversion).
-    last_touch_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_touch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # When the conversion was recorded.
-    converted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    converted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # ---- Attribution window ----------------------------------------------
     # Maximum days between click and conversion for attribution to be valid.

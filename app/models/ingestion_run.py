@@ -81,9 +81,7 @@ class IngestionRun(Base, UUIDPKMixin, TimestampMixin):
     # Folded into a coupon another source had already provided. Not an error —
     # it is the dedupe layer doing its job, and the ratio is a direct measure of
     # how much redundancy the multi-source setup is actually absorbing.
-    duplicated: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False
-    )
+    duplicated: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     # Fetched and parsed fine, then rejected by validation: bad URL, impossible
     # discount, unknown category. The data was well-formed and unusable.
     # No server_default, matching the `fetched`/`created`/`updated` counters
@@ -94,9 +92,7 @@ class IngestionRun(Base, UUIDPKMixin, TimestampMixin):
     # Could not be parsed at all. Worth separating from `failed` because a spike
     # here means the provider changed their payload shape, not that the data was
     # bad — a completely different fix.
-    malformed: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False
-    )
+    malformed: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     # Expired on arrival — ingested and immediately retired, kept for history.
     expired: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
 

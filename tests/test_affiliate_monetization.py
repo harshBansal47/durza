@@ -328,7 +328,9 @@ async def test_program_relationships(async_session_maker):
         result = await db.execute(
             select(AffiliateProgram)
             .where(AffiliateProgram.id == program.id)
-            .options(selectinload(AffiliateProgram.merchant), selectinload(AffiliateProgram.provider))
+            .options(
+                selectinload(AffiliateProgram.merchant), selectinload(AffiliateProgram.provider)
+            )
         )
         loaded = result.scalar_one()
         assert loaded.merchant.id == store.id

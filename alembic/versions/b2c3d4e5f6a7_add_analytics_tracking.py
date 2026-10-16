@@ -5,8 +5,10 @@ Revises: a1b2c3d4e5f6
 Create Date: 2026-10-04 18:00:00.000000
 
 """
-from alembic import op
+
 import sqlalchemy as sa
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "b2c3d4e5f6a7"
@@ -42,15 +44,32 @@ def upgrade() -> None:
         sa.Column(
             "traffic_source",
             sa.Enum(
-                "seo", "direct", "social", "email", "referral", "paid", "other",
-                name="traffic_source", native_enum=True,
+                "seo",
+                "direct",
+                "social",
+                "email",
+                "referral",
+                "paid",
+                "other",
+                name="traffic_source",
+                native_enum=True,
             ),
             server_default="direct",
             nullable=False,
         ),
         sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_analytics_sessions_visitor", "analytics_sessions", ["visitor_id"])
@@ -67,9 +86,16 @@ def upgrade() -> None:
         sa.Column(
             "page_type",
             sa.Enum(
-                "coupon_card", "coupon_detail", "merchant_page", "category_page",
-                "search_results", "homepage", "featured_section", "sponsored_section",
-                name="impression_type", native_enum=True,
+                "coupon_card",
+                "coupon_detail",
+                "merchant_page",
+                "category_page",
+                "search_results",
+                "homepage",
+                "featured_section",
+                "sponsored_section",
+                name="impression_type",
+                native_enum=True,
             ),
             nullable=False,
         ),
@@ -88,9 +114,17 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["merchant_id"], ["stores.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_coupon_impressions_coupon_created", "coupon_impressions", ["coupon_id", "created_at"])
-    op.create_index("ix_coupon_impressions_page_type_created", "coupon_impressions", ["page_type", "created_at"])
-    op.create_index("ix_coupon_impressions_merchant_created", "coupon_impressions", ["merchant_id", "created_at"])
+    op.create_index(
+        "ix_coupon_impressions_coupon_created", "coupon_impressions", ["coupon_id", "created_at"]
+    )
+    op.create_index(
+        "ix_coupon_impressions_page_type_created", "coupon_impressions", ["page_type", "created_at"]
+    )
+    op.create_index(
+        "ix_coupon_impressions_merchant_created",
+        "coupon_impressions",
+        ["merchant_id", "created_at"],
+    )
     op.create_index("ix_coupon_impressions_source", "coupon_impressions", ["source"])
 
 
