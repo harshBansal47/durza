@@ -292,9 +292,7 @@ def compute_quality(
     if total_weight <= 0:
         return 0, {name: 0.0 for name in present}
 
-    breakdown = {
-        name: round(value * w[name] / total_weight, 4) for name, value in present.items()
-    }
+    breakdown = {name: round(value * w[name] / total_weight, 4) for name, value in present.items()}
     score = round(sum(breakdown.values()) * 100)
     return max(0, min(100, score)), breakdown
 

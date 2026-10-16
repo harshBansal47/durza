@@ -59,9 +59,7 @@ async def create_password_reset_token(db: AsyncSession, email: str) -> str | Non
     # Invalidate any existing tokens for this user
     from sqlalchemy import delete
 
-    await db.execute(
-        delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id)
-    )
+    await db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
 
     plain_token = secrets.token_urlsafe(32)
     import hashlib

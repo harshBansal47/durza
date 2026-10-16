@@ -239,7 +239,9 @@ def _resolve_expiry(ordered: list[SourceClaim]) -> ResolutionDecision | None:
     dates = {claim.source.slug: claim.offer.expires_at for claim in tier}
     # Conflicting claims at the same priority: take the earliest so the shopper
     # is never sent to a code that has already stopped working.
-    chosen_slug = min(tier, key=lambda claim: claim.offer.expires_at or datetime.max.replace(tzinfo=UTC)).source.slug
+    chosen_slug = min(
+        tier, key=lambda claim: claim.offer.expires_at or datetime.max.replace(tzinfo=UTC)
+    ).source.slug
 
     unknown_at_tier = [
         claim.source.slug
@@ -270,14 +272,18 @@ def _resolve_starts(ordered: list[SourceClaim]) -> ResolutionDecision | None:
     stated = [claim for claim in ordered if claim.offer.starts_at is not None]
     if not stated:
         return None
-    chosen = min(stated, key=lambda claim: claim.offer.starts_at or datetime.max.replace(tzinfo=UTC))
+    chosen = min(
+        stated, key=lambda claim: claim.offer.starts_at or datetime.max.replace(tzinfo=UTC)
+    )
     return ResolutionDecision(
         field_name="starts_at",
         chosen=chosen.offer.starts_at,
         chosen_from=chosen.source.slug,
         reason="earliest start among sources that stated one",
         alternatives={
-            claim.source.slug: claim.offer.starts_at.isoformat() if claim.offer.starts_at is not None else "not stated"
+            claim.source.slug: claim.offer.starts_at.isoformat()
+            if claim.offer.starts_at is not None
+            else "not stated"
             for claim in stated
             if claim.source.slug != chosen.source.slug
         },
@@ -510,7 +516,9 @@ def resolve_from_stored(
     if stated:
         best_priority = stated[0].source.priority
         tier = [
-            ensure_utc(c.source_expires_at) for c in stated if c.source.priority == best_priority and c.source_expires_at is not None
+            ensure_utc(c.source_expires_at)
+            for c in stated
+            if c.source.priority == best_priority and c.source_expires_at is not None
         ]
         expires_at = min(tier)
 
