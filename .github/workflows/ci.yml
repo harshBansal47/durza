@@ -1,100 +1,100 @@
-name: ci
+  name: ci
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-  workflow_dispatch:
+  on:
+    push:
+      branches: [main]
+    pull_request:
+    workflow_dispatch:
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: true
 
-jobs:
-  backend:
-    name: backend
-    runs-on: ubuntu-latest
+  jobs:
+    backend:
+      name: backend
+      runs-on: ubuntu-latest
 
-    # Tests use a throwaway Postgres inside CI, never your Neon database.
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: durza
-          POSTGRES_PASSWORD: durza
-          POSTGRES_DB: durza_test
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U durza"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+      # Tests use a throwaway Postgres inside CI, never your Neon database.
+      services:
+        postgres:
+          image: postgres:16-alpine
+          env:
+            POSTGRES_USER: durza
+            POSTGRES_PASSWORD: durza
+            POSTGRES_DB: durza_test
+          ports: ["5432:5432"]
+          options: >-
+            --health-cmd "pg_isready -U durza"
+            --health-interval 5s
+            --health-timeout 5s
+            --health-retries 10
 
-    steps:
-      - uses: actions/checkout@v4
+      steps:
+        - uses: actions/checkout@v4
 
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
+        - uses: astral-sh/setup-uv@v5
+          with:
+            enable-cache: true
+            cache-dependency-glob: "uv.lock"
 
-      - name: Install
-        run: uv sync --frozen --extra dev
+        - name: Install
+          run: uv sync --frozen --extra dev
 
-      - name: Ruff lint
-        run: uv run ruff check app/ tests/ mcp_server/
+        - name: Ruff lint
+          run: uv run ruff check app/ tests/ mcp_server/
 
-      - name: Ruff format check
-        run: uv run ruff format --check app/ tests/ mcp_server/
+        - name: Ruff format check
+          run: uv run ruff format --check app/ tests/ mcp_server/
 
-      - name: Type check
-        run: uv run mypy app --ignore-missing-imports --no-strict-optional
+        - name: Type check
+          run: uv run mypy app --ignore-missing-imports --no-strict-optional
 
-      - name: Tests
-        env:
-          TEST_DATABASE_URL: postgresql+asyncpg://durza:durza@localhost:5432/durza_test
-          ENVIRONMENT: test
-          SCHEDULER_ENABLED: "false"
-        run: uv run pytest tests/ -q --cov=app
+        - name: Tests
+          env:
+            TEST_DATABASE_URL: postgresql+asyncpg://durza:durza@localhost:5432/durza_test
+            ENVIRONMENT: test
+            SCHEDULER_ENABLED: "false"
+          run: uv run pytest tests/ -q --cov=app
 
-      - name: Destructive-migration guard
-        run: uv run python scripts/check_destructive_migrations.py
+        - name: Destructive-migration guard
+          run: uv run python scripts/check_destructive_migrations.py
 
-      - name: Migrations apply cleanly to an empty database
-        env:
-          DATABASE_URL: postgresql+asyncpg://durza:durza@localhost:5432/durza_test
-        run: uv run alembic upgrade head
+        - name: Migrations apply cleanly to an empty database
+          env:
+            DATABASE_URL: postgresql+asyncpg://durza:durza@localhost:5432/durza_test
+          run: uv run alembic upgrade head
 
-      - name: Models and migrations have not drifted
-        run: |
-          uv run alembic check || (
-            echo "::error::Models have changed without a migration. Run 'alembic revision --autogenerate -m ...'."
-            exit 1
-          )
+        - name: Models and migrations have not drifted
+          run: |
+            uv run alembic check || (
+              echo "::error::Models have changed without a migration. Run 'alembic revision --autogenerate -m ...'."
+              exit 1
+            )
 
-  deploy:
-    name: deploy
-    needs: backend
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    env:
-      VM_HOST: ${{ secrets.VM_HOST }}
-      VM_USER: ${{ secrets.VM_USER }}
-      VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+    deploy:
+      name: deploy
+      needs: backend
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      runs-on: ubuntu-latest
+      env:
+        VM_HOST: ${{ secrets.VM_HOST }}
+        VM_USER: ${{ secrets.VM_USER }}
+        VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
 
-    steps:
-      - name: Set up SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "$VM_SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts
+      steps:
+        - name: Set up SSH
+          run: |
+            mkdir -p ~/.ssh
+            echo "$VM_SSH_KEY" > ~/.ssh/id_ed25519
+            chmod 600 ~/.ssh/id_ed25519
+            ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts
 
-      # The VM's own .env holds the Neon and Upstash URLs.
-      - name: Pull, rebuild, migrate
-        run: |
-          ssh "$VM_USER@$VM_HOST" "cd ~/durza \
-            && git pull origin main \
-            && podman-compose up -d --build \
-            && podman-compose exec -T app alembic upgrade head \
-            && podman image prune -f"
+        # The VM's own .env holds the Neon and Upstash URLs.
+        - name: Pull, rebuild, migrate
+          run: |
+            ssh "$VM_USER@$VM_HOST" "cd ~/durza \
+              && git pull origin main \
+              && podman-compose up -d --build \
+              && podman-compose exec -T app alembic upgrade head \
+              && podman image prune -f"

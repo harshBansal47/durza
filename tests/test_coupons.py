@@ -113,13 +113,12 @@ async def test_offer_shape_and_trust_filters(client, admin_headers):
             headers=admin_headers,
         )
     ).json()
-    fixed = (
-        await client.post(
-            API,
-            json=_payload(store_id, cat_id, title="Flat amount off", discount_type="fixed", discount_value=500),
-            headers=admin_headers,
-        )
-    ).json()
+    # Fixed-amount coupon — created for the discount_type filter assertions below.
+    await client.post(
+        API,
+        json=_payload(store_id, cat_id, title="Flat amount off", discount_type="fixed", discount_value=500),
+        headers=admin_headers,
+    )
 
     # One confirmation behind the coded coupon, one failed report behind the deal,
     # so the success-rate filter has something to separate.
