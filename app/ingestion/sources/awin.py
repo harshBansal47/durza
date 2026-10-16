@@ -147,7 +147,7 @@ class AwinSource:
                         try:
                             page_params = {**params, "page": page, "pageSize": page_size}
                             results = await with_retries(
-                                lambda: _page(endpoint, page_params),
+                                lambda ep=endpoint, p=page_params: _page(ep, p),
                                 retryable=(httpx.HTTPError, TypeError),
                             )
                         except (httpx.HTTPError, TypeError) as exc:
