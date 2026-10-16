@@ -69,7 +69,7 @@ class ResolutionDecision:
     from an agreed one, and the next person to investigate has to re-derive it.
     """
 
-    field: str
+    field_name: str
     chosen: Any
     chosen_from: str | None
     reason: str
@@ -97,7 +97,7 @@ class ResolvedCoupon:
     def as_audit(self) -> dict[str, Any]:
         """The decisions, shaped for `raw_data` and the admin conflict view."""
         return {
-            decision.field: {
+            decision.field_name: {
                 "chosen": decision.chosen,
                 "from": decision.chosen_from,
                 "reason": decision.reason,
@@ -144,7 +144,7 @@ def _first_supplied(
         reason = "highest-priority source that supplied a value"
     chosen = getter(winner.offer)
     return ResolutionDecision(
-        field=field_name,
+        field_name=field_name,
         chosen=chosen,
         chosen_from=winner.source.slug,
         reason=reason,
@@ -183,7 +183,7 @@ def resolve(claims: list[SourceClaim]) -> ResolvedCoupon:
         if decision is None:
             decisions.append(
                 ResolutionDecision(
-                    field=field_name,
+                    field_name=field_name,
                     chosen=default,
                     chosen_from=None,
                     reason="no source supplied this field",
@@ -239,7 +239,7 @@ def _resolve_expiry(ordered: list[SourceClaim]) -> ResolutionDecision | None:
     dates = {claim.source.slug: claim.offer.expires_at for claim in tier}
     # Conflicting claims at the same priority: take the earliest so the shopper
     # is never sent to a code that has already stopped working.
-    chosen_slug = min(tier, key=lambda claim: claim.offer.expires_at).source.slug
+    chosen_slug = min(tier, key=lambda claim: claim.offer.expires_at or datetime.max.replace(tzinfo=UTC)).source.slug
 
     unknown_at_tier = [
         claim.source.slug
@@ -248,7 +248,7 @@ def _resolve_expiry(ordered: list[SourceClaim]) -> ResolutionDecision | None:
     ]
 
     return ResolutionDecision(
-        field="expires_at",
+        field_name="expires_at",
         chosen=dates[chosen_slug],
         chosen_from=chosen_slug,
         reason=(
@@ -256,7 +256,9 @@ def _resolve_expiry(ordered: list[SourceClaim]) -> ResolutionDecision | None:
             "a source with no expiry never erases a known one"
         ),
         alternatives={
-            slug: value.isoformat() for slug, value in dates.items() if slug != chosen_slug
+            slug: value.isoformat() if value is not None else "not stated"
+            for slug, value in dates.items()
+            if slug != chosen_slug
         }
         | {slug: "not stated" for slug in unknown_at_tier},
         conflict=len(set(dates.values())) > 1,
@@ -268,14 +270,14 @@ def _resolve_starts(ordered: list[SourceClaim]) -> ResolutionDecision | None:
     stated = [claim for claim in ordered if claim.offer.starts_at is not None]
     if not stated:
         return None
-    chosen = min(stated, key=lambda claim: claim.offer.starts_at)
+    chosen = min(stated, key=lambda claim: claim.offer.starts_at or datetime.max.replace(tzinfo=UTC))
     return ResolutionDecision(
-        field="starts_at",
+        field_name="starts_at",
         chosen=chosen.offer.starts_at,
         chosen_from=chosen.source.slug,
         reason="earliest start among sources that stated one",
         alternatives={
-            claim.source.slug: claim.offer.starts_at.isoformat()
+            claim.source.slug: claim.offer.starts_at.isoformat() if claim.offer.starts_at is not None else "not stated"
             for claim in stated
             if claim.source.slug != chosen.source.slug
         },
@@ -508,7 +510,7 @@ def resolve_from_stored(
     if stated:
         best_priority = stated[0].source.priority
         tier = [
-            ensure_utc(c.source_expires_at) for c in stated if c.source.priority == best_priority
+            ensure_utc(c.source_expires_at) for c in stated if c.source.priority == best_priority and c.source_expires_at is not None
         ]
         expires_at = min(tier)
 

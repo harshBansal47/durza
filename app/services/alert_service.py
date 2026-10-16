@@ -87,12 +87,12 @@ def _build_alert(
     match kind:
         case AlertKind.target_met:
             return AlertContent(
-                subject=f"{product.name} reached your target of {_money(target, product.currency)}",
+                subject=f"{product.name} reached your target of {_money(target or 0, product.currency)}",
                 preheader=f"Now {price_line}",
                 headline="Your target was met",
                 detail=(
                     f"{product.name} is now {_money(eff, product.currency)}, at or below the "
-                    f"{_money(target, product.currency)} you asked us to watch for."
+                    f"{_money(target or 0, product.currency)} you asked us to watch for."
                 ),
                 cta_label="See the price",
                 cta_url=url,

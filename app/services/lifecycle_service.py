@@ -207,7 +207,7 @@ async def refresh_coupon_prices(db: AsyncSession, *, force: bool = False) -> int
     if not targets:
         return 0
 
-    results: list[IngestionRun | None | Exception]
+    results: list[IngestionRun | BaseException | None]
     if _supports_concurrent_sessions(db):
         results = await asyncio.gather(
             *(_run_target(target) for target in targets),
@@ -228,7 +228,7 @@ async def _run_target(target: _Target) -> IngestionRun | None:
     return await refresh_source(target.source_id, triggered_by="scheduler")
 
 
-def _summarise(targets: list[_Target], results: list[IngestionRun | None | Exception]) -> int:
+def _summarise(targets: list[_Target], results: list[IngestionRun | None | BaseException]) -> int:
     """Log every outcome and count the successes. Never raises."""
     succeeded = 0
     for target, result in zip(targets, results, strict=True):
@@ -242,7 +242,7 @@ def _summarise(targets: list[_Target], results: list[IngestionRun | None | Excep
                 exc_info=result,
             )
             continue
-        if result is None:
+        if result is None or isinstance(result, BaseException):
             # Another worker holds this source's lock, or the row went away
             # between the SELECT and the run. `refresh_source` already logged
             # which; there is nothing left to add here.

@@ -265,7 +265,7 @@ async def get_or_create_session(
     # Set session cookie
     response.set_cookie(
         SESSION_COOKIE,
-        session.id,
+        str(session.id),
         max_age=SESSION_COOKIE_MAX_AGE,
         httponly=True,
         samesite="lax",

@@ -99,3 +99,14 @@ exclude_also = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[tool.mypy]
+ignore_missing_imports = true
+
+[dependency-groups]
+dev = [
+    "types-passlib>=1.7.7.20260211",
+    "types-python-jose>=3.5.0.20260408",
+    "types-pyyaml>=6.0.12.20260906",
+    "types-wtforms>=3.2.1.20260518",
+]

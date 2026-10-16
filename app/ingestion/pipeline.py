@@ -524,7 +524,10 @@ async def _managed_source(db: AsyncSession, source_id: Any) -> Source:
     refresh that undoes the attribute expiry a `rollback()` just caused — and
     issues one SELECT only when the caller handed us something detached.
     """
-    return await db.get(Source, source_id)
+    source = await db.get(Source, source_id)
+    if source is None:
+        raise RuntimeError(f"source {source_id} vanished between SELECT and run")
+    return source
 
 
 async def _record_failure(
@@ -824,6 +827,9 @@ async def _ingest_one(
         run.updated += 1 if is_own else 0
         run.duplicated += 0 if is_own else 1
 
+    if coupon is None:
+        raise RuntimeError("coupon vanished between identification and apply")
+
     await _apply_offer(
         db,
         coupon=coupon,
@@ -900,7 +906,7 @@ async def _apply_offer(
     network is one round trip per offer, all of it guaranteed to return nothing.
     """
     if is_new:
-        expires_at, destination, overridden = offer.expires_at, offer.destination_url, []
+        expires_at, destination, overridden = offer.expires_at, offer.destination_url, []  # type: ignore[var-annotated]
     else:
         stored = await conflicts.load_stored_claims(
             db, coupon.id, only=(CouponSourceStatus.active, CouponSourceStatus.expired)

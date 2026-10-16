@@ -202,7 +202,7 @@ async def _claim_domain(db: AsyncSession, created: Store, domain: str | None) ->
     factory = _INSERT_FACTORIES[dialect.name]
 
     stmt = (
-        factory(Store)
+        factory(Store)  # type: ignore[attr-defined]
         .values(
             id=created.id,
             name=created.name,
@@ -227,7 +227,10 @@ async def _claim_domain(db: AsyncSession, created: Store, domain: str | None) ->
         # Our own insert, read back so the caller gets a persistent instance.
         # One extra SELECT on the create path; the row cannot be built any other
         # way without letting the ORM flush, which is what this avoids.
-        return True, await db.get(Store, new_id)
+        store = await db.get(Store, new_id)
+        if store is None:
+            raise RuntimeError(f"insert of store {created.slug!r} succeeded but row vanished")
+        return True, store
 
     winner = await _by_domain(db, domain) if domain else None
     if winner is None:

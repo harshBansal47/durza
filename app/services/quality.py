@@ -268,7 +268,7 @@ def compute_quality(
     present. A coupon with no expiry and no clicks is not penalised for having
     no history; it is scored on what is actually known about it.
     """
-    weights = (weights or QualityWeights()).normalized()
+    w = (weights or QualityWeights()).normalized()
     now = now or datetime.now(UTC)
 
     samples = inputs.clicks_count if inputs.success_rate is not None else 0
@@ -288,12 +288,12 @@ def compute_quality(
     if not present:
         return 0, {}
 
-    total_weight = sum(weights[name] for name in present)
+    total_weight = sum(w[name] for name in present)
     if total_weight <= 0:
         return 0, {name: 0.0 for name in present}
 
     breakdown = {
-        name: round(value * weights[name] / total_weight, 4) for name, value in present.items()
+        name: round(value * w[name] / total_weight, 4) for name, value in present.items()
     }
     score = round(sum(breakdown.values()) * 100)
     return max(0, min(100, score)), breakdown
