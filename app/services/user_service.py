@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.security import hash_password, verify_password
+from app.core.timezones import ensure_utc
 from app.models.user import PasswordResetToken, Role, User
 from app.schemas.user import UserCreate, UserUpdate
 from app.services.email import ResetPasswordContent, send_reset_email
@@ -99,7 +100,11 @@ async def consume_password_reset_token(db: AsyncSession, token: str) -> User | N
     if reset_token is None:
         return None
 
-    if reset_token.expires_at < datetime.now(UTC):
+    # SQLite returns naive datetimes from `timestamptz` columns — see
+    # `app.core.timezones`. Without the coercion this comparison raises
+    # `TypeError` wherever the value comes back naive, which is every run of
+    # this suite.
+    if ensure_utc(reset_token.expires_at) < datetime.now(UTC):
         await db.delete(reset_token)
         await db.commit()
         return None

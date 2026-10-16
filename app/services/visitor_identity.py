@@ -20,6 +20,7 @@ preserving the original acquisition data for first-touch attribution.
 import secrets
 from datetime import UTC, datetime
 from urllib.parse import urlparse
+from uuid import UUID, uuid4
 
 from starlette.requests import Request
 from starlette.responses import Response
@@ -211,17 +212,24 @@ async def get_or_create_session(
     session_id = request.cookies.get(SESSION_COOKIE)
     visitor_id = request.cookies.get(VISITOR_COOKIE)
 
-    # Try to find an existing session
+    # Try to find an existing session. The cookie holds a UUID string; an
+    # older or foreign cookie value that is not a UUID simply misses and a
+    # new session is created rather than the request failing.
     if session_id:
-        result = await db_session.execute(
-            select(AnalyticsSession).where(AnalyticsSession.id == session_id)
-        )
-        existing = result.scalar_one_or_none()
-        if existing:
-            # Update last_seen_at
-            existing.last_seen_at = datetime.now(UTC)
-            await db_session.commit()
-            return existing
+        try:
+            session_uuid = UUID(session_id)
+        except ValueError:
+            session_uuid = None
+        if session_uuid is not None:
+            result = await db_session.execute(
+                select(AnalyticsSession).where(AnalyticsSession.id == session_uuid)
+            )
+            existing = result.scalar_one_or_none()
+            if existing:
+                # Update last_seen_at
+                existing.last_seen_at = datetime.now(UTC)
+                await db_session.commit()
+                return existing
 
     # Create new session
     utm_params = extract_utm_params(request)
@@ -241,7 +249,9 @@ async def get_or_create_session(
     device_type = detect_device_type(request.headers.get("user-agent"))
 
     session = AnalyticsSession(
-        id=session_id or generate_session_id(),
+        # The PK column is a UUID; `generate_session_id` produces the opaque
+        # 64-char cookie token, which is a different thing and cannot go here.
+        id=uuid4(),
         visitor_id=visitor_id or generate_visitor_id(),
         started_at=datetime.now(UTC),
         last_seen_at=datetime.now(UTC),
