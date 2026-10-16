@@ -1,6 +1,9 @@
 services:
   db:
-    image: postgres:16
+    # Fully qualified: the deploy host's podman defines no
+    # unqualified-search-registries, so a bare `postgres:16` dies with
+    # "short-name ... did not resolve to an alias".
+    image: docker.io/library/postgres:16
     environment:
       POSTGRES_USER: durza
       POSTGRES_PASSWORD: durza
@@ -16,7 +19,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7
+    image: docker.io/library/redis:7
     ports:
       - "6379:6379"
 

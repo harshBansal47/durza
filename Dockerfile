@@ -4,7 +4,7 @@ ARG PYTHON_VERSION=3.12
 
 
 # ---- Build stage -------------------------------------------------------------
-FROM python:${PYTHON_VERSION}-slim AS builder
+FROM docker.io/library/python:${PYTHON_VERSION}-slim AS builder
 
 WORKDIR /code
 
@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 
 # ---- Runtime stage -----------------------------------------------------------
-FROM python:${PYTHON_VERSION}-slim AS runtime
+FROM docker.io/library/python:${PYTHON_VERSION}-slim AS runtime
 
 WORKDIR /code
 
