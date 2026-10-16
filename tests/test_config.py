@@ -92,3 +92,49 @@ def test_scheduler_and_metrics_are_off_by_default():
     settings = Settings(environment="development", secret_key="change-me", database_url=DB)
     assert settings.scheduler_enabled is False
     assert settings.metrics_enabled is False
+
+
+# ---- Postgres URL dialect ----
+#
+# Neon hands out connection strings in libpq's dialect. SQLAlchemy forwards
+# every query option to `asyncpg.connect()` as a keyword argument, and asyncpg
+# only knows its own option names — so libpq-only options abort the connection
+# inside the driver, before a packet leaves the process. The first deploy died
+# exactly there ("TypeError: connect() got an unexpected keyword argument
+# 'sslmode'"); these tests pin the translation so it cannot regress silently.
+
+
+def test_neon_url_is_rewritten_for_asyncpg():
+    settings = Settings(
+        **PROD,
+        neon_database_url=(
+            "postgresql://u:p@ep-cool-name-123.us-east-2.aws.neon.tech/neondb"
+            "?sslmode=require&channel_binding=require"
+        ),
+    )
+    assert settings.database_url == (
+        "postgresql+asyncpg://u:p@ep-cool-name-123.us-east-2.aws.neon.tech/neondb?ssl=require"
+    )
+
+
+def test_libpq_options_are_translated_even_without_the_neon_url():
+    # Some hosts paste the Neon string into DATABASE_URL and never set
+    # NEON_DATABASE_URL; the driver still has to be able to read it.
+    settings = Settings(
+        **{**PROD, "database_url": "postgresql://u:p@db.example.com/app?sslmode=require"},
+        neon_database_url="",
+    )
+    assert settings.database_url == "postgresql+asyncpg://u:p@db.example.com/app?ssl=require"
+
+
+def test_database_urls_of_other_engines_are_left_alone():
+    # The sqlite path (all tests that do not point at Postgres) must
+    # round-trip byte-for-byte: urlsplit/urlunsplit are lossy for schemes
+    # outside the standard set, so rewriting them by accident would break
+    # every local test run at once.
+    settings = Settings(
+        environment="development",
+        secret_key="change-me",
+        database_url="sqlite+aiosqlite:///:memory:",
+    )
+    assert settings.database_url == "sqlite+aiosqlite:///:memory:"

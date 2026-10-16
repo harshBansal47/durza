@@ -1,7 +1,42 @@
 from functools import lru_cache
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Schemes this app treats as Postgres. All of them are rewritten to the one
+# spelling the async driver understands; anything else (sqlite in tests) must
+# round-trip untouched, because urlsplit/urlunsplit are lossy for schemes
+# outside the standard set.
+_ASYNC_PG_SCHEMES = {"postgres", "postgresql", "postgresql+asyncpg"}
+
+
+def _as_asyncpg_url(url: str) -> str:
+    """Rewrite a libpq-style Postgres URL into one asyncpg can connect with.
+
+    SQLAlchemy forwards every URL query option to `asyncpg.connect()` as a
+    keyword argument, and asyncpg only knows its own option names. Neon's
+    connection string opts into libpq spellings that therefore abort the
+    connection inside the driver, before a packet leaves the process:
+
+        TypeError: connect() got an unexpected keyword argument 'sslmode'
+
+    `sslmode` is renamed to asyncpg's `ssl`, which parses the same values
+    (`require`, `verify-full`, ...). `channel_binding` has no asyncpg
+    equivalent and is dropped — asyncpg does plain SCRAM over TLS, which Neon
+    accepts.
+    """
+    parts = urlsplit(url)
+    if parts.scheme not in _ASYNC_PG_SCHEMES:
+        return url
+    query = urlencode(
+        [
+            ("ssl" if key == "sslmode" else key, value)
+            for key, value in parse_qsl(parts.query, keep_blank_values=True)
+            if key != "channel_binding"
+        ]
+    )
+    return urlunsplit(("postgresql+asyncpg", parts.netloc, parts.path, query, parts.fragment))
 
 
 class Settings(BaseSettings):
@@ -16,9 +51,10 @@ class Settings(BaseSettings):
     # to be the thing that works everywhere. Set it explicitly when running more
     # than one replica — see `app/core/limiter.py`.
     redis_url: str | None = None
-    # Production: Neon Postgres (serverless, needs sslmode=require) and
-    # Upstash Redis (TLS, rediss://). When ENVIRONMENT=production these
-    # override DATABASE_URL/REDIS_URL.
+    # Production: Neon Postgres (serverless; its connection string carries
+    # libpq-only options — see `_as_asyncpg_url`) and Upstash Redis (TLS,
+    # rediss://). When ENVIRONMENT=production these override
+    # DATABASE_URL/REDIS_URL.
     neon_database_url: str | None = None
     upstash_redis_url: str | None = None
     access_token_expire_minutes: int = 30
@@ -183,20 +219,30 @@ class Settings(BaseSettings):
     def _apply_production_overrides(self) -> "Settings":
         """In production, prefer Neon Postgres and Upstash Redis.
 
-        The Neon URL arrives as `postgresql://` (sync driver) but SQLAlchemy
-        async needs `postgresql+asyncpg://`. Upstash uses `rediss://` (TLS),
-        which slowapi/limits accepts directly. Local dev keeps using the
-        plain DATABASE_URL / REDIS_URL so nothing changes on a laptop.
+        Local dev keeps using the plain DATABASE_URL / REDIS_URL so nothing
+        changes on a laptop. Upstash uses `rediss://` (TLS), which
+        slowapi/limits accepts directly. The Postgres URL is normalized for
+        asyncpg by `_database_url_is_asyncpg_ready`, which runs after this
+        validator.
         """
         if not self.is_production:
             return self
         if self.neon_database_url:
-            # Convert sync postgresql:// to asyncpg:// for SQLAlchemy async
-            self.database_url = self.neon_database_url.replace(
-                "postgresql://", "postgresql+asyncpg://", 1
-            )
+            self.database_url = self.neon_database_url
         if self.upstash_redis_url:
             self.redis_url = self.upstash_redis_url
+        return self
+
+    @model_validator(mode="after")
+    def _database_url_is_asyncpg_ready(self) -> "Settings":
+        """Rewrite the Postgres URL into the dialect asyncpg actually speaks.
+
+        Runs in every environment — the engine reads this URL through the
+        async driver no matter where it came from. Defined after
+        `_apply_production_overrides` so the Neon URL swapped in there is
+        normalized too (after-validators run in definition order).
+        """
+        self.database_url = _as_asyncpg_url(self.database_url)
         return self
 
 
