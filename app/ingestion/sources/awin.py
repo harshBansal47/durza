@@ -29,6 +29,7 @@ export that table. The key now lives in an environment variable named by
 """
 
 from collections.abc import AsyncIterator
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -146,8 +147,14 @@ class AwinSource:
                     while True:
                         try:
                             page_params = {**params, "page": page, "pageSize": page_size}
+
+                            async def _fetch(
+                                ep: str = endpoint, p: dict[str, Any] = page_params
+                            ) -> list[dict[str, Any]]:
+                                return await _page(ep, p)
+
                             results = await with_retries(
-                                lambda ep=endpoint, p=page_params: _page(ep, p),
+                                partial(_fetch),
                                 retryable=(httpx.HTTPError, TypeError),
                             )
                         except (httpx.HTTPError, TypeError) as exc:
