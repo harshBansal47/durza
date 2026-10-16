@@ -74,9 +74,11 @@
           run: uv run alembic upgrade head
 
         - name: Models and migrations have not drifted
+          env:
+            DATABASE_URL: postgresql+asyncpg://durza:durza@localhost:5432/durza_test
           run: |
             uv run alembic check || (
-              echo "::error::Models have changed without a migration. Run 'alembic revision --autogenerate -m ...'."
+              echo "::error::alembic check failed. Either the models changed without a migration (run 'alembic revision --autogenerate -m ...'), or alembic could not run/connect - see the traceback above."
               exit 1
             )
 
