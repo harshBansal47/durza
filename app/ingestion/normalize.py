@@ -431,6 +431,13 @@ def _extract_restrictions(extra: dict[str, Any]) -> dict[str, Any]:
         "restrictions",
         "shipping",
         "free_shipping",
+        # Provenance for hand-researched offers: which official page an offer
+        # was read from, what kind of page it was, and the date it was checked.
+        # Kept here (rather than a new column) so a card can show "source:
+        # official T&C page, checked 2026-10-17" without a schema change.
+        "source_url",
+        "source_kind",
+        "checked_on",
     )
     found: dict[str, Any] = {}
     for key in keys:

@@ -7,6 +7,7 @@ affiliate link straight out of the API response.
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
@@ -41,6 +42,15 @@ class CouponPublicRead(BaseModel):
     # Exposed so the UI can show an honest trust state; the raw quality_score stays
     # private because it feeds ranking, including a revenue component.
     verification_status: VerificationStatus
+    # When the offer's source was last read/checked (as opposed to
+    # last_verified_at, which is a shopper vote). This is what a card shows as
+    # "source checked on <date>".
+    last_checked_at: datetime | None = None
+    # Provider/staff-claimed conditions, kept verbatim: minimum order, terms,
+    # eligibility, and (for hand-researched offers) the source page it was read
+    # from. Public by design - it is the store's own stated conditions, which is
+    # exactly what a shopper needs before trying a code.
+    restrictions: dict[str, Any] | None = None
     created_at: datetime
 
     @computed_field  # type: ignore[prop-decorator]

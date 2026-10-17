@@ -166,6 +166,12 @@ def build_source_offers(data: dict[str, Any], stores: dict[str, Store]) -> list[
             extra["terms"] = offer["terms"]
         if offer.get("minimum_order"):
             extra["minimum_order"] = offer["minimum_order"]
+        # Provenance travels with the offer so the public API can show the
+        # source page and check date on the offer itself, not just in this
+        # manifest. `_extract_restrictions` keeps these keys verbatim.
+        for key in ("source_url", "source_kind", "checked_on"):
+            if offer.get(key):
+                extra[key] = offer[key]
         if extra:
             raw["extra"] = extra
         offers_config.append(raw)
