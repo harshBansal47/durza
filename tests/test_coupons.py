@@ -224,6 +224,8 @@ async def test_go_redirect_logs_click_and_reveals_url(client, admin_headers):
     resp = await client.get(f"{API}/{coupon['id']}/go", follow_redirects=False)
     assert resp.status_code == 302
     assert resp.headers["location"] == "https://amazon.com/real-deal"
+    # Click-resolution URLs must never be indexed.
+    assert resp.headers["x-robots-tag"] == "noindex"
 
     updated = await client.get(f"{API}/{coupon['id']}")
     assert updated.json()["clicks_count"] == 1

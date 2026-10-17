@@ -24,6 +24,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # The /go endpoints resolve a click and carry no content, so they must
+        # never be indexed. robots.txt lives on the site domain and cannot speak
+        # for the API domain — the directive has to travel with the response.
+        if request.url.path.endswith("/go"):
+            response.headers["X-Robots-Tag"] = "noindex"
         if settings.environment == "production":
             response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
         return response

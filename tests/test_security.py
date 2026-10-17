@@ -1,3 +1,6 @@
+import uuid
+
+
 async def test_cors_headers_present_for_allowed_origin(client):
     """The exact bug this guards against: without CORS headers, a browser
     silently blocks the frontend's JS from reading the API response, even
@@ -20,6 +23,18 @@ async def test_security_headers_present_on_every_response(client):
     assert resp.headers["referrer-policy"] == "strict-origin-when-cross-origin"
     # HSTS only makes sense once you're actually serving over HTTPS (production).
     assert "strict-transport-security" not in resp.headers
+
+
+async def test_tracked_redirects_are_noindex(client):
+    """Tracked redirects (/go) resolve a click and carry no content: a search
+    engine that finds one must not index it. robots.txt lives on the site
+    domain and cannot speak for the API domain, so the response carries the
+    directive."""
+    resp = await client.get(f"/api/v1/coupons/{uuid.uuid4()}/go", follow_redirects=False)
+    assert resp.headers.get("x-robots-tag") == "noindex"
+
+    normal = await client.get("/api/v1/categories")
+    assert "x-robots-tag" not in normal.headers
 
 
 async def test_register_is_rate_limited(client):
