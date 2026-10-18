@@ -25,6 +25,7 @@ from app.schemas.auth import GoogleLoginRequest, RefreshRequest, Token
 from app.schemas.user import (
     ForgotPasswordRequest,
     ResetPasswordRequest,
+    SetPasswordRequest,
     UserCreate,
     UserRead,
     UserUpdate,
@@ -225,6 +226,22 @@ async def google_login(
         access_token=create_access_token(str(user.id), user.role.value),
         refresh_token=create_refresh_token(str(user.id), user.role.value),
     )
+
+
+@router.post("/set-password", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("5/hour")
+async def set_password(
+    request: Request,
+    payload: SetPasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Set a password for an account that has none (e.g. Google-only)."""
+    current_user.hashed_password = hash_password(payload.new_password)
+    await db.commit()
+
+
+@router.get("/admin-ping")
 async def admin_ping(current_user: User = Depends(require_role(Role.admin))) -> dict[str, str]:
     """Demo endpoint proving RBAC works — delete once real admin routes exist (Phase 4)."""
     return {"message": f"Hello, admin {current_user.email}"}

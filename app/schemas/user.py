@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models.user import Role
 
@@ -20,7 +20,18 @@ class UserRead(BaseModel):
     full_name: str | None
     role: Role
     is_active: bool
+    has_password: bool = False
     created_at: datetime
+
+    @model_validator(mode="before")
+    @classmethod
+    def _set_has_password(cls, data):
+        # SQLAlchemy User object: derive has_password from hashed_password.
+        if hasattr(data, "hashed_password"):
+            data_dict = {k: getattr(data, k) for k in ("id","email","full_name","role","is_active","created_at")}
+            data_dict["has_password"] = data.hashed_password is not None
+            return data_dict
+        return data
 
 
 class UserUpdate(BaseModel):
@@ -37,7 +48,8 @@ class UserUpdate(BaseModel):
     current_password: str | None = None
 
 
-class ForgotPasswordRequest(BaseModel):
+class SetPasswordRequest(BaseModel):
+    new_password: str = Field(min_length=8, max_length=128)
     """Request a password reset email."""
 
     email: EmailStr
