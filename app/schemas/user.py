@@ -40,9 +40,11 @@ class UserRead(BaseModel):
         if not hasattr(data, "hashed_password"):
             return data
         data_dict = {
-            name: getattr(data, name) for name in cls.model_fields if name != "has_password" and hasattr(data, name)
+            name: getattr(data, name)
+            for name in cls.model_fields
+            if name != "has_password" and hasattr(data, name)
         }
-        data_dict["has_password"] = getattr(data, "hashed_password") is not None
+        data_dict["has_password"] = data.hashed_password is not None
         return data_dict
 
 

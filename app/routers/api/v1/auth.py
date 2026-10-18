@@ -1,12 +1,10 @@
 import uuid
-import secrets
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
-
-import httpx
 
 # ... (keep existing imports)
 from app.core.config import get_settings
@@ -58,7 +56,11 @@ async def login(
 ) -> Token:
     """OAuth2 password flow: send email as 'username' and the password, form-encoded."""
     user = await user_service.get_user_by_email(db, form_data.username)
-    if user is None or user.hashed_password is None or not verify_password(form_data.password, user.hashed_password):
+    if (
+        user is None
+        or user.hashed_password is None
+        or not verify_password(form_data.password, user.hashed_password)
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -166,8 +168,10 @@ async def delete_account(
 
     Requires the current password to confirm the deletion.
     """
-    if not payload.current_password or current_user.hashed_password is None or not verify_password(
-        payload.current_password, current_user.hashed_password
+    if (
+        not payload.current_password
+        or current_user.hashed_password is None
+        or not verify_password(payload.current_password, current_user.hashed_password)
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -190,7 +194,9 @@ async def google_login(
     settings = get_settings()
     client_id = settings.google_client_id
     if not client_id:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google login not configured")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google login not configured"
+        )
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(
@@ -202,10 +208,14 @@ async def google_login(
 
     info = resp.json()
     if info.get("aud") != client_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google token audience mismatch")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Google token audience mismatch"
+        )
     email = info.get("email")
     if not email or not info.get("email_verified"):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google email not verified")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Google email not verified"
+        )
 
     name = info.get("name")
     picture = info.get("picture")

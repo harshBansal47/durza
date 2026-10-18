@@ -1,5 +1,6 @@
 import json
 from types import SimpleNamespace
+from typing import Self
 
 import pytest
 from httpx import AsyncClient, Response
@@ -369,7 +370,7 @@ class _StubTokeninfo:
     def __init__(self, payload: dict) -> None:
         self._payload = payload
 
-    async def __aenter__(self) -> "_StubTokeninfo":
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, *exc: object) -> bool:
