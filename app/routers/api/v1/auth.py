@@ -1,10 +1,15 @@
 import uuid
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import httpx
+
+# ... (keep existing imports)
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_role
 from app.core.limiter import limiter
@@ -12,10 +17,11 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    hash_password,
     verify_password,
 )
 from app.models.user import Role, User
-from app.schemas.auth import RefreshRequest, Token
+from app.schemas.auth import GoogleLoginRequest, RefreshRequest, Token
 from app.schemas.user import (
     ForgotPasswordRequest,
     ResetPasswordRequest,
@@ -51,7 +57,7 @@ async def login(
 ) -> Token:
     """OAuth2 password flow: send email as 'username' and the password, form-encoded."""
     user = await user_service.get_user_by_email(db, form_data.username)
-    if user is None or not verify_password(form_data.password, user.hashed_password):
+    if user is None or user.hashed_password is None or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -159,8 +165,8 @@ async def delete_account(
 
     Requires the current password to confirm the deletion.
     """
-    if not payload.current_password or not verify_password(
-        payload.current_password, current_user.hashed_password
+    if not payload.current_password or user.hashed_password is None or not verify_password(
+        payload.current_password, user.hashed_password
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -170,7 +176,55 @@ async def delete_account(
     # The response is 204 with no content
 
 
-@router.get("/admin-ping")
+@router.post("/google", response_model=Token)
+@limiter.limit("10/minute")
+async def google_login(
+    request: Request, payload: GoogleLoginRequest, db: AsyncSession = Depends(get_db)
+) -> Token:
+    """Sign in (or sign up) with a Google ID token.
+
+    Verifies the token with Google, then finds or creates a local user.
+    Google-only accounts have no password.
+    """
+    settings = get_settings()
+    client_id = settings.google_client_id
+    if not client_id:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google login not configured")
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"id_token": payload.id_token},
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google token")
+
+    info = resp.json()
+    if info.get("aud") != client_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google token audience mismatch")
+    email = info.get("email")
+    if not email or not info.get("email_verified"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google email not verified")
+
+    user = await user_service.get_user_by_email(db, email)
+    if user is None:
+        user = User(
+            email=email,
+            hashed_password=None,
+            full_name=info.get("name"),
+            role=Role.user,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive account")
+
+    return Token(
+        access_token=create_access_token(str(user.id), user.role.value),
+        refresh_token=create_refresh_token(str(user.id), user.role.value),
+    )
 async def admin_ping(current_user: User = Depends(require_role(Role.admin))) -> dict[str, str]:
     """Demo endpoint proving RBAC works — delete once real admin routes exist (Phase 4)."""
     return {"message": f"Hello, admin {current_user.email}"}

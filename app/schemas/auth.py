@@ -7,5 +7,5 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
-class RefreshRequest(BaseModel):
-    refresh_token: str
+class GoogleLoginRequest(BaseModel):
+    id_token: str

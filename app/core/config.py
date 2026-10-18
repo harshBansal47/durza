@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     # link to a relative path are useless in an inbox, so this must be set in
     # production.
     site_url: str = "http://localhost:3000"
+    google_client_id: str | None = None
 
     # ---- Email (aiosmtplib) ---------------------------------------------
     # Unset SMTP_HOST means "log and report queued" — the alert engine keeps

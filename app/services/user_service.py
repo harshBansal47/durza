@@ -33,8 +33,10 @@ async def create_user(db: AsyncSession, user_in: UserCreate, role: Role = Role.u
 async def update_user(db: AsyncSession, user: User, user_in: "UserUpdate") -> User:
     """Apply a profile edit. A password change requires the current one."""
     if user_in.password is not None:
-        if user_in.current_password is None or not verify_password(
-            user_in.current_password, user.hashed_password
+        if (
+            user.hashed_password is None
+            or user_in.current_password is None
+            or not verify_password(user_in.current_password, user.hashed_password)
         ):
             raise ValueError("Current password is incorrect")
         user.hashed_password = hash_password(user_in.password)
