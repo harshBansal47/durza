@@ -277,6 +277,84 @@ async def test_update_me_requires_authentication(client):
     assert response.status_code == 401
 
 
+# ---- Google-only accounts ----
+#
+# The Google endpoint itself cannot be exercised without Google, but the two
+# account states it creates can: a user with no password, and the derived
+# `has_password` flag the settings page branches on.
+
+
+async def _google_only_headers(async_session_maker, email: str) -> dict[str, str]:
+    """A signed-in user exactly as POST /auth/google creates one: no password."""
+    from app.core.security import create_access_token
+    from app.models.user import Role, User
+
+    async with async_session_maker() as session:
+        user = User(email=email, hashed_password=None, role=Role.user)
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        token = create_access_token(str(user.id), user.role.value)
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.mark.asyncio
+async def test_me_reports_whether_a_password_exists(client):
+    headers = await _signed_in(client, "haspass@example.com")
+    me = await client.get("/api/v1/auth/me", headers=headers)
+    assert me.status_code == 200
+    assert me.json()["has_password"] is True
+
+
+@pytest.mark.asyncio
+async def test_me_reports_false_for_google_only_account(client, async_session_maker):
+    headers = await _google_only_headers(async_session_maker, "nopass@example.com")
+    me = await client.get("/api/v1/auth/me", headers=headers)
+    assert me.status_code == 200
+    assert me.json()["has_password"] is False
+
+
+@pytest.mark.asyncio
+async def test_set_password_turns_google_only_account_into_password_account(
+    client, async_session_maker
+):
+    headers = await _google_only_headers(async_session_maker, "googleonly@example.com")
+
+    resp = await client.post(
+        "/api/v1/auth/set-password",
+        json={"new_password": "a-brand-new-pass"},
+        headers=headers,
+    )
+    assert resp.status_code == 204
+
+    login = await client.post(
+        "/api/v1/auth/login",
+        data={"username": "googleonly@example.com", "password": "a-brand-new-pass"},
+    )
+    assert login.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_set_password_rejects_short_password(client, async_session_maker):
+    headers = await _google_only_headers(async_session_maker, "shortpass@example.com")
+
+    resp = await client.post(
+        "/api/v1/auth/set-password",
+        json={"new_password": "short"},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_set_password_requires_authentication(client):
+    resp = await client.post(
+        "/api/v1/auth/set-password",
+        json={"new_password": "a-brand-new-pass"},
+    )
+    assert resp.status_code == 401
+
+
 # ---- Account deletion tests ----
 
 

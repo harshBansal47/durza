@@ -166,8 +166,8 @@ async def delete_account(
 
     Requires the current password to confirm the deletion.
     """
-    if not payload.current_password or user.hashed_password is None or not verify_password(
-        payload.current_password, user.hashed_password
+    if not payload.current_password or current_user.hashed_password is None or not verify_password(
+        payload.current_password, current_user.hashed_password
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
