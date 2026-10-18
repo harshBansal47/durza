@@ -1,7 +1,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Boolean, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Enum, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -61,6 +61,9 @@ class NotificationPreference(Base, UUIDPKMixin, TimestampMixin):
     push_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # JSON-encoded push subscription (endpoint + keys), as the browser Push API returns it.
     push_subscription: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Category IDs the user has muted — alerts for products in these categories
+    # are skipped. Stored as a JSON list of UUID strings for easy PATCH updates.
+    muted_categories: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
 
 
 class AlertKind(str, enum.Enum):

@@ -39,6 +39,7 @@ class NotificationPreferenceRead(BaseModel):
     telegram_chat_id: str | None
     push_enabled: bool
     push_subscription: str | None
+    muted_categories: list[str] = Field(default_factory=list)
 
 
 class NotificationPreferenceUpdate(BaseModel):
@@ -47,6 +48,7 @@ class NotificationPreferenceUpdate(BaseModel):
     telegram_chat_id: str | None = None
     push_enabled: bool | None = None
     push_subscription: str | None = None
+    muted_categories: list[str] | None = None
 
 
 class PushKeys(BaseModel):

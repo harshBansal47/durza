@@ -166,6 +166,27 @@ async def evaluate_tracked_product(db: AsyncSession, tracked: TrackedProduct) ->
     if product is None:
         return []
 
+    # Relevance / mute: a user who muted this product's category never gets
+    # an alert for it, no matter how cheap it got. This is the "smart" half of
+    # smart alerts — the other half is the per-observation dedupe above.
+    user = await db.get(User, tracked.user_id)
+    if user is None:
+        return []
+    prefs_result = await db.execute(
+        select(NotificationPreference).where(NotificationPreference.user_id == user.id)
+    )
+    prefs = prefs_result.scalar_one_or_none()
+    if prefs is None:
+        prefs = NotificationPreference(user_id=user.id)
+        db.add(prefs)
+        await db.flush()
+
+    muted = prefs.muted_categories or []
+    if str(product.category_id) in muted:
+        state.last_price_point_id = latest.id
+        await db.commit()
+        return []
+
     # Priority: cheapest-legitimate-price signal beats a mere price drop beats
     # a new coupon. One alert per observation keeps users from being spammed.
     eff = effective_price(latest, coupon)
@@ -182,18 +203,6 @@ async def evaluate_tracked_product(db: AsyncSession, tracked: TrackedProduct) ->
         state.last_price_point_id = latest.id
         await db.commit()
         return []
-
-    user = await db.get(User, tracked.user_id)
-    if user is None:
-        return []
-    prefs_result = await db.execute(
-        select(NotificationPreference).where(NotificationPreference.user_id == user.id)
-    )
-    prefs = prefs_result.scalar_one_or_none()
-    if prefs is None:
-        prefs = NotificationPreference(user_id=user.id)
-        db.add(prefs)
-        await db.flush()
 
     alert = _build_alert(kind, product, latest, previous, coupon, tracked.target_price)
 
