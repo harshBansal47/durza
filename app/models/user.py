@@ -21,6 +21,9 @@ class User(Base, UUIDPKMixin, TimestampMixin):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Google account photo URL, refreshed on every Google sign-in. Password
+    # accounts have none; the UI falls back to initials when it is missing.
+    avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     role: Mapped[Role] = mapped_column(
         Enum(Role, name="user_role", native_enum=True), default=Role.user, nullable=False
     )

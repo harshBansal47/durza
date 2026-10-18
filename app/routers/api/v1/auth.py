@@ -207,17 +207,34 @@ async def google_login(
     if not email or not info.get("email_verified"):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google email not verified")
 
+    name = info.get("name")
+    picture = info.get("picture")
+
     user = await user_service.get_user_by_email(db, email)
     if user is None:
         user = User(
             email=email,
             hashed_password=None,
-            full_name=info.get("name"),
+            full_name=name,
+            avatar_url=picture,
             role=Role.user,
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
+    else:
+        # Keep the Google-sourced profile fresh on every sign-in: the photo URL
+        # changes when the account's picture does, and an account that started
+        # with email + password may only sign in with Google much later.
+        changed = False
+        if picture and picture != user.avatar_url:
+            user.avatar_url = picture
+            changed = True
+        if name and not (user.full_name or "").strip():
+            user.full_name = name
+            changed = True
+        if changed:
+            await db.commit()
 
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive account")

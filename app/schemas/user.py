@@ -18,6 +18,8 @@ class UserRead(BaseModel):
     id: uuid.UUID
     email: EmailStr
     full_name: str | None
+    # Google photo URL when the account has signed in with Google.
+    avatar_url: str | None = None
     role: Role
     is_active: bool
     # Never the hash itself — just whether one exists. Google-only accounts

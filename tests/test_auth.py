@@ -1,7 +1,8 @@
 import json
+from types import SimpleNamespace
 
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, Response
 
 
 async def _signed_in(
@@ -353,6 +354,120 @@ async def test_set_password_requires_authentication(client):
         json={"new_password": "a-brand-new-pass"},
     )
     assert resp.status_code == 401
+
+
+# ---- Google sign-in profile sync ----
+#
+# The endpoint talks to Google's tokeninfo service, which tests cannot reach;
+# the response is stubbed at the httpx boundary so account creation and the
+# profile refresh logic run for real.
+
+
+class _StubTokeninfo:
+    """Stands in for httpx.AsyncClient around the tokeninfo GET."""
+
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    async def __aenter__(self) -> "_StubTokeninfo":
+        return self
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+    async def get(self, url: str, params: dict | None = None) -> Response:
+        return Response(200, json=self._payload)
+
+
+def _stub_google(monkeypatch, payload: dict) -> None:
+    """Point the Google endpoint at a fake tokeninfo response."""
+    from app.routers.api.v1 import auth as auth_router
+
+    monkeypatch.setattr(
+        auth_router, "get_settings", lambda: SimpleNamespace(google_client_id="test-client-id")
+    )
+    monkeypatch.setattr(auth_router.httpx, "AsyncClient", lambda **kwargs: _StubTokeninfo(payload))
+
+
+def _tokeninfo(email: str, **extra: object) -> dict:
+    return {"aud": "test-client-id", "email": email, "email_verified": True, **extra}
+
+
+@pytest.mark.asyncio
+async def test_google_login_stores_avatar_and_name(client, monkeypatch):
+    _stub_google(
+        monkeypatch,
+        _tokeninfo(
+            "avatar@example.com",
+            name="Ava Tar",
+            picture="https://lh3.googleusercontent.com/a/abc=s96-c",
+        ),
+    )
+
+    resp = await client.post("/api/v1/auth/google", json={"id_token": "stub"})
+    assert resp.status_code == 200
+    headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+    me = await client.get("/api/v1/auth/me", headers=headers)
+    assert me.status_code == 200
+    assert me.json()["full_name"] == "Ava Tar"
+    assert me.json()["avatar_url"] == "https://lh3.googleusercontent.com/a/abc=s96-c"
+
+
+@pytest.mark.asyncio
+async def test_google_login_refreshes_avatar_on_each_sign_in(client, monkeypatch):
+    _stub_google(
+        monkeypatch,
+        _tokeninfo("refresh@example.com", picture="https://lh3.googleusercontent.com/old=s96-c"),
+    )
+    first = await client.post("/api/v1/auth/google", json={"id_token": "stub"})
+    assert first.status_code == 200
+
+    # Google rotates the photo URL; the second sign-in must pick the new one up.
+    _stub_google(
+        monkeypatch,
+        _tokeninfo("refresh@example.com", picture="https://lh3.googleusercontent.com/new=s96-c"),
+    )
+    second = await client.post("/api/v1/auth/google", json={"id_token": "stub"})
+    assert second.status_code == 200
+
+    headers = {"Authorization": f"Bearer {second.json()['access_token']}"}
+    me = await client.get("/api/v1/auth/me", headers=headers)
+    assert me.json()["avatar_url"] == "https://lh3.googleusercontent.com/new=s96-c"
+
+
+@pytest.mark.asyncio
+async def test_google_login_links_existing_password_account_without_losing_password(
+    client, monkeypatch
+):
+    headers = await _signed_in(client, "linkme@example.com")
+
+    _stub_google(
+        monkeypatch,
+        _tokeninfo(
+            "linkme@example.com",
+            name="Linked User",
+            picture="https://lh3.googleusercontent.com/a/linked=s96-c",
+        ),
+    )
+    resp = await client.post("/api/v1/auth/google", json={"id_token": "stub"})
+    assert resp.status_code == 200
+    google_headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+    me = await client.get("/api/v1/auth/me", headers=google_headers)
+    assert me.json()["avatar_url"] == "https://lh3.googleusercontent.com/a/linked=s96-c"
+    assert me.json()["full_name"] == "Linked User"
+    # Linking must not wipe the password: email + password sign-in still works.
+    assert me.json()["has_password"] is True
+    login = await client.post(
+        "/api/v1/auth/login",
+        data={"username": "linkme@example.com", "password": "supersecret123"},
+    )
+    assert login.status_code == 200
+
+    # Password sign-in itself keeps returning the same profile.
+    me_again = await client.get("/api/v1/auth/me", headers=headers)
+    assert me_again.json()["avatar_url"] == "https://lh3.googleusercontent.com/a/linked=s96-c"
 
 
 # ---- Account deletion tests ----
