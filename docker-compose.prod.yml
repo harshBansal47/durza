@@ -1,0 +1,35 @@
+# Production stack for the deploy host (Oracle Cloud VM behind Caddy):
+#
+#   podman-compose -f docker-compose.prod.yml up -d --force-recreate app
+#
+# Differs from docker-compose.yml (local development) in ways that matter in
+# production:
+#
+#   * No `uvicorn --reload`. The reload watcher is a second process that
+#     restarts the whole app on any file change — that is how a stray edit on
+#     the host silently becomes a production restart, and it hides crashes that
+#     should be visible. A probe/restart policy replaces it.
+#   * `restart: unless-stopped` so the API comes back after it crashes instead
+#     of waiting for a human to run `podman-compose up`.
+#   * The app port is published on 127.0.0.1 only. Caddy is the only thing on
+#     this host that should be able to reach it.
+#   * No local Postgres/Redis containers. Production uses Neon and Upstash
+#     (NEON_DATABASE_URL / UPSTASH_REDIS_URL — see the production overrides in
+#     app/core/config.py). Keeping a local database around just created a
+#     silent fallback to the wrong data if the environment ever lost those
+#     variables.
+#
+# The source directories stay bind-mounted so a deploy is `git pull` + this
+# compose command; the image itself only has to carry dependencies.
+services:
+  app:
+    build: .
+    env_file: .env
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+    volumes:
+      - ./app:/code/app
+      - ./alembic:/code/alembic
+      - ./alembic.ini:/code/alembic.ini
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips "*"
