@@ -20,8 +20,9 @@ rather than by application code that can be bypassed.
 """
 
 import enum
+from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Enum, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -64,6 +65,10 @@ class Store(Base, UUIDPKMixin, TimestampMixin):
     logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     website_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pricing_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    pricing_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     # Optional per-store note, e.g. "We earn a commission from Amazon on this link."
     # Falls back to a sitewide default in the frontend when null — see the Trust page.

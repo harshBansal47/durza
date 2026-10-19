@@ -1,11 +1,12 @@
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import paginate
 from app.core.slugs import generate_unique_slug
+from app.models.editorial import StoreFAQ, StoreRelationship
 from app.models.store import Store
 from app.schemas.store import StoreCreate, StoreUpdate
 
@@ -50,6 +51,8 @@ async def create_store(db: AsyncSession, payload: StoreCreate) -> Store:
         logo_url=payload.logo_url,
         website_url=payload.website_url,
         description=payload.description,
+        pricing_summary=payload.pricing_summary,
+        pricing_checked_at=payload.pricing_checked_at,
         commission_disclosure=payload.commission_disclosure,
         country_code=payload.country_code,
         currency=payload.currency,
@@ -58,6 +61,13 @@ async def create_store(db: AsyncSession, payload: StoreCreate) -> Store:
         cookie_days=payload.cookie_days,
     )
     db.add(store)
+    await db.flush()
+    db.add_all(StoreFAQ(store_id=store.id, **faq.model_dump()) for faq in payload.faqs)
+    await _validate_alternatives(db, store.id, payload.alternative_store_ids)
+    db.add_all(
+        StoreRelationship(store_id=store.id, related_store_id=related_id, sort_order=position)
+        for position, related_id in enumerate(payload.alternative_store_ids)
+    )
     await db.commit()
     await db.refresh(store)
     return store
@@ -65,6 +75,10 @@ async def create_store(db: AsyncSession, payload: StoreCreate) -> Store:
 
 async def update_store(db: AsyncSession, store: Store, payload: StoreUpdate) -> Store:
     data = payload.model_dump(exclude_unset=True)
+    faqs = data.pop("faqs", None)
+    alternatives = data.pop("alternative_store_ids", None)
+    if alternatives is not None:
+        await _validate_alternatives(db, store.id, alternatives)
     if "name" in data and data["name"] != store.name:
         data["slug"] = await generate_unique_slug(db, Store, data["name"], exclude_id=store.id)
     # The column is NOT NULL; an explicit null from a client means "reset".
@@ -72,6 +86,15 @@ async def update_store(db: AsyncSession, store: Store, payload: StoreUpdate) -> 
         data["affiliate_network"] = "none"
     for field, value in data.items():
         setattr(store, field, value)
+    if faqs is not None:
+        await db.execute(delete(StoreFAQ).where(StoreFAQ.store_id == store.id))
+        db.add_all(StoreFAQ(store_id=store.id, **faq) for faq in faqs)
+    if alternatives is not None:
+        await db.execute(delete(StoreRelationship).where(StoreRelationship.store_id == store.id))
+        db.add_all(
+            StoreRelationship(store_id=store.id, related_store_id=related_id, sort_order=position)
+            for position, related_id in enumerate(alternatives)
+        )
     await db.commit()
     await db.refresh(store)
     return store
@@ -98,3 +121,16 @@ async def list_store_countries(db: AsyncSession) -> list[str]:
         .order_by(func.count().desc())
     )
     return [code for code in result.scalars().all() if code]
+
+
+async def _validate_alternatives(
+    db: AsyncSession, store_id: uuid.UUID, alternative_ids: list[uuid.UUID]
+) -> None:
+    if store_id in alternative_ids:
+        raise ValueError("A store cannot be its own alternative")
+    if not alternative_ids:
+        return
+    result = await db.scalars(select(Store.id).where(Store.id.in_(alternative_ids)))
+    missing = set(alternative_ids) - set(result.all())
+    if missing:
+        raise ValueError("Every alternative_store_id must reference an existing store")

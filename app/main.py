@@ -22,6 +22,7 @@ from app.routers.api.v1.auth import router as auth_router
 from app.routers.api.v1.categories import router as categories_router
 from app.routers.api.v1.coupons import router as coupons_router
 from app.routers.api.v1.earnings import router as earnings_router
+from app.routers.api.v1.editorial import router as editorial_router
 from app.routers.api.v1.pages import router as pages_router
 from app.routers.api.v1.products import router as products_router
 from app.routers.api.v1.stores import router as stores_router
@@ -98,6 +99,7 @@ for _router in (
     coupons_router,
     ads_router,
     pages_router,
+    editorial_router,
     products_router,
     account_router,
     analytics_router,

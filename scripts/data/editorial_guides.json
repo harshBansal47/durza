@@ -1,0 +1,379 @@
+{
+  "generated_on": "2026-10-19",
+  "methodology": "Original editorial content written by Durza's editors on 19 October 2026. The stacking order, eligibility rules and worked examples are general principles that apply to Indian online shopping; the specific bank and store offers referenced are examples of the kind of promotion each retailer runs, not live guarantees. Always read the current terms on the bank or store page before you buy.",
+  "guides": [
+    {
+      "slug": "how-to-stack-myntra-discounts",
+      "title": "How to Stack Myntra Discounts: Coupons, Bank Offers & Insider Tips (2026)",
+      "summary": "A practical, order-of-operations guide to combining Myntra coupons, bank-card discounts, rewards and exchange offers — with a worked example and a stacking table.",
+      "author_name": "Durza Editorial",
+      "market": "IN",
+      "seo_title": "How to Stack Myntra Discounts: Coupons, Bank Offers & Rewards",
+      "meta_description": "Learn how to stack Myntra discounts the right way: sale price, coupon code, bank instant discount, rewards and exchange deals — in the order that actually combines.",
+      "is_featured": true,
+      "content_blocks": [
+        {
+          "type": "callout",
+          "text": "The short version: stack in this order — sale price, then coupon code, then bank instant discount, then rewards or cashback, then exchange or no-cost EMI. Never try to combine two coupon codes; Myntra allows one code per order."
+        },
+        {
+          "type": "heading",
+          "heading": "How Myntra's discount layers work"
+        },
+        {
+          "type": "paragraph",
+          "text": "Myntra runs several different kinds of saving at once, and they sit in different places. A clearance or end-of-season sale changes the listed price before anything else. A promo code is applied at checkout and reduces the cart total. A bank instant discount is applied by the payment page and usually requires a minimum spend and a specific card. Rewards, Myntra Insider points and wallet cashback come back to you after the order. Because they are handled by different systems, most of them can be combined — but only if you apply them in the right order and only one code is allowed per order."
+        },
+        {
+          "type": "paragraph",
+          "text": "The mistake most shoppers make is applying a code when a bank offer would have given more, or chasing a small coupon while ignoring a much larger instant discount. The goal is to pick the single best code, then let the automatic discounts do the rest."
+        },
+        {
+          "type": "heading",
+          "heading": "The stacking order that works"
+        },
+        {
+          "type": "ordered_list",
+          "items": [
+            "Start with the sale price. Browse the clearance, end-of-season and festive sale pages so the base price is already reduced before you add anything else.",
+            "Add to cart and check whether the item is already covered by an automatic deal. Some listings show the discounted price without needing a code.",
+            "Apply exactly one promo code. Choose the code with the best effective saving for your cart value, not the one with the largest advertised percentage.",
+            "Proceed to payment and look for the bank offer block. Select your card network or bank if an instant discount is available, and make sure you meet the minimum spend.",
+            "Pay with a rewards card or a cashback card to earn on the final amount. The instant discount is already reflected, so you are earning on the reduced total.",
+            "If you are buying a big-ticket item, check for no-cost EMI and any exchange offer before you finalise the payment method."
+          ]
+        },
+        {
+          "type": "heading",
+          "heading": "A worked example"
+        },
+        {
+          "type": "paragraph",
+          "text": "Suppose you are buying a pair of shoes listed at Rs 4,999 and a jacket at Rs 3,499 during a sale that takes 40% off both. Your sale total is about Rs 5,099. You have a Myntra code worth Rs 500 off orders above Rs 4,999, and your bank offers 10% instant discount up to Rs 1,500 on a minimum spend of Rs 5,000. Apply the code first: Rs 5,099 minus Rs 500 leaves Rs 4,599, which is below the bank offer's minimum spend, so the bank discount would not trigger. In that case, skip the code, pay Rs 5,099, and take the 10% instant discount of Rs 510. You saved Rs 510 instead of Rs 500 — and if the bank cap had been higher, the instant discount would win clearly. The point is to do the arithmetic on the final payable, not on the biggest headline number."
+        },
+        {
+          "type": "heading",
+          "heading": "Bank offers at Myntra"
+        },
+        {
+          "type": "paragraph",
+          "text": "Myntra runs rotating bank partnerships, most often with HDFC, ICICI, SBI, Axis and Kotak, plus wallet and UPI offers. The benefit is usually an instant discount of 5% to 15% with a cap and a minimum transaction value. These offers are almost always exclusive: you cannot usually combine a bank instant discount with another bank's offer, and some exclude already-discounted items."
+        },
+        {
+          "type": "table",
+          "headers": ["Offer type", "Typical benefit", "How to claim it", "Common catch"],
+          "rows": [
+            ["Bank instant discount", "5-15% off, capped", "Select the bank at the payment page", "Minimum spend; may exclude sale items"],
+            ["No-cost EMI", "Split a large order interest-free", "Choose EMI at checkout", "Processing or convenience fee may apply"],
+            ["Wallet cashback", "Flat or percentage cashback", "Pay with the wallet", "Cashback credited after delivery"],
+            ["Rewards card", "Points or cashback on the final amount", "Pay with a rewards card", "Reward rate varies by card tier"]
+          ]
+        },
+        {
+          "type": "heading",
+          "heading": "Myntra-specific tips that actually help"
+        },
+        {
+          "type": "list",
+          "items": [
+            "Use the app. Myntra frequently runs app-only prices and early access to sales that are not identical on the website.",
+            "Join Myntra Insider if you shop often. The points add up to coupons on future orders, which is a saving on the next purchase rather than the current one.",
+            "Track the price before you buy. Festive sales can raise the base price before applying a discount, so a lower percentage during a sale is not always a better deal than a steady price.",
+            "Check the size and delivery dates before you commit. A bigger discount on an item you cannot wear or that arrives too late is not a saving.",
+            "Stack with exchange only on big-ticket categories such as watches and premium footwear, where the exchange value is meaningful."
+          ]
+        },
+        {
+          "type": "heading",
+          "heading": "What does not stack"
+        },
+        {
+          "type": "list",
+          "items": [
+            "Two promo codes on one order. Myntra accepts one code per transaction.",
+            "A bank instant discount and a competing bank offer at the same time.",
+            "Some bank offers and already-cleared merchandise. Always read the exclusion list on the offer page.",
+            "Coupons that require a minimum cart value after other discounts are applied. If the code stops working at checkout, the final total is the reason."
+          ]
+        }
+      ],
+      "structured_data": {
+        "verdict": "You can reliably stack a sale price, one coupon code, a bank instant discount and rewards. The order that matters is sale price first, then the best single code, then the bank offer at payment, then rewards on the final amount.",
+        "best_for": "Shoppers who buy from Myntra a few times a year and want a repeatable method rather than a list of codes that may have expired.",
+        "checked_at": "2026-10-19",
+        "methodology": "The stacking order reflects how Myntra applies each discount in practice: listed price, then code, then payment-page bank offer, then post-purchase rewards. The worked example is illustrative arithmetic, not a live offer."
+      },
+      "faqs": [
+        {
+          "question": "Can I use two Myntra coupon codes together?",
+          "answer": "No. Myntra allows one promo code per order. Pick the code that gives the best saving on your final cart value, then rely on bank offers and rewards for the rest."
+        },
+        {
+          "question": "Do bank offers work on items already on sale?",
+          "answer": "Often, but not always. Some bank instant discounts exclude already-discounted or clearance items. Check the offer's terms on the payment page before you commit."
+        },
+        {
+          "question": "Is a higher discount percentage always better?",
+          "answer": "No. A 40% code on a Rs 2,000 item saves Rs 800, while a Rs 1,000 off code on a Rs 6,000 item saves more. Compare the final payable amount, not the headline percentage."
+        },
+        {
+          "question": "When is the best time to buy on Myntra?",
+          "answer": "The end-of-season sales and the big festive sales usually have the deepest markdowns. App-only prices and early access can add a little more, so compare the app and the website."
+        },
+        {
+          "question": "Do rewards points count if I use a bank instant discount?",
+          "answer": "Yes. The instant discount reduces the amount you pay, and your rewards card then earns points or cashback on that reduced amount. You are not losing rewards by using the bank offer."
+        }
+      ],
+      "entity_links": [
+        { "kind": "store", "slug": "myntra", "anchor_text": "Myntra coupons & offers" },
+        { "kind": "store", "slug": "ajio", "anchor_text": "AJIO coupons" },
+        { "kind": "category", "slug": "fashion", "anchor_text": "Fashion deals" }
+      ]
+    },
+    {
+      "slug": "best-credit-cards-for-electronics-india",
+      "title": "The Best Credit Cards for Electronics in India (2026)",
+      "summary": "How to choose a credit card for electronics: instant discounts, no-cost EMI, cashback and reward points — compared with the catches that matter.",
+      "author_name": "Durza Editorial",
+      "market": "IN",
+      "seo_title": "Best Credit Cards for Electronics in India (2026)",
+      "meta_description": "Compare the best credit cards for electronics in India — instant discounts, no-cost EMI, cashback and rewards — and learn how to read the catches before you buy.",
+      "is_featured": true,
+      "content_blocks": [
+        {
+          "type": "callout",
+          "text": "There is no single best card for electronics. The right card is the one whose offer is live on the store you are buying from, whose minimum spend you actually meet, and whose benefit is larger than the fee you pay to hold it."
+        },
+        {
+          "type": "heading",
+          "heading": "How to judge an electronics card"
+        },
+        {
+          "type": "paragraph",
+          "text": "Electronics purchases are usually large, one-off and time-sensitive, so the useful card benefits are different from those for daily spend. An instant discount lowers the amount you pay today. No-cost EMI spreads a big purchase without interest. Cashback returns a percentage. Reward points are worth something only if you would have spent the money anyway. For a Rs 1,00,000 laptop, a 10% instant discount is worth Rs 10,000 today; a 5% reward rate is worth Rs 5,000 later, if the points are valuable to you. The instant discount almost always wins on the same purchase."
+        },
+        {
+          "type": "list",
+          "items": [
+            "Instant discount: the strongest benefit for a single large purchase, because it is applied immediately and is capped at a fixed amount.",
+            "No-cost EMI: best when you want to keep cash free, but check whether the retailer charges a convenience fee that cancels the interest saving.",
+            "Cashback: useful for smaller electronics and accessories, and often easier to combine with other offers.",
+            "Reward points: valuable if you already hold the card and would spend on it regardless; rarely the best reason to buy a card for one purchase."
+          ]
+        },
+        {
+          "type": "heading",
+          "heading": "The cards worth considering"
+        },
+        {
+          "type": "paragraph",
+          "text": "The table below shows the kind of electronics benefit each card family typically runs, not a live offer. Bank offers change monthly and are store-specific, so treat this as a starting point and verify the current offer on the bank's own page."
+        },
+        {
+          "type": "table",
+          "headers": ["Card family", "Typical electronics benefit", "Best for", "Watch out for"],
+          "rows": [
+            ["HDFC Bank credit cards", "Instant discount and no-cost EMI at major electronics retailers", "Large appliances and phones", "Minimum spend; some offers exclude sale items"],
+            ["ICICI Bank credit cards", "Instant discount and EMI on travel and electronics", "Phones, laptops and travel gear", "Offer varies by retailer and card variant"],
+            ["SBI Card", "Cashback and EMI on big-ticket purchases", "Shoppers who want simple cashback", "Lower reward rate than premium cards"],
+            ["Axis Bank credit cards", "Instant discount and accelerated rewards", "Frequent online shoppers", "Some offers need a specific card tier"],
+            ["Kotak Mahindra credit cards", "Discounts and EMI on partner stores", "Mid-range electronics", "Fewer partner offers than the largest banks"],
+            ["IDFC First Bank credit cards", "Flat EMI discounts on electronics", "Shoppers who prefer fixed discounts", "Offer caps and eligibility windows"]
+          ]
+        },
+        {
+          "type": "heading",
+          "heading": "How to compare the real value"
+        },
+        {
+          "type": "paragraph",
+          "text": "Convert every benefit into rupees on the purchase you are actually making. A 10% instant discount capped at Rs 5,000 on a Rs 60,000 television saves Rs 5,000. A no-cost EMI on the same television saves the interest you would have paid, which depends on the tenure and the card's processing fee. A 5% cashback saves Rs 3,000. Once the benefits are in the same unit, the comparison is easy. Also check the annual fee: a card with a Rs 1,000 fee needs the electronics benefit to exceed that fee for the year to be worth it."
+        },
+        {
+          "type": "heading",
+          "heading": "Stacking a card offer with a store deal"
+        },
+        {
+          "type": "ordered_list",
+          "items": [
+            "Start from the store's sale price, not the maximum retail price.",
+            "Check whether the retailer has a coupon code that applies before payment.",
+            "At the payment page, select the bank offer that matches your card and meets the minimum spend.",
+            "Choose no-cost EMI only if the total cost including any fee is lower than paying upfront.",
+            "Pay with the card that gives the best benefit, and keep the offer's terms screenshot in case of a dispute."
+          ]
+        },
+        {
+          "type": "heading",
+          "heading": "Rules most banks enforce"
+        },
+        {
+          "type": "list",
+          "items": [
+            "Minimum transaction value, often Rs 10,000 to Rs 25,000 for electronics offers.",
+            "A cap on the discount, so a 10% offer may be limited to Rs 1,500 or Rs 3,000.",
+            "Exclusion of certain brands, models or already-discounted products.",
+            "A limit of one offer per card during the offer period.",
+            "Corporate, business and commercial cards are often excluded."
+          ]
+        }
+      ],
+      "structured_data": {
+        "verdict": "For a single large electronics purchase, an instant discount usually beats cashback and reward points, because it is applied immediately and in full. No-cost EMI is the right choice when preserving cash matters more than the interest saving.",
+        "best_for": "Shoppers planning one significant electronics purchase in the next few months who want to choose a card based on value rather than marketing.",
+        "checked_at": "2026-10-19",
+        "methodology": "Benefits are described as typical offers by card family because bank promotions change frequently. The comparison method converts each benefit to rupees on the actual purchase so the reader can compare like with like."
+      },
+      "faqs": [
+        {
+          "question": "Which credit card is best for buying a laptop in India?",
+          "answer": "The card with a live instant discount or no-cost EMI offer at the retailer you are buying from. Compare the rupee value of each offer on your actual cart rather than choosing by brand."
+        },
+        {
+          "question": "Can I combine a bank instant discount with a no-cost EMI?",
+          "answer": "Sometimes, but not always. Some banks allow an instant discount on EMI transactions while others do not. Read the offer terms carefully, because the combination can change the effective saving."
+        },
+        {
+          "question": "Is it worth taking a new credit card just for one purchase?",
+          "answer": "Only if the welcome or purchase benefit clearly exceeds the annual fee and you will use the card afterwards. Otherwise, use a card you already hold that has a live offer."
+        },
+        {
+          "question": "Do instant discounts work on already-discounted products?",
+          "answer": "It depends on the offer. Some bank discounts apply to the final price, while others exclude clearance or sale items. Check the exclusion list before you buy."
+        },
+        {
+          "question": "What should I do if a bank offer does not apply at checkout?",
+          "answer": "Confirm you met the minimum spend, used an eligible card and selected the offer at the payment page. If it still fails, contact the bank with the offer screenshot and your transaction details."
+        }
+      ],
+      "entity_links": [
+        { "kind": "store", "slug": "croma", "anchor_text": "Croma coupons & bank offers" },
+        { "kind": "store", "slug": "reliance-digital", "anchor_text": "Reliance Digital coupons" },
+        { "kind": "store", "slug": "amazon-in", "anchor_text": "Amazon India coupons" },
+        { "kind": "category", "slug": "electronics", "anchor_text": "Electronics deals" }
+      ]
+    },
+    {
+      "slug": "how-to-save-on-amazon-india",
+      "title": "How to Save on Amazon India: Coupons, Bank Offers & Exchange Deals",
+      "summary": "A complete, order-of-operations guide to combining Amazon India sale prices, clip coupons, bank instant discounts, exchange value and no-cost EMI.",
+      "author_name": "Durza Editorial",
+      "market": "IN",
+      "seo_title": "How to Save on Amazon India: Coupons, Bank Offers & Exchange",
+      "meta_description": "Learn how to save on Amazon India by stacking sale prices, clip coupons, bank instant discounts, exchange offers and no-cost EMI in the right order.",
+      "is_featured": true,
+      "content_blocks": [
+        {
+          "type": "callout",
+          "text": "The biggest savings on Amazon India come from combining layers, not from finding one magic code. Sale price, clip coupon, bank instant discount, exchange value and no-cost EMI can all stack if you apply them in the right order."
+        },
+        {
+          "type": "heading",
+          "heading": "Amazon's savings layers"
+        },
+        {
+          "type": "paragraph",
+          "text": "Amazon India reduces the price in several different ways. A deal or lightning deal lowers the listed price for a limited time. A product coupon is clipped on the item page and applied at checkout. A bank instant discount is applied by the payment page when you pay with an eligible card and meet a minimum spend. An exchange offer adds value for a device you trade in. No-cost EMI spreads a large purchase over months without interest. Each layer is controlled by a different system, which is why they usually combine."
+        },
+        {
+          "type": "list",
+          "items": [
+            "Deal price: the base reduction, available without any code.",
+            "Clip coupon: a checkbox on the product page that takes money off at checkout.",
+            "Bank instant discount: a payment-page offer tied to your card network and a minimum spend.",
+            "Exchange offer: a trade-in value for an old device, applied to eligible purchases.",
+            "No-cost EMI: interest-free instalments, often with a small processing fee.",
+            "Rewards and cashback: earned on the final amount after discounts."
+          ]
+        },
+        {
+          "type": "heading",
+          "heading": "The order that stacks"
+        },
+        {
+          "type": "ordered_list",
+          "items": [
+            "Wait for a deal or a sale event so the base price is already reduced.",
+            "Clip every product coupon that applies to the item, even a small one.",
+            "Add the item to the cart and confirm the coupons are still applied at checkout.",
+            "At the payment page, select the bank offer that matches your card and meets the minimum spend.",
+            "If you are trading in a device, apply the exchange offer before finalising payment.",
+            "Choose no-cost EMI only if the total cost including any fee is lower than paying upfront.",
+            "Pay with a rewards or cashback card to earn on the final, reduced amount."
+          ]
+        },
+        {
+          "type": "heading",
+          "heading": "A worked example"
+        },
+        {
+          "type": "paragraph",
+          "text": "You are buying a smartphone listed at Rs 54,999 during a sale that reduces it to Rs 49,999. The product page has a Rs 1,500 clip coupon, and your bank offers 10% instant discount up to Rs 5,000 on a minimum spend of Rs 25,000. Clip the coupon first: the payable becomes Rs 48,499. Then apply the bank offer: 10% of Rs 48,499 is Rs 4,849, under the Rs 5,000 cap, so you pay about Rs 43,650. If you were also trading in an old phone worth Rs 6,000, the exchange value reduces the payable further before the bank offer is calculated, depending on how Amazon applies it. Always read the final order summary — it shows every discount line by line."
+        },
+        {
+          "type": "heading",
+          "heading": "Category-specific plays"
+        },
+        {
+          "type": "table",
+          "headers": ["Category", "Best saving lever", "What to watch"],
+          "rows": [
+            ["Electronics", "Bank instant discount plus exchange", "Exchange value varies by device condition"],
+            ["Fashion", "Sale price plus clip coupon", "Coupons often have category minimums"],
+            ["Grocery", "Subscribe & Save plus bank cashback", "Compare unit prices, not pack prices"],
+            ["Appliances", "No-cost EMI plus exchange", "Check for installation and delivery fees"],
+            ["Books and media", "Deal price and rewards points", "Smaller absolute savings, but easy to stack"]
+          ]
+        },
+        {
+          "type": "heading",
+          "heading": "Common mistakes"
+        },
+        {
+          "type": "list",
+          "items": [
+            "Applying a bank offer before checking whether a bigger coupon would reduce the total below the offer's minimum spend.",
+            "Ignoring the exchange offer because the process seems complicated, even when the trade-in value is large.",
+            "Assuming no-cost EMI is free when a processing fee makes it more expensive than paying upfront.",
+            "Buying during a sale without comparing the price to a non-sale day, because some listings rise before the discount is applied.",
+            "Forgetting to clip the product coupon — it is not automatic."
+          ]
+        }
+      ],
+      "structured_data": {
+        "verdict": "On Amazon India, combine the deal price, a clipped product coupon, a bank instant discount and an exchange offer where available. Apply coupons first, then the bank offer at payment, then exchange and EMI, and always read the final order summary.",
+        "best_for": "Shoppers who buy across categories on Amazon India and want a repeatable stacking method they can apply to any order.",
+        "checked_at": "2026-10-19",
+        "methodology": "The layer descriptions and stacking order reflect how Amazon India applies each discount in practice. The worked example is illustrative arithmetic, not a live offer."
+      },
+      "faqs": [
+        {
+          "question": "Do Amazon clip coupons and bank offers combine?",
+          "answer": "Usually yes. Clip coupons reduce the cart before payment, and bank instant discounts apply at the payment page to the resulting amount, provided the minimum spend is still met."
+        },
+        {
+          "question": "Is the exchange offer worth it?",
+          "answer": "It can be, especially for phones and laptops, because the trade-in value is applied directly to the purchase. Compare the exchange value with what you could get selling the device yourself."
+        },
+        {
+          "question": "When is the best time to shop on Amazon India?",
+          "answer": "The major festive sales usually have the deepest discounts, and Prime members often get early access. Compare the sale price with the regular price before assuming a deal is good."
+        },
+        {
+          "question": "Does no-cost EMI really cost nothing?",
+          "answer": "No-cost EMI removes the interest, but some banks or retailers add a processing or convenience fee. Add any fee to the total before comparing it with paying upfront."
+        },
+        {
+          "question": "How do I know if a bank offer applied?",
+          "answer": "The order summary shows a separate discount line for the bank offer. If it is missing, confirm the offer was selected at the payment page and that you met the minimum spend."
+        }
+      ],
+      "entity_links": [
+        { "kind": "store", "slug": "amazon-in", "anchor_text": "Amazon India coupons" },
+        { "kind": "store", "slug": "flipkart", "anchor_text": "Flipkart coupons" },
+        { "kind": "category", "slug": "ecommerce", "anchor_text": "E-commerce deals" }
+      ]
+    }
+  ]
+}
