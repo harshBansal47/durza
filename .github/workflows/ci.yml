@@ -159,6 +159,25 @@
       # to the database that holds the real rows.
       needs: [backend, migrate-check]
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      # Only deploy when something that can change the running artefact
+      # changes. Without this, a documentation-only merge rebuilds the image,
+      # starts the migration container against production and replaces the app
+      # container — all of it for nothing.
+      #
+      # The list has to be complete: anything left out merges without
+      # deploying. The backend and migrate-check jobs still run on every push,
+      # so the tests remain the gate; only the deploy is filtered.
+      paths:
+        - 'app/**'
+        - 'alembic/**'
+        - 'mcp_server/**'
+        - 'scripts/**'
+        - 'Dockerfile'
+        - 'docker-compose.yml'
+        - 'docker-compose.prod.yml'
+        - 'pyproject.toml'
+        - 'uv.lock'
+        - '.github/workflows/ci.yml'
       runs-on: ubuntu-latest
       env:
         VM_HOST: ${{ secrets.VM_HOST }}
