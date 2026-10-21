@@ -169,10 +169,25 @@
             ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts
 
         # The VM's own .env holds the Neon and Upstash URLs.
-        - name: Pull, rebuild, migrate
+        #
+        # Order matters here, and it is the opposite of the obvious one:
+        #
+        #   1. build the new image, but do not start it;
+        #   2. run the migration in a throwaway container built from that new
+        #      image, so the migration code is the code being deployed;
+        #   3. only then start the new app container.
+        #
+        # If the migration fails, the old container is still running the old
+        # code against the old schema, and the deploy fails loudly without
+        # having replaced a working service with a half-migrated one.
+        #
+        # `podman image prune -f` is deliberately NOT run for this deploy: the
+        # previous image has to stay on the VM so a rollback is a tag away.
+        # It is restored in a follow-up.
+        - name: Pull, build, migrate, then start
           run: |
             ssh "$VM_USER@$VM_HOST" "cd ~/durza \
               && git pull origin main \
-              && podman-compose up -d --build \
-              && podman-compose exec -T app alembic upgrade head \
-              && podman image prune -f"
+              && podman-compose build app \
+              && podman-compose run --rm --no-deps app alembic upgrade head \
+              && podman-compose up -d app"
