@@ -155,6 +155,9 @@ class Settings(BaseSettings):
     personalization_half_life_days: int = 14
     personalization_ttl_days: int = 90
     personalization_allowed_categories: str = ""
+    personalization_blocked_categories: str = (
+        "health,medical,loans,debt,insurance,adult,gambling,alcohol,weapons"
+    )
     personalization_max_signals: int = 50
 
     # ---- Ranking --------------------------------------------------------

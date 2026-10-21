@@ -49,8 +49,8 @@ async def test_compute_no_store_header(client, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_allowlist_rejects_sensitive_categories(client, monkeypatch):
-    _enable(monkeypatch)
+async def test_allowlist_rejects_sensitive_categories_even_if_listed(client, monkeypatch):
+    _enable(monkeypatch, allowlist="electronics,health,loans,insurance,adult")
     now = datetime.now(UTC).isoformat()
     resp = await client.post(
         f"{URL}/compute",

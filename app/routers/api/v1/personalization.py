@@ -45,8 +45,20 @@ def _decay(occurred_at: datetime, now: datetime, half_life_days: int) -> float:
 def _allowed(key: str, interest_type: str) -> bool:
     if interest_type != "category":
         return True
-    allowed = [x.strip() for x in get_settings().personalization_allowed_categories.split(",") if x.strip()]
-    return key in allowed
+    normalized = key.strip().lower()
+    blocked = {
+        x.strip().lower()
+        for x in get_settings().personalization_blocked_categories.split(",")
+        if x.strip()
+    }
+    if normalized in blocked:
+        return False
+    allowed = {
+        x.strip().lower()
+        for x in get_settings().personalization_allowed_categories.split(",")
+        if x.strip()
+    }
+    return normalized in allowed
 
 
 @router.post("/interests", status_code=status.HTTP_204_NO_CONTENT)
