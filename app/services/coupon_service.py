@@ -17,6 +17,7 @@ from app.models.coupon import Coupon, DiscountType
 from app.models.coupon_verification import CouponVerification
 from app.models.store import Store
 from app.schemas.coupon import CouponCreate, CouponUpdate
+from app.services import ranking
 
 VERIFICATION_COOLDOWN = timedelta(hours=24)
 
@@ -65,9 +66,7 @@ async def exploration_ids(
 
     from app.models.coupon import Coupon, VerificationStatus
 
-    score_col = (
-        Coupon.quality_score_v2 if settings.ranking_version == "v2" else Coupon.quality_score
-    )
+    score_col = ranking.ranking_score(settings.ranking_version)
     stmt = (
         select(Coupon)
         .where(
@@ -194,11 +193,7 @@ async def list_coupons(
         # The score is computed and stored by the ranking engine; this only reads it.
         from app.core.config import get_settings
 
-        score_col = (
-            Coupon.quality_score_v2
-            if get_settings().ranking_version == "v2"
-            else Coupon.quality_score
-        )
+        score_col = ranking.ranking_score(get_settings().ranking_version)
         stmt = stmt.order_by(score_col.desc(), Coupon.created_at.desc())
     elif sort is CouponSort.ending_soon:
         stmt = stmt.where(Coupon.expires_at.is_not(None), Coupon.expires_at > now)
