@@ -147,8 +147,8 @@ rules that decide which coupons the edition shows.
    `NEXT_PUBLIC_SALE_HUBS_ENABLED` is off — turning it on is a web deploy,
    not a content change.
 
-The full runbook, with the exact fields, is `docs/SALE_HUBS.md` (added by
-PR #14). Check the result with:
+The full runbook, with the exact fields, is `docs/SALE_HUBS.md`. Check the
+result with:
 
 ```bash
 curl -s https://api.durza.in/api/v1/sales/diwali-2026 | head -c 400
