@@ -57,6 +57,7 @@ class ImpressionType(str, enum.Enum):
     search_results = "search_results"
     homepage = "homepage"
     featured_section = "featured_section"
+    deals = "deals"
     sponsored_section = "sponsored_section"
 
 
