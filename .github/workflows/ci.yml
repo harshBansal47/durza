@@ -181,6 +181,10 @@
         # code against the old schema, and the deploy fails loudly without
         # having replaced a working service with a half-migrated one.
         #
+        # `-T` disables the pseudo-TTY that `podman-compose run` allocates by
+        # default: over a non-interactive SSH there is no TTY to allocate, and
+        # the run would fail before the migration started.
+        #
         # `podman image prune -f` is deliberately NOT run for this deploy: the
         # previous image has to stay on the VM so a rollback is a tag away.
         # It is restored in a follow-up.
@@ -189,5 +193,5 @@
             ssh "$VM_USER@$VM_HOST" "cd ~/durza \
               && git pull origin main \
               && podman-compose build app \
-              && podman-compose run --rm --no-deps app alembic upgrade head \
+              && podman-compose run --rm --no-deps -T app alembic upgrade head \
               && podman-compose up -d app"
