@@ -125,6 +125,17 @@ class Settings(BaseSettings):
     # stays, so revenue can still be attributed). Matches the privacy page.
     click_retention_days: int = 90
     click_scrub_interval_hours: int = 24
+    # A community verification keeps the hash that rate-limits it this long.
+    verification_retention_days: int = 90
+    verification_scrub_interval_hours: int = 24
+    # A dedicated salt for IP hashes. Empty means "use secret_key", so the
+    # default behaviour is unchanged and no value has to be invented. Set it in
+    # the environment, never in this repository.
+    ip_hash_salt: str | None = None
+    # The analytics consent cookie. Signed with the secret key, HttpOnly, and
+    # scoped to the parent domain so the API subdomain receives it.
+    analytics_consent_cookie: str = "cz_consent"
+    analytics_consent_max_age_days: int = 365
     # Only one worker may run a given job at a time. Without this, every
     # uvicorn replica would duplicate the whole ingestion sweep.
     scheduler_lock_ttl_seconds: int = 900

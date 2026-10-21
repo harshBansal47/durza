@@ -9,10 +9,29 @@ import uuid
 import pytest
 from sqlalchemy import select
 
+from app.core.config import get_settings
+from app.core.consent import issue_consent_cookie
 from app.models.analytics_event import AnalyticsEvent
 from app.routers.api.v1.analytics import sanitize_props
 
 URL = "/api/v1/analytics/event"
+
+
+@pytest.fixture(autouse=True)
+def _consented(client):
+    """These tests are about the shape of an event, not about consent.
+
+    The server only records an event when the request carries a consent cookie
+    it signed; without one the event is accepted and dropped. That gate has
+    its own tests (tests/test_privacy_consent.py), so here every request
+    carries the cookie.
+    """
+    cookie = issue_consent_cookie(
+        secret=get_settings().secret_key,
+        max_age_days=get_settings().analytics_consent_max_age_days,
+        site_url=get_settings().site_url,
+    )
+    client.cookies.set(get_settings().analytics_consent_cookie, cookie.value)
 
 
 async def _events(async_session_maker):

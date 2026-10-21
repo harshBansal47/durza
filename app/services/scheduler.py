@@ -55,6 +55,7 @@ _LOCK_REFRESH = 0x0C0FFEE1
 _LOCK_ALERTS = 0x0C0FFEE2
 _LOCK_VERIFY = 0x0C0FFEE3
 _LOCK_SCRUB_CLICKS = 0x0C0FFEE4
+_LOCK_SCRUB_VERIFICATIONS = 0x0C0FFEE7
 _LOCK_CONVERSIONS = 0x0C0FFEE5
 
 
@@ -94,6 +95,15 @@ async def _scrub_clicks_job(db: AsyncSession) -> str:
     return f"scrubbed {scrubbed} visitor hash(es)"
 
 
+async def _scrub_verifications_job(db: AsyncSession) -> str:
+    from app.services.coupon_service import scrub_verification_hashes
+
+    scrubbed = await scrub_verification_hashes(
+        db, older_than_days=get_settings().verification_retention_days
+    )
+    return f"scrubbed {scrubbed} verification hash(es)"
+
+
 async def _conversions_job(db: AsyncSession) -> str:
     from app.services.conversion_sync import sync_conversions
 
@@ -106,6 +116,7 @@ JOBS: dict[str, tuple[Callable[..., Awaitable[str]], int]] = {
     "send_alerts": (_alerts_job, _LOCK_ALERTS),
     "verify_coupons": (_verify_job, _LOCK_VERIFY),
     "scrub_clicks": (_scrub_clicks_job, _LOCK_SCRUB_CLICKS),
+    "scrub_verifications": (_scrub_verifications_job, _LOCK_SCRUB_VERIFICATIONS),
     "sync_conversions": (_conversions_job, _LOCK_CONVERSIONS),
 }
 
@@ -151,6 +162,7 @@ def job_interval_seconds(name: str) -> float:
         "refresh_prices": settings.ingestion_interval_hours,
         "verify_coupons": settings.verification_interval_hours,
         "scrub_clicks": settings.click_scrub_interval_hours,
+        "scrub_verifications": settings.verification_scrub_interval_hours,
         "sync_conversions": settings.conversion_sync_interval_hours,
     }
     if name in hourly:
@@ -417,6 +429,16 @@ def build_scheduler() -> AsyncIOScheduler:
         max_instances=1,
         coalesce=True,
         next_run_time=datetime.now(UTC) + timedelta(seconds=offset + 120),
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _fire,
+        IntervalTrigger(hours=settings.verification_scrub_interval_hours),
+        args=["scrub_verifications"],
+        id="scrub_verifications",
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(UTC) + timedelta(seconds=offset + 150),
         replace_existing=True,
     )
     scheduler.add_job(

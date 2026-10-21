@@ -14,6 +14,8 @@ from fastapi import APIRouter, Depends, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings, get_settings
+from app.core.consent import has_valid_consent, issue_consent_cookie
 from app.core.database import get_db
 from app.core.deps import require_role
 from app.core.limiter import limiter
@@ -52,6 +54,10 @@ async def record_impression(
 ) -> None:
     """Record a coupon impression. Idempotent by design: no dedup needed
     because each render is a unique event from the user's perspective."""
+    settings = get_settings()
+    if not _has_consent(request, settings):
+        return
+
     session_id = request.headers.get("x-session-id") or request.cookies.get("cz_sid")
     if not session_id:
         session = await get_or_create_session(request, response, db)
@@ -175,7 +181,15 @@ async def record_event(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    """Record a shopper interaction. Fire-and-forget like impressions: 202, no body."""
+    """Record a shopper interaction. Fire-and-forget like impressions: 202, no body.
+
+    Nothing is stored without a verifiable consent cookie. The response is
+    still 202, so a visitor who never agreed sees no difference in the app —
+    the event is simply not kept.
+    """
+    settings = get_settings()
+    if not _has_consent(request, settings):
+        return
     db.add(
         AnalyticsEvent(
             name=payload.event.value,
@@ -208,6 +222,15 @@ class ConsentRequest(BaseModel):
     choice: ConsentChoice
 
 
+def _has_consent(request: Request, settings: Settings) -> bool:
+    """Whether the request carries a verifiable consent cookie."""
+    return has_valid_consent(
+        request.cookies.get(settings.analytics_consent_cookie),
+        secret=settings.secret_key,
+        max_age_days=settings.analytics_consent_max_age_days,
+    )
+
+
 @router.post("/consent", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("30/minute")
 async def record_consent(
@@ -215,10 +238,35 @@ async def record_consent(
     request: Request,
     response: Response,
 ) -> None:
-    """Record a consent choice. On decline, clear visitor/session cookies."""
+    """Record a consent choice.
+
+    On accept, the server signs the choice into an HttpOnly cookie scoped to
+    the parent domain, so the API can tell that the visitor agreed — the
+    client-side flag is not evidence of anything. On decline, the cookie and
+    the visitor/session cookies are cleared.
+    """
+    settings = get_settings()
     if payload.choice == ConsentChoice.declined:
+        response.delete_cookie(settings.analytics_consent_cookie, path="/", samesite="lax")
         response.delete_cookie("cz_vid", path="/", samesite="lax")
         response.delete_cookie("cz_sid", path="/", samesite="lax")
+        return
+
+    cookie = issue_consent_cookie(
+        secret=settings.secret_key,
+        max_age_days=settings.analytics_consent_max_age_days,
+        site_url=settings.site_url,
+    )
+    response.set_cookie(
+        settings.analytics_consent_cookie,
+        cookie.value,
+        max_age=cookie.max_age,
+        path="/",
+        domain=cookie.domain,
+        httponly=True,
+        samesite="lax",
+        secure=settings.is_production,
+    )
 
 
 from datetime import date as _date
