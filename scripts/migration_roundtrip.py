@@ -36,6 +36,7 @@ migration actually produced the schema it claims to.
 """
 
 import asyncio
+import re
 import sys
 import uuid
 from typing import Any
@@ -89,6 +90,37 @@ RUN_TOKEN = uuid.uuid4().hex[:8]
 # reproducible, which matters when a failure has to be re-run and compared.
 FIXED_TS = "2020-01-01 00:00:00+00"
 
+# CHECK constraints the synthesised rows have to satisfy.
+#
+# The seed writes literals, not ORM objects, so a value that the database
+# rejects for a reason unrelated to the migration (a column whitelisted to
+# 'guide' | 'review' | ...) is a false failure. These three shapes are the ones
+# the schema actually uses:
+#
+# * `col = ANY (ARRAY[...])` — a whitelisted string column.
+# * `col_a <> col_b` — two columns in the same row that must differ.
+# * `CASE WHEN (col IS NOT NULL) ... END = 1` — exactly one of several nullable
+#   columns must be set.
+_CHECK_WHITELIST = re.compile(
+    r"(\w+)\s*::\s*text\s*=\s*ANY\s*\(\s*ARRAY\[(.*?)\]::\s*text\[\]\s*\)",
+    re.DOTALL,
+)
+_CHECK_PAIR = re.compile(r"(\w+)\s*<>\s*(\w+)")
+_CHECK_EXACTLY_ONE_TARGET = re.compile(r"WHEN\s*\(*\s*(\w+)\s+IS\s+NOT\s+NULL\s*\)*", re.IGNORECASE)
+
+# Columns the models allow to be NULL, but that a historical migration's
+# downgrade sets back to NOT NULL.
+#
+# `users.hashed_password` became nullable so a Google-only account can exist
+# without a password, and the downgrade of that migration sets it back to NOT
+# NULL without a backfill. A seeded row with a NULL password therefore makes
+# the downgrade fail, which proves nothing about the migration chain and turns
+# the whole roundtrip job red. Filling the column keeps the row survivable
+# through the downgrade without changing any schema.
+EXTRA_VALUES: dict[str, dict[str, str]] = {
+    "users": {"hashed_password": "'not-a-real-password-hash'"},
+}
+
 
 class Schema:
     """What `information_schema` says the database currently looks like."""
@@ -109,6 +141,34 @@ class Schema:
         self.primary_keys = {
             t: inspect(conn).get_pk_constraint(t)["constrained_columns"] for t in self.tables
         }
+        self.checks: dict[str, list[dict[str, Any]]] = {
+            t: inspect(conn).get_check_constraints(t) for t in self.tables
+        }
+        self.whitelists: dict[str, dict[str, list[str]]] = {}
+        self.pairs: dict[str, list[tuple[str, str]]] = {}
+        self.exactly_one: dict[str, list[str]] = {}
+        for table, constraints in self.checks.items():
+            for constraint in constraints:
+                sql = constraint.get("sqltext") or ""
+                if "CASE" in sql:
+                    if "=1" in sql.replace(" ", ""):
+                        targets = _CHECK_EXACTLY_ONE_TARGET.findall(sql)
+                        if targets:
+                            # The columns of one "exactly one of these" group.
+                            # One group per table is all the schema uses.
+                            self.exactly_one[table] = targets
+                    continue
+                if "<>" in sql:
+                    match = _CHECK_PAIR.search(sql)
+                    if match:
+                        self.pairs.setdefault(table, []).append((match.group(1), match.group(2)))
+                    continue
+                match = _CHECK_WHITELIST.search(sql)
+                if match:
+                    values = re.findall(r"'((?:[^']|'')*)'", match.group(2))
+                    self.whitelists.setdefault(table, {})[match.group(1)] = [
+                        value.replace("''", "'") for value in values
+                    ]
 
     def fk_column_map(self, table: str) -> dict[str, str]:
         return {local: referenced for local, referenced, _ in self.foreign_keys.get(table, [])}
@@ -159,8 +219,33 @@ class Schema:
             and not column.get("nullable", True)
         ]
 
+    def pair_index(self, table: str) -> dict[str, int]:
+        """Which parent row each foreign key of `table` has to point at.
 
-def literal_for(column: dict[str, Any], table: str) -> str:
+        A `col_a <> col_b` check over two columns that both reference the same
+        parent cannot be satisfied by a single parent row, so the parent is
+        seeded twice and the second column points at the second row.
+        """
+        index: dict[str, int] = {}
+        fk_map = self.fk_column_map(table)
+        for first, second in self.pairs.get(table, []):
+            if fk_map.get(first) and fk_map.get(first) == fk_map.get(second):
+                index[second] = 1
+        return index
+
+    def multi_row_parents(self) -> set[str]:
+        """Tables that need two rows so a `<>` check over them can be satisfied."""
+        parents: set[str] = set()
+        for table in self.pairs:
+            fk_map = self.fk_column_map(table)
+            for first, second in self.pairs[table]:
+                parent = fk_map.get(first)
+                if parent and parent == fk_map.get(second):
+                    parents.add(parent)
+        return parents
+
+
+def literal_for(column: dict[str, Any], table: str, schema: Schema, row: int = 0) -> str:
     """A SQL literal that satisfies one column's type and NOT NULL constraint."""
     name = column["name"]
     coltype = column["type"]
@@ -173,8 +258,18 @@ def literal_for(column: dict[str, Any], table: str) -> str:
     if enums:
         return "'" + str(enums[0]).replace("'", "''") + "'"
 
+    # Then a whitelisted string column: `content_type IN ('guide', 'review')`
+    # rejects any other string, and the failure would have nothing to do with
+    # the migration under test.
+    allowed = schema.whitelists.get(table, {}).get(name)
+    if allowed:
+        return "'" + str(allowed[0]).replace("'", "''") + "'"
+
     if "UUID" in text:
-        return "'" + uuid.UUID(int=int(RUN_TOKEN, 16)).hex + "'"
+        # Derived per column and per row, so two rows of the same table never
+        # collide on a primary key or a unique index.
+        value = uuid.uuid5(uuid.NAMESPACE_OID, f"{RUN_TOKEN}:{table}:{name}:{row}")
+        return "'" + str(value) + "'"
     if "BOOL" in text:
         return "false"
     if "TIMESTAMP" in text or "DATETIME" in text:
@@ -197,7 +292,7 @@ def literal_for(column: dict[str, Any], table: str) -> str:
     # Everything else is a string, made unique per run, per table and per column
     # so a unique index cannot reject the row for a reason unrelated to the
     # migration.
-    slug = f"migration-check-{RUN_TOKEN}-{table}-{name}".replace(" ", "-").replace("'", "")
+    slug = f"migration-check-{RUN_TOKEN}-{table}-{name}-{row}".replace(" ", "-").replace("'", "")
 
     # Clamped to the declared width. `products.currency` is `varchar(3)` — an
     # ISO code — and a full-length value is rejected by the database for a
@@ -221,19 +316,25 @@ async def seed() -> int:
     foreign-key graph is acyclic by construction — a cycle would make at least
     one insert impossible without deferred constraints, and that is a finding in
     itself rather than a reason to bail early.
+
+    A table whose child rows carry a `col_a <> col_b` check over two columns
+    that both point at it is seeded twice: one parent row cannot be different
+    from itself.
     """
     async with engine.connect() as conn:
         schema = await conn.run_sync(Schema)
 
-    pending = dict.fromkeys(schema.tables)
+    multi_row = schema.multi_row_parents()
+    pending: dict[str, int] = {table: (2 if table in multi_row else 1) for table in schema.tables}
     seeded: set[str] = set()
-    # table -> id of the row we inserted, so dependants can reference it.
-    ids: dict[str, Any] = {}
+    # table -> ids of the rows we inserted, so dependants can reference them.
+    ids: dict[str, list[Any]] = {}
 
     while pending:
         progressed = False
         for table in list(pending):
             fk_map = schema.fk_column_map(table)
+            pair_index = schema.pair_index(table)
             required = schema.required(table)
             names: list[str] = []
             values: list[str] = []
@@ -248,15 +349,45 @@ async def seed() -> int:
                 ref_table = fk_map.get(col)
                 if ref_table is None:
                     names.append(col)
-                    values.append(literal_for(column, table))
-                elif ref_table in ids:
+                    values.append(literal_for(column, table, schema, len(ids.get(table, []))))
+                    continue
+                index = pair_index.get(col, 0)
+                parent_ids = ids.get(ref_table, [])
+                if len(parent_ids) > index:
                     names.append(col)
-                    values.append(f"'{ids[ref_table]}'")
+                    values.append(f"'{parent_ids[index]}'")
                 else:
                     waiting = True
                     break
             if waiting:
                 continue
+
+            # A check that requires exactly one of several nullable columns to
+            # be set: fill the first target whose parent row already exists and
+            # leave the others NULL, which is what the check asks for. With no
+            # target filled the check fails, so the table waits for its parent
+            # rather than inserting a row the database will reject.
+            exactly_one = schema.exactly_one.get(table, [])
+            if exactly_one:
+                target_added = False
+                for target in exactly_one:
+                    if target in names:
+                        target_added = True
+                        break
+                    ref_table = fk_map.get(target)
+                    if ref_table is None or not ids.get(ref_table):
+                        continue
+                    names.append(target)
+                    values.append(f"'{ids[ref_table][0]}'")
+                    target_added = True
+                    break
+                if not target_added:
+                    continue
+
+            for name, literal in EXTRA_VALUES.get(table, {}).items():
+                if name not in names:
+                    names.append(name)
+                    values.append(literal)
 
             # RETURNING rather than a follow-up SELECT. A `SELECT ... LIMIT 1`
             # after the insert would pick up whichever row the planner reached
@@ -280,9 +411,11 @@ async def seed() -> int:
                 # unseedable rather than retried forever.
                 continue
 
-            ids[table] = inserted_id
+            ids.setdefault(table, []).append(inserted_id)
             seeded.add(table)
-            del pending[table]
+            pending[table] -= 1
+            if pending[table] <= 0:
+                del pending[table]
             progressed = True
             print(f"  seeded {table} ({len(names)} column(s) supplied)")
 

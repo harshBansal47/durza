@@ -16,11 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import require_role
-from app.models.user import Role, User
 from app.core.limiter import limiter
 from app.models.analytics_event import AnalyticsEvent
 from app.models.coupon_impression import CouponImpression, ImpressionType
 from app.models.daily_stats import DailyContentStats
+from app.models.user import Role, User
 from app.services.visitor_identity import get_or_create_session
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -108,7 +108,20 @@ _PROP_KEY = re.compile(r"^[a-z][a-z0-9_]{0,29}$")
 _MAX_PROPS = 10
 _MAX_STR = 200
 # Reserved: carried in their own columns, or sent by the client but not worth storing.
-_NOT_PROPS = {"event", "coupon_id", "merchant_id", "store_id", "page_type", "content_id", "content_type", "list_id", "position", "ranking_version", "schema_version", "ts"}
+_NOT_PROPS = {
+    "event",
+    "coupon_id",
+    "merchant_id",
+    "store_id",
+    "page_type",
+    "content_id",
+    "content_type",
+    "list_id",
+    "position",
+    "ranking_version",
+    "schema_version",
+    "ts",
+}
 
 
 def sanitize_props(extra: dict | None) -> dict | None:
@@ -166,7 +179,9 @@ async def record_event(
     db.add(
         AnalyticsEvent(
             name=payload.event.value,
-            session_id=request.headers.get("x-session-id") or request.cookies.get("cz_sid") or str((await get_or_create_session(request, response, db)).id),
+            session_id=request.headers.get("x-session-id")
+            or request.cookies.get("cz_sid")
+            or str((await get_or_create_session(request, response, db)).id),
             visitor_id=request.cookies.get("cz_vid"),
             coupon_id=_uuid_or_none(payload.coupon_id),
             store_id=_uuid_or_none(payload.merchant_id or payload.store_id),
@@ -207,6 +222,7 @@ async def record_consent(
 
 
 from datetime import date as _date
+
 from fastapi import Query as _Query
 
 
@@ -222,7 +238,7 @@ async def content_analytics(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_role(Role.admin, Role.analytics_viewer)),
 ) -> dict:
-    from sqlalchemy import select, func
+    from sqlalchemy import func, select
 
     stmt = select(DailyContentStats).where(
         DailyContentStats.date >= start_date,
@@ -233,11 +249,17 @@ async def content_analytics(
     stmt = stmt.order_by(DailyContentStats.date.desc(), DailyContentStats.content_ref.asc())
     offset = (page - 1) * page_size
     rows = (await db.execute(stmt.offset(offset).limit(page_size))).scalars().all()
-    total = (await db.execute(select(func.count()).select_from(DailyContentStats).where(
-        DailyContentStats.date >= start_date,
-        DailyContentStats.date <= end_date,
-        *([DailyContentStats.content_type == content_type] if content_type else []),
-    ))).scalar_one()
+    total = (
+        await db.execute(
+            select(func.count())
+            .select_from(DailyContentStats)
+            .where(
+                DailyContentStats.date >= start_date,
+                DailyContentStats.date <= end_date,
+                *([DailyContentStats.content_type == content_type] if content_type else []),
+            )
+        )
+    ).scalar_one()
     return {
         "items": [
             {

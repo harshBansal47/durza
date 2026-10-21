@@ -4,11 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.deps import require_role
 from app.core.exceptions import EntityNotFoundError
 from app.core.limiter import limiter
-from app.core.config import get_settings
 from app.core.pagination import Paginated
 from app.core.request_meta import client_ip, hash_ip
 from app.models.coupon import Coupon, DiscountType
@@ -22,8 +22,7 @@ from app.schemas.coupon_public import (
     compute_success_rate,
 )
 from app.services import affiliate, affiliate_router, click_service, coupon_service
-from app.services.coupon_service import exploration_ids
-from app.services.coupon_service import AlreadyVerifiedRecentlyError
+from app.services.coupon_service import AlreadyVerifiedRecentlyError, exploration_ids
 
 router = APIRouter(prefix="/coupons", tags=["coupons"])
 

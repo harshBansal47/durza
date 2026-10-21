@@ -18,14 +18,15 @@ from app.core.sentry import init_sentry
 from app.routers.api.v1.account import router as account_router
 from app.routers.api.v1.ads import router as ads_router
 from app.routers.api.v1.analytics import router as analytics_router
-from app.routers.api.v1.sales import router as sales_router
 from app.routers.api.v1.auth import router as auth_router
 from app.routers.api.v1.categories import router as categories_router
 from app.routers.api.v1.coupons import router as coupons_router
 from app.routers.api.v1.earnings import router as earnings_router
 from app.routers.api.v1.editorial import router as editorial_router
 from app.routers.api.v1.pages import router as pages_router
+from app.routers.api.v1.personalization import router as personalization_router
 from app.routers.api.v1.products import router as products_router
+from app.routers.api.v1.sales import router as sales_router
 from app.routers.api.v1.stores import router as stores_router
 from app.routers.api.v1.system import router as system_router
 from app.services.scheduler import start_scheduler, stop_scheduler
@@ -106,6 +107,7 @@ for _router in (
     products_router,
     account_router,
     analytics_router,
+    personalization_router,
     sales_router,
     earnings_router,
 ):

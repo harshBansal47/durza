@@ -1,11 +1,9 @@
 import re
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.slugs import generate_unique_slug
 from app.models.editorial import EditorialContent
 from app.models.sale import SaleEdition, SaleEditionCouponRule, SaleSeries
 
@@ -28,7 +26,9 @@ def validate_rule(rule_type: str, rule_value: str) -> None:
         raise ValueError("rule value required")
 
 
-async def create_series(db: AsyncSession, *, slug: str, title: str, description: str = "") -> SaleSeries:
+async def create_series(
+    db: AsyncSession, *, slug: str, title: str, description: str = ""
+) -> SaleSeries:
     if len(slug) > 40:
         raise ValueError("series slug too long")
     series = SaleSeries(slug=slug, title=title, description=description, publication_status="draft")
@@ -90,7 +90,9 @@ async def publish_edition(db: AsyncSession, edition: SaleEdition) -> SaleEdition
     return edition
 
 
-async def archive_edition(db: AsyncSession, edition: SaleEdition, *, reason: str, by: str) -> SaleEdition:
+async def archive_edition(
+    db: AsyncSession, edition: SaleEdition, *, reason: str, by: str
+) -> SaleEdition:
     edition.lifecycle_status = "archived"
     edition.manual_override = True
     edition.manual_override_reason = reason
@@ -116,7 +118,11 @@ def transition_lifecycle(edition: SaleEdition, now: datetime) -> str:
         end_at = end_at.replace(tzinfo=UTC)
     if end_at is None or now <= end_at:
         return "live"
-    if edition.archived_after_days and edition.end_at and now > edition.end_at + timedelta(days=edition.archived_after_days):
+    if (
+        edition.archived_after_days
+        and edition.end_at
+        and now > edition.end_at + timedelta(days=edition.archived_after_days)
+    ):
         return "archived"
     return "ended"
 
@@ -135,28 +141,51 @@ async def run_lifecycle_job(db: AsyncSession, now: datetime | None = None) -> in
 
 
 async def current_edition(db: AsyncSession, series: SaleSeries) -> SaleEdition | None:
-    editions = (await db.execute(select(SaleEdition).where(SaleEdition.series_id == series.id))).scalars().all()
-    live = [e for e in editions if e.lifecycle_status == "live" and e.publication_status == "published"]
+    editions = (
+        (await db.execute(select(SaleEdition).where(SaleEdition.series_id == series.id)))
+        .scalars()
+        .all()
+    )
+    live = [
+        e for e in editions if e.lifecycle_status == "live" and e.publication_status == "published"
+    ]
     if live:
         return max(live, key=lambda e: e.start_at or datetime.min.replace(tzinfo=UTC))
-    upcoming = [e for e in editions if e.lifecycle_status == "upcoming" and e.publication_status == "published"]
+    upcoming = [
+        e
+        for e in editions
+        if e.lifecycle_status == "upcoming" and e.publication_status == "published"
+    ]
     if upcoming:
         return min(upcoming, key=lambda e: e.start_at or datetime.max.replace(tzinfo=UTC))
-    announced = [e for e in editions if e.lifecycle_status == "announced" and e.publication_status == "published"]
+    announced = [
+        e
+        for e in editions
+        if e.lifecycle_status == "announced" and e.publication_status == "published"
+    ]
     if announced:
         return announced[0]
-    ended = [e for e in editions if e.lifecycle_status == "ended" and e.publication_status == "published"]
+    ended = [
+        e for e in editions if e.lifecycle_status == "ended" and e.publication_status == "published"
+    ]
     if ended:
         return max(ended, key=lambda e: e.end_at or datetime.min.replace(tzinfo=UTC))
     return None
 
 
-async def add_rule(db: AsyncSession, edition: SaleEdition, rule_type: str, rule_value: str) -> SaleEditionCouponRule:
+async def add_rule(
+    db: AsyncSession, edition: SaleEdition, rule_type: str, rule_value: str
+) -> SaleEditionCouponRule:
     validate_rule(rule_type, rule_value)
     count = len(edition.rules)
     if count >= MAX_RULES:
         raise ValueError("too many rules")
-    rule = SaleEditionCouponRule(edition_id=edition.id, rule_type=rule_type, rule_value=rule_value, version=edition.coupon_rules_version)
+    rule = SaleEditionCouponRule(
+        edition_id=edition.id,
+        rule_type=rule_type,
+        rule_value=rule_value,
+        version=edition.coupon_rules_version,
+    )
     db.add(rule)
     await db.commit()
     await db.refresh(rule)

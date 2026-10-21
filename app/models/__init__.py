@@ -29,7 +29,6 @@ from app.models.analytics_session import (
 from app.models.attribution import Attribution, AttributionModel
 from app.models.category import Category
 from app.models.click import ClickEvent
-from app.models.coupon_staging import CouponStaging
 from app.models.conversion import Conversion, ConversionStatus
 from app.models.coupon import (
     PUBLICLY_VISIBLE_STATUSES,
@@ -41,6 +40,7 @@ from app.models.coupon import (
 )
 from app.models.coupon_impression import CouponImpression, ImpressionType
 from app.models.coupon_source import CouponSource, CouponSourceStatus
+from app.models.coupon_staging import CouponStaging
 from app.models.coupon_verification import CouponVerification
 from app.models.daily_stats import (
     DailyCouponStats,
@@ -81,6 +81,8 @@ from app.models.tracking import (
     TrackedProduct,
 )
 from app.models.user import User
+from app.models.user_interest import UserInterest
+from app.models.user_segment import UserSegment
 from app.models.verification_attempt import AttemptOutcome, VerificationAttempt
 
 __all__ = [
@@ -101,7 +103,6 @@ __all__ = [
     "CampaignStatus",
     "Category",
     "ClickEvent",
-    "CouponStaging",
     "CommissionType",
     "Conversion",
     "ConversionStatus",
@@ -109,6 +110,7 @@ __all__ = [
     "CouponImpression",
     "CouponSource",
     "CouponSourceStatus",
+    "CouponStaging",
     "CouponStatus",
     "CouponVerification",
     "DailyCouponStats",
@@ -159,6 +161,8 @@ __all__ = [
     "TrackedProduct",
     "TrafficSource",
     "User",
+    "UserInterest",
+    "UserSegment",
     "VerificationAttempt",
     "VerificationStatus",
 ]

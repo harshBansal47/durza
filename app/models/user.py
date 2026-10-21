@@ -28,6 +28,9 @@ class User(Base, UUIDPKMixin, TimestampMixin):
     role: Mapped[Role] = mapped_column(
         Enum(Role, name="user_role", native_enum=True), default=Role.user, nullable=False
     )
+    personalization_consent: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     def __str__(self) -> str:
