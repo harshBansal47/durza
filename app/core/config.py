@@ -144,6 +144,10 @@ class Settings(BaseSettings):
     conversion_sync_interval_hours: int = 6
     conversion_sync_lookback_days: int = 45
 
+    # ---- Ingestion quarantine -------------------------------------------
+    ingestion_quarantine_mode: str = "shadow"
+    ingestion_quarantine_discount_pct: int = 90
+
     # ---- Observability --------------------------------------------------
     sentry_dsn: str | None = None
     sentry_traces_sample_rate: float = 0.1
