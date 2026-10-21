@@ -151,6 +151,7 @@ class Settings(BaseSettings):
     # ---- Personalization ------------------------------------------------
     personalization_segment_version: int = 1
     personalization_enabled: bool = False
+    personalization_purpose_required: bool = True
     personalization_half_life_days: int = 14
     personalization_ttl_days: int = 90
     personalization_allowed_categories: str = ""

@@ -29,12 +29,12 @@ class Signal(BaseModel):
 
 class SyncRequest(BaseModel):
     consent: bool
-    signals: list[Signal] = Field(default_factory=list, max_length=50)
+    signals: list[Signal] = Field(default_factory=list, max_length=get_settings().personalization_max_signals)
 
 
 class ComputeRequest(BaseModel):
     consent: bool
-    signals: list[Signal] = Field(default_factory=list, max_length=50)
+    signals: list[Signal] = Field(default_factory=list, max_length=get_settings().personalization_max_signals)
 
 
 def _decay(occurred_at: datetime, now: datetime, half_life_days: int) -> float:
@@ -59,9 +59,9 @@ async def sync_interests(
     user: User = Depends(get_current_user),
 ):
     if not get_settings().personalization_enabled:
-        raise HTTPException(status_code=404, detail="Not found")
+        raise HTTPException(status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"})
     if not payload.consent or not user.personalization_consent:
-        raise HTTPException(status_code=403, detail="Personalization consent required")
+        raise HTTPException(status_code=403, detail="Personalization consent required", headers={"Cache-Control": "private, no-store"})
     _no_store_headers(response)
     now = datetime.now(UTC)
     ttl = timedelta(days=get_settings().personalization_ttl_days)
@@ -97,9 +97,9 @@ async def sync_interests(
 @limiter.limit("30/minute")
 async def compute_interests(payload: ComputeRequest, request: Request, response: Response):
     if not get_settings().personalization_enabled:
-        raise HTTPException(status_code=404, detail="Not found")
-    if not payload.consent:
-        raise HTTPException(status_code=403, detail="Personalization consent required")
+        raise HTTPException(status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"})
+    if get_settings().personalization_purpose_required and not payload.consent:
+        raise HTTPException(status_code=403, detail="Personalization consent required", headers={"Cache-Control": "private, no-store"})
     _no_store_headers(response)
     now = datetime.now(UTC)
     scores: dict[str, float] = {}
@@ -131,7 +131,7 @@ async def export_interests(request: Request, response: Response, db: AsyncSessio
 async def picked_for_you(request: Request, response: Response):
     _no_store_headers(response)
     if not get_settings().personalization_enabled:
-        raise HTTPException(status_code=404, detail="Not found")
+        raise HTTPException(status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"})
     return {"items": [], "reason": "No personalized items yet.", "reason_code": "no_signal"}
 
 
@@ -140,7 +140,7 @@ async def picked_for_you(request: Request, response: Response):
 async def continue_where_left_off(request: Request, response: Response):
     _no_store_headers(response)
     if not get_settings().personalization_enabled:
-        raise HTTPException(status_code=404, detail="Not found")
+        raise HTTPException(status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"})
     return {"items": [], "reason": "No recent activity.", "reason_code": "no_signal"}
 
 
@@ -149,22 +149,22 @@ async def continue_where_left_off(request: Request, response: Response):
 async def ending_soon_saved(request: Request, response: Response):
     _no_store_headers(response)
     if not get_settings().personalization_enabled:
-        raise HTTPException(status_code=404, detail="Not found")
+        raise HTTPException(status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"})
     return {"items": [], "reason": "No saved stores.", "reason_code": "no_signal"}
 
 
 class SegmentRequest(BaseModel):
     consent: bool
-    signals: list[Signal] = Field(default_factory=list, max_length=50)
+    signals: list[Signal] = Field(default_factory=list, max_length=get_settings().personalization_max_signals)
 
 
 @router.post("/segment", status_code=status.HTTP_200_OK)
 @limiter.limit("30/minute")
 async def segment_stateless(payload: SegmentRequest, request: Request, response: Response):
     if not get_settings().personalization_enabled:
-        raise HTTPException(status_code=404, detail="Not found")
-    if not payload.consent:
-        raise HTTPException(status_code=403, detail="Personalization consent required")
+        raise HTTPException(status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"})
+    if get_settings().personalization_purpose_required and not payload.consent:
+        raise HTTPException(status_code=403, detail="Personalization consent required", headers={"Cache-Control": "private, no-store"})
     _no_store_headers(response)
     now = datetime.now(UTC)
     scores: dict[str, float] = {}
@@ -181,9 +181,9 @@ async def segment_stateless(payload: SegmentRequest, request: Request, response:
 @limiter.limit("30/minute")
 async def segment_logged_in(request: Request, response: Response, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     if not get_settings().personalization_enabled:
-        raise HTTPException(status_code=404, detail="Not found")
+        raise HTTPException(status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"})
     if not user.personalization_consent:
-        raise HTTPException(status_code=403, detail="Personalization consent required")
+        raise HTTPException(status_code=403, detail="Personalization consent required", headers={"Cache-Control": "private, no-store"})
     _no_store_headers(response)
     rows = (await db.execute(select(UserInterest).where(UserInterest.user_id == user.id))).scalars().all()
     scores = {f"{r.interest_type}:{r.interest_key}": r.score for r in rows}
