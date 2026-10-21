@@ -85,6 +85,7 @@ async def go_to_product(
     product_id: uuid.UUID,
     request: Request,
     src: str | None = Query(default=None, max_length=40),
+    content_ref: str | None = Query(default=None, max_length=80),
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
     """Tracked redirect to the store's product page. The raw URL is never in JSON."""
@@ -97,6 +98,7 @@ async def go_to_product(
         store=store,
         product=product,
         src=src,
+        content_ref=content_ref,
         visitor_hash=hash_ip(client_ip(request)),
         user_agent=request.headers.get("user-agent"),
     )

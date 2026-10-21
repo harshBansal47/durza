@@ -95,6 +95,7 @@ async def go_to_coupon(
     coupon_id: uuid.UUID,
     request: Request,
     src: str | None = Query(default=None, max_length=40),
+    content_ref: str | None = Query(default=None, max_length=80),
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
     """The only place destination_url is ever revealed: a redirect, not a JSON field.
@@ -117,6 +118,7 @@ async def go_to_coupon(
         store=store,
         coupon=coupon,
         src=src,
+        content_ref=content_ref,
         visitor_hash=hash_ip(client_ip(request)),
         user_agent=request.headers.get("user-agent"),
     )
