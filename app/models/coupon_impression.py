@@ -111,6 +111,7 @@ class CouponImpression(Base, UUIDPKMixin):
         nullable=False,
     )
     page_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    list_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
     # ---- Ranking --------------------------------------------------------
     position: Mapped[int] = mapped_column(Integer, nullable=False)

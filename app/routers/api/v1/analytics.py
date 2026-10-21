@@ -15,9 +15,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.deps import require_role
+from app.models.user import Role, User
 from app.core.limiter import limiter
 from app.models.analytics_event import AnalyticsEvent
 from app.models.coupon_impression import CouponImpression, ImpressionType
+from app.models.daily_stats import DailyContentStats
 from app.services.visitor_identity import get_or_create_session
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -28,6 +31,7 @@ class ImpressionRequest(BaseModel):
     merchant_id: uuid.UUID
     page_type: ImpressionType
     page_id: str | None = Field(default=None, max_length=255)
+    list_id: str | None = Field(default=None, max_length=80)
     position: int = Field(ge=1, le=100)
     ranking_version: str = Field(default="v1", max_length=20)
     ranking_score: float | None = None
@@ -62,6 +66,7 @@ async def record_impression(
         visitor_id=request.cookies.get("cz_vid"),
         page_type=payload.page_type,
         page_id=payload.page_id,
+        list_id=payload.list_id,
         position=payload.position,
         ranking_version=payload.ranking_version,
         ranking_score=payload.ranking_score,
@@ -82,6 +87,10 @@ class EventName(str, enum.Enum):
     ever hold events the product actually defines."""
 
     page_view = "page_view"
+    content_view = "content_view"
+    scroll = "scroll"
+    engaged_time = "engaged_time"
+    outbound_click = "outbound_click"
     search = "search"
     coupon_click = "coupon_click"
     coupon_reveal = "coupon_reveal"
@@ -99,7 +108,7 @@ _PROP_KEY = re.compile(r"^[a-z][a-z0-9_]{0,29}$")
 _MAX_PROPS = 10
 _MAX_STR = 200
 # Reserved: carried in their own columns, or sent by the client but not worth storing.
-_NOT_PROPS = {"event", "coupon_id", "merchant_id", "store_id", "page_type", "ts"}
+_NOT_PROPS = {"event", "coupon_id", "merchant_id", "store_id", "page_type", "content_id", "content_type", "list_id", "position", "ranking_version", "schema_version", "ts"}
 
 
 def sanitize_props(extra: dict | None) -> dict | None:
@@ -130,8 +139,6 @@ def _uuid_or_none(value: object) -> uuid.UUID | None:
 
 
 class EventRequest(BaseModel):
-    # The storefront sends a flat object (`{event, coupon_id, ..., query}`); anything
-    # beyond the named fields is collected as properties.
     model_config = ConfigDict(extra="allow")
 
     event: EventName
@@ -139,6 +146,12 @@ class EventRequest(BaseModel):
     merchant_id: str | None = Field(default=None, max_length=64)
     store_id: str | None = Field(default=None, max_length=64)
     page_type: str | None = Field(default=None, max_length=30)
+    content_id: str | None = Field(default=None, max_length=80)
+    content_type: str | None = Field(default=None, max_length=30)
+    list_id: str | None = Field(default=None, max_length=80)
+    position: int | None = Field(default=None, ge=1, le=100)
+    ranking_version: str | None = Field(default=None, max_length=20)
+    schema_version: int | None = Field(default=None, ge=1)
 
 
 @router.post("/event", status_code=status.HTTP_202_ACCEPTED)
@@ -158,6 +171,12 @@ async def record_event(
             coupon_id=_uuid_or_none(payload.coupon_id),
             store_id=_uuid_or_none(payload.merchant_id or payload.store_id),
             page_type=payload.page_type,
+            content_id=payload.content_id,
+            content_type=payload.content_type,
+            list_id=payload.list_id,
+            position=payload.position,
+            ranking_version=payload.ranking_version,
+            schema_version=payload.schema_version or 1,
             props=sanitize_props(payload.model_extra),
             created_at=datetime.now(UTC),
         )
@@ -185,3 +204,54 @@ async def record_consent(
     if payload.choice == ConsentChoice.declined:
         response.delete_cookie("cz_vid", path="/", samesite="lax")
         response.delete_cookie("cz_sid", path="/", samesite="lax")
+
+
+from datetime import date as _date
+from fastapi import Query as _Query
+
+
+@router.get("/content", status_code=status.HTTP_200_OK)
+@limiter.limit("30/minute")
+async def content_analytics(
+    request: Request,
+    start_date: _date = _Query(...),
+    end_date: _date = _Query(...),
+    content_type: str | None = _Query(default=None, max_length=30),
+    page: int = _Query(default=1, ge=1),
+    page_size: int = _Query(default=50, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_role(Role.admin, Role.analytics_viewer)),
+) -> dict:
+    from sqlalchemy import select, func
+
+    stmt = select(DailyContentStats).where(
+        DailyContentStats.date >= start_date,
+        DailyContentStats.date <= end_date,
+    )
+    if content_type:
+        stmt = stmt.where(DailyContentStats.content_type == content_type)
+    stmt = stmt.order_by(DailyContentStats.date.desc(), DailyContentStats.content_ref.asc())
+    offset = (page - 1) * page_size
+    rows = (await db.execute(stmt.offset(offset).limit(page_size))).scalars().all()
+    total = (await db.execute(select(func.count()).select_from(DailyContentStats).where(
+        DailyContentStats.date >= start_date,
+        DailyContentStats.date <= end_date,
+        *([DailyContentStats.content_type == content_type] if content_type else []),
+    ))).scalar_one()
+    return {
+        "items": [
+            {
+                "date": r.date.isoformat(),
+                "content_ref": r.content_ref,
+                "content_type": r.content_type,
+                "views": r.views,
+                "outbound_clicks": r.outbound_clicks,
+                "confirmed_revenue": r.confirmed_revenue,
+                "currency": r.currency,
+            }
+            for r in rows
+        ],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+    }

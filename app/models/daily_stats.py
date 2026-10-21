@@ -206,3 +206,30 @@ class DailyTrafficStats(Base, UUIDPKMixin, TimestampMixin):
 
     def __str__(self) -> str:
         return f"DailyTrafficStats({self.date}, {self.source})"
+
+
+class DailyContentStats(Base, UUIDPKMixin, TimestampMixin):
+    """Daily aggregate stats for one content piece (guide, etc.)."""
+
+    __tablename__ = "daily_content_stats"
+
+    __table_args__ = (
+        UniqueConstraint("date", "content_ref", "content_type", name="uq_daily_content_stats"),
+        Index("ix_daily_content_stats_ref_date", "content_ref", "date"),
+    )
+
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    content_ref: Mapped[str] = mapped_column(String(80), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(30), nullable=False)
+
+    views: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    scroll_25: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    scroll_50: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    scroll_75: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    scroll_100: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    engaged_time_sum_ms: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    engaged_time_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    outbound_clicks: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    conversions: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    confirmed_revenue: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0, server_default="0.0", nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="USD", server_default="USD", nullable=False)

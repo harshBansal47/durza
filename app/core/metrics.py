@@ -117,6 +117,12 @@ def mark_price_captured() -> None:
     price_last_captured.set(time.time())
 
 
+
+analytics_health_gap = Gauge(
+    "analytics_health_gap",
+    "1 when outbound clicks exist but analytics events are zero for the alert window",
+)
+
 def render() -> tuple[bytes, str]:
     """Return the exposition payload and its content type."""
     return generate_latest(registry), OPENMETRICS_TYPE
