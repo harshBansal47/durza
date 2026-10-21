@@ -195,13 +195,16 @@
         # it is not written into the VM's .env, so no later, unrelated run can
         # pick it up, and it disappears with the container.
         #
-        # `podman image prune -f` is deliberately NOT run for this deploy: the
-        # previous image has to stay on the VM so a rollback is a tag away.
-        # It is restored in a follow-up.
+        # `podman image prune -f` was deliberately left out of the Phase 5
+        # deploy so the previous image stayed on the VM for an immediate
+        # rollback (see docs/ROLLBACK.md). It is back now: an image that has
+        # been tagged for rollback is not dangling, and prune only removes the
+        # dangling ones.
         - name: Pull, build, migrate, then start
           run: |
             ssh "$VM_USER@$VM_HOST" "cd ~/durza \
               && git pull origin main \
               && podman-compose build app \
               && podman-compose run --rm --no-deps -T -e ALLOW_PROD_MIGRATION=1 app alembic upgrade head \
-              && podman-compose up -d app"
+              && podman-compose up -d app \
+              && podman image prune -f"
