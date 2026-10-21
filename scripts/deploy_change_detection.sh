@@ -37,10 +37,13 @@ answer() {
 
 # 1. No record of a successful deploy: we do not know what is running, so we
 #    cannot know what is missing. Deploy.
-if [ ! -s "$last_deployed_file" ]; then
+#
+#    A file that cannot be read counts as no record: the point of the record
+#    is to prove what is deployed, and an unreadable record proves nothing.
+if [ ! -r "$last_deployed_file" ] || [ ! -s "$last_deployed_file" ]; then
   answer yes
 fi
-baseline="$(tr -d '[:space:]' < "$last_deployed_file")"
+baseline="$(tr -d '[:space:]' < "$last_deployed_file" 2>/dev/null || true)"
 if [ -z "$baseline" ]; then
   answer yes
 fi

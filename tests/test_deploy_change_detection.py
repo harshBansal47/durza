@@ -158,6 +158,56 @@ def test_a_multi_commit_push_is_diffed_as_one_range(tmp_path: Path) -> None:
     assert _detect(repo, docs, base, recorded=base) == "deploy=yes"
 
 
+def test_an_unreadable_record_deploys(tmp_path: Path) -> None:
+    # The record exists but cannot be read: a directory where a file should be,
+    # a permission problem, a truncated read. The point of the record is to
+    # prove what is deployed, and an unreadable record proves nothing, so the
+    # push deploys rather than being skipped.
+    repo = _repo(tmp_path)
+    base = _commit(repo, "docs/readme.md", "hello\n")
+    docs = _commit(repo, "docs/second.md", "more\n")
+
+    unreadable = tmp_path / "last-deployed-sha"
+    unreadable.mkdir()  # a path that cannot be read as a file
+    result = subprocess.run(
+        [
+            "bash",
+            str(SCRIPT),
+            str(repo),
+            docs,
+            base,
+            str(unreadable),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout.strip() == "deploy=yes"
+
+
+def test_an_empty_record_deploys(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    base = _commit(repo, "docs/readme.md", "hello\n")
+    docs = _commit(repo, "docs/second.md", "more\n")
+
+    marker = tmp_path / "last-deployed-sha"
+    marker.write_text("   \n")
+    result = subprocess.run(
+        [
+            "bash",
+            str(SCRIPT),
+            str(repo),
+            docs,
+            base,
+            str(marker),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout.strip() == "deploy=yes"
+
+
 def test_an_unknown_recorded_sha_deploys(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     base = _commit(repo, "docs/readme.md", "hello\n")

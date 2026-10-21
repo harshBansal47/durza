@@ -8,7 +8,11 @@
 
   concurrency:
     group: ci-${{ github.ref }}
-    cancel-in-progress: true
+    # A new push must not cancel a run that is in the middle of a deploy: the
+    # migration is one transaction against the production database, and killing
+    # it half-way is worse than waiting for it to finish. The new run queues
+    # behind the old one instead.
+    cancel-in-progress: false
 
   jobs:
     backend:
@@ -159,6 +163,13 @@
       # to the database that holds the real rows.
       needs: [backend, migrate-check]
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      # Deploys queue behind each other and are never cancelled. A deploy that
+      # is interrupted while the migration is running leaves the database half
+      # migrated, so a second deploy waits for the first one to finish rather
+      # than racing it or replacing it.
+      concurrency:
+        group: ${{ github.workflow }}-deploy
+        cancel-in-progress: false
       runs-on: ubuntu-latest
       env:
         VM_HOST: ${{ secrets.VM_HOST }}
@@ -199,9 +210,15 @@
             # The last SHA that was successfully deployed, read from the host.
             # A missing file means we do not know what is running, and the
             # script deploys in that case.
-            ssh -o BatchMode=yes -o ConnectTimeout=15 "$VM_USER@$VM_HOST" \
-              "cat ~/.last-deployed-sha 2>/dev/null || true" \
-              > "$RUNNER_TEMP/last-deployed-sha" || true
+            if ! ssh -o BatchMode=yes -o ConnectTimeout=15 "$VM_USER@$VM_HOST" \
+                 "cat ~/.last-deployed-sha 2>/dev/null || true" \
+                 > "$RUNNER_TEMP/last-deployed-sha"; then
+              # The host could not be reached, or the read failed. We do not
+              # know what is running, so we deploy rather than skip a push.
+              echo "could not read the last deployed SHA from the host; deploying" >&2
+              echo "deploy=yes" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             echo "last deployed sha: $(cat "$RUNNER_TEMP/last-deployed-sha" 2>/dev/null || echo '<none>')"
             bash scripts/deploy_change_detection.sh \
               . "${{ github.sha }}" "${{ github.event.before }}" "$RUNNER_TEMP/last-deployed-sha" \
