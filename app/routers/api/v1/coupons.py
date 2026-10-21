@@ -22,6 +22,7 @@ from app.schemas.coupon_public import (
     compute_success_rate,
 )
 from app.services import affiliate, affiliate_router, click_service, coupon_service
+from app.services.coupon_service import exploration_ids
 from app.services.coupon_service import AlreadyVerifiedRecentlyError
 
 router = APIRouter(prefix="/coupons", tags=["coupons"])
