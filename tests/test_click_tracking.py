@@ -417,3 +417,53 @@ async def test_store_update_can_set_and_reset_network(client, admin_headers):
         f"/api/v1/stores/{store['id']}", json={"affiliate_network": None}, headers=admin_headers
     )
     assert reset.status_code == 200, reset.text
+
+
+# ------------------------------------------------------------ content_ref attribution
+
+
+async def test_go_content_ref_is_stored_when_valid(client, admin_headers, async_session_maker):
+    store = await _make_store(client, admin_headers, affiliate_network="awin")
+    coupon, _ = await _make_coupon(client, admin_headers, store["id"])
+
+    resp = await client.get(
+        f"{COUPONS}/{coupon['id']}/go?src=coupon-page&content_ref=guide:diwali",
+        headers=HUMAN,
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    clicks = await _clicks(async_session_maker)
+    assert clicks[-1].content_ref == "guide:diwali"
+
+
+async def test_go_content_ref_is_ignored_when_malformed(client, admin_headers, async_session_maker):
+    store = await _make_store(client, admin_headers)
+    coupon, _ = await _make_coupon(client, admin_headers, store["id"])
+
+    resp = await client.get(
+        f"{COUPONS}/{coupon['id']}/go?content_ref=Bad%20Value",
+        headers=HUMAN,
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    clicks = await _clicks(async_session_maker)
+    assert clicks[-1].content_ref is None
+
+
+async def test_go_dedupe_keeps_first_click_content_ref(client, admin_headers, async_session_maker):
+    store = await _make_store(client, admin_headers)
+    coupon, _ = await _make_coupon(client, admin_headers, store["id"])
+
+    await client.get(
+        f"{COUPONS}/{coupon['id']}/go?content_ref=guide:first",
+        headers=HUMAN,
+        follow_redirects=False,
+    )
+    await client.get(
+        f"{COUPONS}/{coupon['id']}/go?content_ref=guide:second",
+        headers=HUMAN,
+        follow_redirects=False,
+    )
+    clicks = await _clicks(async_session_maker)
+    assert len(clicks) == 1
+    assert clicks[0].content_ref == "guide:first"
