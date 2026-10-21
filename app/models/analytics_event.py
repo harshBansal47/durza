@@ -12,7 +12,7 @@ still count, and a client sending a stale id must not be able to make an insert 
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Index, String, Uuid, func
+from sqlalchemy import JSON, DateTime, Index, Integer, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -31,6 +31,12 @@ class AnalyticsEvent(Base, UUIDPKMixin):
     )
     store_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     page_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    content_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    content_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    list_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    position: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ranking_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    schema_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Small, sanitized, scalar-only properties (see sanitize_props in the router).
     props: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

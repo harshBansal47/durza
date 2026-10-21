@@ -13,6 +13,7 @@ class Role(str, enum.Enum):
     admin = "admin"
     editor = "editor"
     user = "user"
+    analytics_viewer = "analytics_viewer"
 
 
 class User(Base, UUIDPKMixin, TimestampMixin):
