@@ -159,25 +159,6 @@
       # to the database that holds the real rows.
       needs: [backend, migrate-check]
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      # Only deploy when something that can change the running artefact
-      # changes. Without this, a documentation-only merge rebuilds the image,
-      # starts the migration container against production and replaces the app
-      # container — all of it for nothing.
-      #
-      # The list has to be complete: anything left out merges without
-      # deploying. The backend and migrate-check jobs still run on every push,
-      # so the tests remain the gate; only the deploy is filtered.
-      paths:
-        - 'app/**'
-        - 'alembic/**'
-        - 'mcp_server/**'
-        - 'scripts/**'
-        - 'Dockerfile'
-        - 'docker-compose.yml'
-        - 'docker-compose.prod.yml'
-        - 'pyproject.toml'
-        - 'uv.lock'
-        - '.github/workflows/ci.yml'
       runs-on: ubuntu-latest
       env:
         VM_HOST: ${{ secrets.VM_HOST }}
@@ -185,7 +166,46 @@
         VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
 
       steps:
+        # Job-level `paths:` is not a thing in GitHub Actions — a workflow
+        # trigger filters the whole workflow, and that would stop the tests
+        # from running on a docs-only push. So the filter is computed here
+        # and the deploy steps are skipped when nothing that can change the
+        # running artefact changed.
+        #
+        # The list has to stay complete: a file left out merges without
+        # deploying. The backend and migrate-check jobs still run on every
+        # push, so the tests remain the gate.
+        - uses: actions/checkout@v4
+          with:
+            fetch-depth: 0
+
+        - name: Detect whether this push can change what runs
+          id: changes
+          run: |
+            set -euo pipefail
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              # No previous commit to compare against: deploy.
+              echo "deploy=yes" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            CHANGED="$(git diff --name-only "$BEFORE" "${{ github.sha }}")"
+            echo "changed files:" >&2
+            echo "$CHANGED" >&2
+            DEPLOY=no
+            while read -r file; do
+              [ -z "$file" ] && continue
+              case "$file" in
+                app/*|alembic/*|mcp_server/*|scripts/*|Dockerfile|docker-compose.yml|docker-compose.prod.yml|pyproject.toml|uv.lock|.github/workflows/ci.yml)
+                  DEPLOY=yes
+                  break
+                  ;;
+              esac
+            done <<< "$CHANGED"
+            echo "deploy=$DEPLOY" >> "$GITHUB_OUTPUT"
+
         - name: Set up SSH
+          if: steps.changes.outputs.deploy == 'yes'
           run: |
             mkdir -p ~/.ssh
             echo "$VM_SSH_KEY" > ~/.ssh/id_ed25519
@@ -220,6 +240,7 @@
         # been tagged for rollback is not dangling, and prune only removes the
         # dangling ones.
         - name: Pull, build, migrate, then start
+          if: steps.changes.outputs.deploy == 'yes'
           run: |
             ssh "$VM_USER@$VM_HOST" "cd ~/durza \
               && git pull origin main \
