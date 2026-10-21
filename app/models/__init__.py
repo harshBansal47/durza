@@ -82,6 +82,7 @@ from app.models.tracking import (
 )
 from app.models.user import User
 from app.models.user_interest import UserInterest
+from app.models.user_segment import UserSegment
 from app.models.verification_attempt import AttemptOutcome, VerificationAttempt
 
 __all__ = [
@@ -161,6 +162,7 @@ __all__ = [
     "TrafficSource",
     "User",
     "UserInterest",
+    "UserSegment",
     "VerificationAttempt",
     "VerificationStatus",
 ]

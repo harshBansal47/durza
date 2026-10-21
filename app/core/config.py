@@ -149,6 +149,7 @@ class Settings(BaseSettings):
     ingestion_quarantine_discount_pct: int = 90
 
     # ---- Personalization ------------------------------------------------
+    personalization_segment_version: int = 1
     personalization_enabled: bool = False
     personalization_half_life_days: int = 14
     personalization_ttl_days: int = 90

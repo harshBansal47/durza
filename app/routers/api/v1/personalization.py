@@ -11,6 +11,7 @@ from app.core.limiter import limiter
 from app.core.deps import get_current_user
 from app.models.user import User
 from app.models.user_interest import UserInterest
+from app.services.segmentation import compute_segment
 from sqlalchemy import select, delete
 
 router = APIRouter(prefix="/personalization", tags=["personalization"])
@@ -150,3 +151,40 @@ async def ending_soon_saved(request: Request, response: Response):
     if not get_settings().personalization_enabled:
         raise HTTPException(status_code=404, detail="Not found")
     return {"items": [], "reason": "No saved stores.", "reason_code": "no_signal"}
+
+
+class SegmentRequest(BaseModel):
+    consent: bool
+    signals: list[Signal] = Field(default_factory=list, max_length=50)
+
+
+@router.post("/segment", status_code=status.HTTP_200_OK)
+@limiter.limit("30/minute")
+async def segment_stateless(payload: SegmentRequest, request: Request, response: Response):
+    if not get_settings().personalization_enabled:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not payload.consent:
+        raise HTTPException(status_code=403, detail="Personalization consent required")
+    _no_store_headers(response)
+    now = datetime.now(UTC)
+    scores: dict[str, float] = {}
+    for sig in payload.signals:
+        if not _allowed(sig.interest_key, sig.interest_type):
+            continue
+        key = f"{sig.interest_type}:{sig.interest_key}"
+        score = _decay(sig.occurred_at, now, get_settings().personalization_half_life_days)
+        scores[key] = max(scores.get(key, 0.0), score)
+    return {"segment": compute_segment(scores), "version": get_settings().personalization_segment_version}
+
+
+@router.get("/segment", status_code=status.HTTP_200_OK)
+@limiter.limit("30/minute")
+async def segment_logged_in(request: Request, response: Response, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    if not get_settings().personalization_enabled:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not user.personalization_consent:
+        raise HTTPException(status_code=403, detail="Personalization consent required")
+    _no_store_headers(response)
+    rows = (await db.execute(select(UserInterest).where(UserInterest.user_id == user.id))).scalars().all()
+    scores = {f"{r.interest_type}:{r.interest_key}": r.score for r in rows}
+    return {"segment": compute_segment(scores), "version": get_settings().personalization_segment_version}
