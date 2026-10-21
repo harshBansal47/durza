@@ -122,3 +122,19 @@ def test_sanitize_props_caps_the_number_of_properties():
 def test_sanitize_props_returns_none_when_nothing_is_usable():
     assert sanitize_props(None) is None
     assert sanitize_props({"ts": "now", "event": "x", "nested": {"a": 1}}) is None
+
+
+async def test_preflight_allows_credentialed_cors_and_session_header(client):
+    resp = await client.options(
+        URL,
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,x-session-id",
+        },
+    )
+    assert resp.status_code in (200, 204)
+    assert resp.headers.get("access-control-allow-credentials") == "true"
+    assert "http://localhost:3000" in (resp.headers.get("access-control-allow-origin") or "")
+    allowed = (resp.headers.get("access-control-allow-headers") or "").lower()
+    assert "x-session-id" in allowed

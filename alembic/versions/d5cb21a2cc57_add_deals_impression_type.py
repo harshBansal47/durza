@@ -13,7 +13,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TYPE impression_type ADD VALUE IF NOT EXISTS 'deals'")
+    with op.get_context().autocommit_block():
+        op.execute("ALTER TYPE impression_type ADD VALUE IF NOT EXISTS 'deals'")
 
 
 def downgrade() -> None:

@@ -163,3 +163,25 @@ async def record_event(
         )
     )
     await db.commit()
+
+
+class ConsentChoice(str, enum.Enum):
+    accepted = "accepted"
+    declined = "declined"
+
+
+class ConsentRequest(BaseModel):
+    choice: ConsentChoice
+
+
+@router.post("/consent", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
+async def record_consent(
+    payload: ConsentRequest,
+    request: Request,
+    response: Response,
+) -> None:
+    """Record a consent choice. On decline, clear visitor/session cookies."""
+    if payload.choice == ConsentChoice.declined:
+        response.delete_cookie("cz_vid", path="/", samesite="lax")
+        response.delete_cookie("cz_sid", path="/", samesite="lax")
