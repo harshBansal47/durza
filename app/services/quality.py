@@ -59,6 +59,9 @@ class QualityInputs:
     last_verified_at: datetime | None = None
     #: Lifetime outbound clicks.
     clicks_count: int = 0
+    #: Community report counts.
+    success_count: int = 0
+    fail_count: int = 0
     #: Confirmed affiliate conversions attributed to this coupon.
     conversions_count: int = 0
     #: 0..1 merchant popularity, if the caller has precomputed it.
@@ -100,6 +103,30 @@ class QualityWeights:
     # normalized EPC. The old default of 0.0 meant the revenue tables could
     # fill forever and the ranking would never notice.
     expected_revenue: float = 0.30
+
+    def validated(self) -> "QualityWeights":
+        for value in (
+            self.verification_status,
+            self.community_success,
+            self.source_confidence,
+            self.multi_source,
+            self.recency,
+            self.expiry_urgency,
+            self.conversion_rate,
+            self.merchant_popularity,
+            self.expected_revenue,
+        ):
+            if value < 0:
+                raise ValueError("quality weights must be non-negative")
+        total = sum((self.verification_status, self.community_success, self.source_confidence, self.multi_source, self.recency, self.expiry_urgency, self.conversion_rate, self.merchant_popularity, self.expected_revenue))
+        if total <= 0:
+            raise ValueError("quality weights must sum to a positive number")
+        trust = self.verification_status + self.community_success
+        if trust < 0.7 * total:
+            raise ValueError("trust weight floor violated")
+        if self.expected_revenue > 0.4 * total:
+            raise ValueError("epc weight cap violated")
+        return self
 
     def normalized(self) -> dict[str, float]:
         """Weights scaled to sum to 1, so an edited setting cannot skew the range."""
@@ -271,7 +298,7 @@ def compute_quality(
     w = (weights or QualityWeights()).normalized()
     now = now or datetime.now(UTC)
 
-    samples = inputs.clicks_count if inputs.success_rate is not None else 0
+    samples = inputs.success_count + inputs.fail_count if inputs.success_rate is not None else 0
     components: dict[str, float | None] = {
         "verification_status": _verification_score(inputs.verification_status),
         "community_success": _community_success(inputs.success_rate, samples=samples),
@@ -318,6 +345,8 @@ def score_for_coupon(
         created_at=_aware(coupon.created_at),
         last_verified_at=_aware(coupon.last_verified_at),
         clicks_count=coupon.clicks_count,
+        success_count=coupon.success_count,
+        fail_count=coupon.fail_count,
         conversions_count=conversions_count,
         merchant_popularity=merchant_popularity,
         discount_value=coupon.discount_value,

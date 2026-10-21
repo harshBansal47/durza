@@ -165,6 +165,7 @@ class Coupon(Base, UUIDPKMixin, TimestampMixin):
     quality_score: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", index=True, nullable=False
     )
+    quality_score_v2: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
 
     # ISO 3166-1 alpha-2 market this offer was verified for. Null means global.
     country: Mapped[str | None] = mapped_column(String(2), index=True, nullable=True)

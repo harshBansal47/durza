@@ -148,6 +148,10 @@ class Settings(BaseSettings):
     ingestion_quarantine_mode: str = "shadow"
     ingestion_quarantine_discount_pct: int = 90
 
+    # ---- Ranking --------------------------------------------------------
+    ranking_version: str = "v1"
+    ranking_weight_trust_floor: float = 0.7
+
     # ---- Observability --------------------------------------------------
     sentry_dsn: str | None = None
     sentry_traces_sample_rate: float = 0.1

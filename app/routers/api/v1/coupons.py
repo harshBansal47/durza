@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.core.deps import require_role
 from app.core.exceptions import EntityNotFoundError
 from app.core.limiter import limiter
+from app.core.config import get_settings
 from app.core.pagination import Paginated
 from app.core.request_meta import client_ip, hash_ip
 from app.models.coupon import Coupon, DiscountType
@@ -67,7 +68,7 @@ async def list_coupons(
         limit=limit,
     )
     return Paginated(
-        items=[CouponPublicRead.model_validate(item) for item in items],
+        items=[CouponPublicRead.model_validate(item).model_copy(update={"ranking_version": get_settings().ranking_version}) for item in items],
         total=total,
         skip=skip,
         limit=limit,
