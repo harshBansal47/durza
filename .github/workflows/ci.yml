@@ -10,9 +10,13 @@
     group: ci-${{ github.ref }}
     # A new push must not cancel a run that is in the middle of a deploy: the
     # migration is one transaction against the production database, and killing
-    # it half-way is worse than waiting for it to finish. The new run queues
-    # behind the old one instead.
-    cancel-in-progress: false
+    # it half-way is worse than waiting for it to finish.
+    #
+    # On a pull request there is no deploy, so the superseded run is cancelled
+    # and the new one starts immediately. On `main` a push queues behind the
+    # run in progress — the deploy job has its own group as well, so a deploy
+    # is never cancelled either way.
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
   jobs:
     backend:
