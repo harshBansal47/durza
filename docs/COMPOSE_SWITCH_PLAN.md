@@ -81,6 +81,22 @@ The `backend` and `migrations down then up` jobs still run on every push, so
 the tests do not stop being the gate — only the deploy does. The list has to
 be complete: a file left out merges **without** deploying.
 
+**The baseline is the last SHA that was successfully deployed**, not the
+previous head of `main`. The deploy writes that SHA to the host at the end of
+a successful deploy, and the next push is diffed against it. The distinction
+is the whole point: if a deploy failed, its changes were never applied, so a
+later docs-only push still has to deploy. Diffing against the previous head
+would skip it and leave the failed deploy's changes undeployed forever. When
+the recorded SHA cannot be found — the first deploy after this lands, or a
+host that has never recorded one — the push deploys.
+
+The decision lives in `scripts/deploy_change_detection.sh` so it can be tested
+without a runner, and it is covered by tests for exactly the cases that
+matter: docs-only after a successful deploy (skip), docs-only after a failed
+deploy (deploy), no recorded SHA (deploy), first push (deploy), a multi-commit
+push, an unknown recorded SHA, a recorded SHA that is not an ancestor, and
+every path that has to trigger a deploy.
+
 This is a **separate small pull request** from the compose switch, because it
 is a different change with a different risk: the filter has to be complete, or
 a change that matters will be merged without deploying. Proposed as its own
