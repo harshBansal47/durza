@@ -53,6 +53,7 @@ class CouponPublicRead(BaseModel):
     restrictions: dict[str, Any] | None = None
     created_at: datetime
     ranking_version: str = "v1"
+    is_exploration: bool = False
 
     @computed_field  # type: ignore[prop-decorator]
     @property

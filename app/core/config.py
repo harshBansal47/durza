@@ -149,6 +149,17 @@ class Settings(BaseSettings):
     ingestion_quarantine_discount_pct: int = 90
 
     # ---- Ranking --------------------------------------------------------
+    # ---- Ranking exploration --------------------------------------------
+    exploration_enabled: bool = False
+    exploration_share: float = 0.1667
+    exploration_max_share: float = 0.25
+    exploration_min_impressions: int = 100
+    exploration_trust_success_threshold: float = 0.5
+    exploration_under_sampled_clicks: int = 100
+    exploration_under_sampled_reports: int = 10
+    exploration_under_sampled_age_days: int = 30
+    exploration_seed_day_boundary: str = "UTC"
+
     ranking_version: str = "v1"
     ranking_weight_trust_floor: float = 0.7
 

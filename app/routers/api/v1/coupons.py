@@ -67,8 +67,19 @@ async def list_coupons(
         skip=skip,
         limit=limit,
     )
+    exploration = set()
+    if sort == coupon_service.CouponSort.recommended:
+        exploration = await exploration_ids(db, listing_key="home:recommended")
     return Paginated(
-        items=[CouponPublicRead.model_validate(item).model_copy(update={"ranking_version": get_settings().ranking_version}) for item in items],
+        items=[
+            CouponPublicRead.model_validate(item).model_copy(
+                update={
+                    "ranking_version": get_settings().ranking_version,
+                    "is_exploration": item.id in exploration,
+                }
+            )
+            for item in items
+        ],
         total=total,
         skip=skip,
         limit=limit,
