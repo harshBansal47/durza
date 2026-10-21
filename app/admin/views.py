@@ -9,11 +9,13 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, ClassVar, cast
 
+from fastapi import HTTPException
 from pydantic import EmailStr, TypeAdapter, ValidationError
-from sqladmin import ModelView
+from sqladmin import ModelView, action
 from sqladmin.filters import BooleanFilter, StaticValuesFilter
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.requests import Request
+from starlette.responses import RedirectResponse, Response
 from wtforms import PasswordField
 
 from app.core.security import hash_password
@@ -27,10 +29,12 @@ from app.models.ingestion_run import IngestionRun
 from app.models.job import JobRun, JobStatus
 from app.models.page import Page
 from app.models.product import PricePoint, Product
+from app.models.sale import SaleEdition, SaleEditionCouponRule, SaleSeries
 from app.models.source import Source
 from app.models.store import Store
 from app.models.user import Role, User
 from app.models.verification_attempt import AttemptOutcome, VerificationAttempt
+from app.services import sale_service
 
 _email_adapter: TypeAdapter[str] = TypeAdapter(EmailStr)
 
@@ -849,6 +853,132 @@ class ClickEventAdmin(StaffModelView, model=ClickEvent):
     can_edit = False
 
 
+class SaleSeriesAdmin(StaffModelView, model=SaleSeries):
+    """A sale hub: one brand or event, one series of editions.
+
+    A series is the spine of a hub — "Diwali 2026" — and an edition is a dated
+    run of it. Both are created here rather than in the database, so the
+    slug, the publication status and the lifecycle status are edited by
+    someone who can see what the storefront will show.
+    """
+
+    name = "Sale series"
+    name_plural = "Sale series"
+    icon = "fa-solid fa-tags"
+
+    column_list = [
+        SaleSeries.slug,
+        SaleSeries.title,
+        SaleSeries.publication_status,
+        "editions",
+        SaleSeries.created_at,
+    ]
+    column_searchable_list = [SaleSeries.slug, SaleSeries.title]
+    column_sortable_list = [SaleSeries.slug, SaleSeries.created_at]
+    column_default_sort = [(SaleSeries.slug, False)]
+    form_columns = [
+        SaleSeries.slug,
+        SaleSeries.title,
+        SaleSeries.description,
+        SaleSeries.publication_status,
+    ]
+
+
+class SaleEditionAdmin(StaffModelView, model=SaleEdition):
+    """One dated run of a hub, and the button that publishes it.
+
+    Publishing is not a field edit: an edition can only be published once
+    the guide it points at is published too, and the rules that decide what
+    the hub shows have to be in place. The service enforces that, so the
+    button is the only way in.
+    """
+
+    name = "Sale edition"
+    name_plural = "Sale editions"
+    icon = "fa-solid fa-calendar-days"
+
+    column_list = [
+        SaleEdition.slug,
+        "series",
+        SaleEdition.year,
+        SaleEdition.lifecycle_status,
+        SaleEdition.publication_status,
+        SaleEdition.start_at,
+        SaleEdition.end_at,
+    ]
+    column_searchable_list = [SaleEdition.slug]
+    column_sortable_list = [SaleEdition.year, SaleEdition.start_at]
+    column_default_sort = [(SaleEdition.start_at, False)]
+    form_columns = [
+        "series",
+        SaleEdition.slug,
+        SaleEdition.year,
+        SaleEdition.start_at,
+        SaleEdition.end_at,
+        SaleEdition.dates_confirmed,
+        SaleEdition.source_url,
+        "editorial_content_id",
+        SaleEdition.lifecycle_status,
+        SaleEdition.publication_status,
+        SaleEdition.coupon_rules_version,
+    ]
+    datetime_fields = ("start_at", "end_at")
+
+    async def on_model_change(
+        self, data: dict, model: Any, is_created: bool, request: Request
+    ) -> None:
+        await super().on_model_change(data, model, is_created, request)
+
+    @action("Publish", label="Publish this edition once its guide is published")
+    async def publish(self, request: Request) -> Response:
+        """Publish the edition, if the service agrees it is ready.
+
+        The service is the judge: an edition whose linked guide is not
+        published, or whose confirmed dates have no source, is refused. The
+        button does not second-guess it.
+        """
+        raw = request.query_params.get("pks")
+        if not raw:
+            raise HTTPException(status_code=400, detail="No edition selected")
+        session_maker = cast(async_sessionmaker[AsyncSession], self.session_maker)
+        async with session_maker() as session:
+            edition = await session.get(SaleEdition, uuid.UUID(raw))
+            if edition is None:
+                raise HTTPException(status_code=404, detail="Edition not found")
+            try:
+                await sale_service.publish_edition(session, edition)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(url=request.url, status_code=303)
+
+
+class SaleEditionCouponRuleAdmin(StaffModelView, model=SaleEditionCouponRule):
+    """What a hub shows: one rule per store, category or tag.
+
+    A rule is a slug, not an id, so the rule survives a store being renamed
+    and reads the same in the database as in the admin.
+    """
+
+    name = "Sale coupon rule"
+    name_plural = "Sale coupon rules"
+    icon = "fa-solid fa-list-check"
+
+    column_list = [
+        "edition",
+        SaleEditionCouponRule.rule_type,
+        SaleEditionCouponRule.rule_value,
+        SaleEditionCouponRule.sort_order,
+    ]
+    column_searchable_list = [SaleEditionCouponRule.rule_value]
+    column_default_sort = [(SaleEditionCouponRule.sort_order, False)]
+    form_columns = [
+        "edition",
+        SaleEditionCouponRule.rule_type,
+        SaleEditionCouponRule.rule_value,
+        SaleEditionCouponRule.sort_order,
+    ]
+
+
 ALL_VIEWS = (
     CategoryAdmin,
     StoreAdmin,
@@ -864,4 +994,7 @@ ALL_VIEWS = (
     JobRunAdmin,
     VerificationAttemptAdmin,
     ClickEventAdmin,
+    SaleSeriesAdmin,
+    SaleEditionAdmin,
+    SaleEditionCouponRuleAdmin,
 )
