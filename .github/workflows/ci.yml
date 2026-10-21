@@ -174,43 +174,38 @@
         #
         # The list has to stay complete: a file left out merges without
         # deploying. The backend and migrate-check jobs still run on every
-        # push, so the tests remain the gate.
+        # push, so the tests remain the gate; only the deploy is filtered.
+        #
+        # The baseline is the last SHA that was **successfully deployed**,
+        # recorded on the host at the end of a successful deploy — not the
+        # previous head of `main`. If a deploy failed, its changes were never
+        # applied, so a later docs-only push still has to deploy, and diffing
+        # against the previous head would skip it.
         - uses: actions/checkout@v4
           with:
             fetch-depth: 0
 
-        - name: Detect whether this push can change what runs
-          id: changes
-          run: |
-            set -euo pipefail
-            BEFORE="${{ github.event.before }}"
-            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-              # No previous commit to compare against: deploy.
-              echo "deploy=yes" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            CHANGED="$(git diff --name-only "$BEFORE" "${{ github.sha }}")"
-            echo "changed files:" >&2
-            echo "$CHANGED" >&2
-            DEPLOY=no
-            while read -r file; do
-              [ -z "$file" ] && continue
-              case "$file" in
-                app/*|alembic/*|mcp_server/*|scripts/*|Dockerfile|docker-compose.yml|docker-compose.prod.yml|pyproject.toml|uv.lock|.github/workflows/ci.yml)
-                  DEPLOY=yes
-                  break
-                  ;;
-              esac
-            done <<< "$CHANGED"
-            echo "deploy=$DEPLOY" >> "$GITHUB_OUTPUT"
-
         - name: Set up SSH
-          if: steps.changes.outputs.deploy == 'yes'
           run: |
             mkdir -p ~/.ssh
             echo "$VM_SSH_KEY" > ~/.ssh/id_ed25519
             chmod 600 ~/.ssh/id_ed25519
             ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts
+
+        - name: Detect whether this push can change what runs
+          id: changes
+          run: |
+            set -euo pipefail
+            # The last SHA that was successfully deployed, read from the host.
+            # A missing file means we do not know what is running, and the
+            # script deploys in that case.
+            ssh -o BatchMode=yes -o ConnectTimeout=15 "$VM_USER@$VM_HOST" \
+              "cat ~/.last-deployed-sha 2>/dev/null || true" \
+              > "$RUNNER_TEMP/last-deployed-sha" || true
+            echo "last deployed sha: $(cat "$RUNNER_TEMP/last-deployed-sha" 2>/dev/null || echo '<none>')"
+            bash scripts/deploy_change_detection.sh \
+              . "${{ github.sha }}" "${{ github.event.before }}" "$RUNNER_TEMP/last-deployed-sha" \
+              >> "$GITHUB_OUTPUT"
 
         # The VM's own .env holds the Neon and Upstash URLs.
         #
@@ -248,3 +243,13 @@
               && podman-compose run --rm --no-deps -T -e ALLOW_PROD_MIGRATION=1 app alembic upgrade head \
               && podman-compose up -d app \
               && podman image prune -f"
+
+        # Record what is now deployed, so the next push can be diffed against
+        # it. This runs only when the deploy above succeeded: a failed deploy
+        # leaves the recorded SHA alone, so the next push deploys again.
+        - name: Record the deployed SHA
+          if: steps.changes.outputs.deploy == 'yes'
+          run: |
+            set -euo pipefail
+            ssh "$VM_USER@$VM_HOST" \
+              "git -C ~/durza rev-parse HEAD > ~/.last-deployed-sha"
