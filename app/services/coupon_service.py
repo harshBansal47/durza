@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -348,3 +348,20 @@ async def get_verification_history(
         .limit(limit)
     )
     return result.scalars().all()
+
+
+async def scrub_verification_hashes(db: AsyncSession, *, older_than_days: int) -> int:
+    """Privacy retention: forget who voted, keep the vote.
+
+    A community vote is a verdict, not an identity. The hash of the voter's
+    IP is only there to rate-limit a repeat vote, so it goes once the vote is
+    older than the retention window. The row, the verdict and the note stay.
+    """
+    cutoff = datetime.now(UTC) - timedelta(days=older_than_days)
+    result = await db.execute(
+        update(CouponVerification)
+        .where(CouponVerification.created_at < cutoff, CouponVerification.ip_hash.is_not(None))
+        .values(ip_hash=None)
+    )
+    await db.commit()
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]

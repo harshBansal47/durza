@@ -19,7 +19,10 @@ class CouponVerification(Base, UUIDPKMixin, TimestampMixin):
     coupon_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("coupons.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    ip_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    # Nullable: the hash is what rate-limits a repeat vote from the same
+    # visitor, and it is scrubbed once the vote is older than the retention
+    # window. A scrubbed vote keeps its verdict and loses the identifier.
+    ip_hash: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
     worked: Mapped[bool] = mapped_column(Boolean, nullable=False)
     # Optional free text from the reporter ("code worked, min. spend excluded").
     # Shown on the coupon page as the reason behind a vote — useful when a code
