@@ -1,6 +1,8 @@
 from app.core.config import get_settings
 import enum
 import uuid
+import hashlib
+from datetime import datetime, timedelta, UTC
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
@@ -51,6 +53,59 @@ class CouponSort(str, enum.Enum):
     most_used = "most_used"
     top_rated = "top_rated"
     biggest_discount = "biggest_discount"
+
+
+
+async def exploration_ids(db: AsyncSession, *, now=None, listing_key: str = "home:recommended") -> set[uuid.UUID]:
+    from app.core.config import get_settings
+    settings = get_settings()
+    if not getattr(settings, "exploration_enabled", False):
+        return set()
+    now = now or datetime.now(UTC)
+    from app.models.coupon import Coupon, VerificationStatus
+    from sqlalchemy import select, or_
+    score_col = Coupon.quality_score_v2 if settings.ranking_version == "v2" else Coupon.quality_score
+    stmt = select(Coupon).where(
+        Coupon.is_active.is_(True),
+        or_(Coupon.expires_at.is_(None), Coupon.expires_at > now),
+    ).order_by(score_col.desc(), Coupon.created_at.desc()).limit(1000)
+    rows = (await db.execute(stmt)).scalars().all()
+
+    eligible = []
+    for c in rows:
+        if c.verification_status in (VerificationStatus.failed, VerificationStatus.disputed):
+            continue
+        if c.expires_at is not None and c.expires_at <= now:
+            continue
+        reports = c.success_count + c.fail_count
+        if reports >= 3:
+            rate = c.success_count / reports
+            if rate < settings.exploration_trust_success_threshold:
+                continue
+        if c.fail_count > c.success_count and reports >= 3:
+            continue
+        age_days = (now - c.created_at.replace(tzinfo=UTC) if c.created_at.tzinfo is None else now - c.created_at).days
+        under_sampled = (
+            c.clicks_count < settings.exploration_under_sampled_clicks
+            and reports < settings.exploration_under_sampled_reports
+            and age_days < settings.exploration_under_sampled_age_days
+            and c.created_at is not None
+        )
+        if not under_sampled:
+            continue
+        eligible.append(c)
+
+    if not eligible:
+        return set()
+
+    seed = f"{listing_key}:{now.date().isoformat()}"
+    ranked = sorted(eligible, key=lambda c: hashlib.sha256(f"{seed}:{c.id}".encode()).hexdigest())
+    share = min(settings.exploration_share, settings.exploration_max_share)
+    n = min(len(ranked), max(1, int(len(rows) * share)))
+    n = min(n, 10)
+    selected = ranked[:n]
+    return {c.id for c in selected}
+
 
 
 async def list_coupons(
