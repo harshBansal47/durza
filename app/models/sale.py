@@ -23,9 +23,9 @@ class SaleSeries(Base, UUIDPKMixin, TimestampMixin):
 
     slug: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(240), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     publication_status: Mapped[str] = mapped_column(
-        String(20), default="draft", server_default="draft", nullable=False, index=True
+        String(20), default="draft", server_default="draft", nullable=False
     )
     __table_args__ = (
         UniqueConstraint("slug", name="uq_sale_series_slug"),
@@ -34,6 +34,7 @@ class SaleSeries(Base, UUIDPKMixin, TimestampMixin):
             "publication_status IN ('draft','in_review','published')",
             name="ck_sale_series_publication_status",
         ),
+        Index("ix_sale_series_publication_status", "publication_status"),
     )
 
     editions: Mapped[list["SaleEdition"]] = relationship(
@@ -59,18 +60,20 @@ class SaleEdition(Base, UUIDPKMixin, TimestampMixin):
         Index("ix_sale_edition_lifecycle", "lifecycle_status"),
         Index("ix_sale_edition_start", "start_at"),
         Index("ix_sale_edition_end", "end_at"),
+        Index("ix_sale_editions_publication_status", "publication_status"),
+        Index("ix_sale_editions_editorial_content_id", "editorial_content_id"),
     )
 
     series_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("sale_series.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("sale_series.id", ondelete="CASCADE"), nullable=False
     )
     slug: Mapped[str] = mapped_column(String(30), nullable=False)
     year: Mapped[int] = mapped_column(nullable=False)
     publication_status: Mapped[str] = mapped_column(
-        String(20), default="draft", server_default="draft", nullable=False, index=True
+        String(20), default="draft", server_default="draft", nullable=False
     )
     lifecycle_status: Mapped[str] = mapped_column(
-        String(20), default="announced", server_default="announced", nullable=False, index=True
+        String(20), default="announced", server_default="announced", nullable=False
     )
     start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -82,7 +85,7 @@ class SaleEdition(Base, UUIDPKMixin, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
     editorial_content_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("editorial_contents.id", ondelete="SET NULL"), nullable=True, index=True
+        ForeignKey("editorial_contents.id", ondelete="SET NULL"), nullable=True
     )
     coupon_rules_version: Mapped[int] = mapped_column(
         Integer, default=1, server_default="1", nullable=False
@@ -114,7 +117,7 @@ class SaleEditionCouponRule(Base, UUIDPKMixin, TimestampMixin):
     )
 
     edition_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("sale_editions.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("sale_editions.id", ondelete="CASCADE"), nullable=False
     )
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
     rule_type: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -127,9 +130,12 @@ class SaleEditionCouponRule(Base, UUIDPKMixin, TimestampMixin):
 class SaleSlugHistory(Base, UUIDPKMixin, TimestampMixin):
     __tablename__ = "sale_slug_history"
 
-    __table_args__ = (Index("ix_sale_slug_history_old", "old_slug"),)
+    __table_args__ = (
+        Index("ix_sale_slug_history_old", "old_slug"),
+        Index("ix_sale_slug_history_entity", "entity_id"),
+    )
 
     entity_type: Mapped[str] = mapped_column(String(20), nullable=False)
-    entity_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
+    entity_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
     old_slug: Mapped[str] = mapped_column(String(80), nullable=False)
     new_slug: Mapped[str] = mapped_column(String(80), nullable=False)
