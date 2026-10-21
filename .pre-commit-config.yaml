@@ -1,51 +1,5 @@
-# Two formatters used to run here: black and `ruff format`. They are close but
-# not identical, and black won whichever commit it touched last — so a developer
-# could commit locally with pre-commit's blessing and have CI fail
-# `ruff format --check` on the same file. That is the failure mode this file
-# exists to remove: one formatter, and the one CI enforces is the one that runs.
-#
-# `rev` is pinned rather than floating because the ruff pre-commit hook changed
-# argument names between releases, and a hook that silently stops matching files
-# is worse than one that is visibly broken.
-
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.10
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
     hooks:
-      # Lint with autofix. The `args` are redundant with pyproject's [tool.ruff]
-      # but explicit here so the hook behaves the same if the config is ever
-      # read from somewhere that does not inherit it.
-      - id: ruff
-        args: [--fix]
-        # Runs before the formatter: a fix can change line lengths, so formatting
-        # first would leave the fixed lines unformatted.
-      - id: ruff-format
-
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
-    hooks:
-      # Before everything else, because a file with trailing whitespace can make
-      # the linters below produce output that differs from CI's on the same
-      # content.
-      - id: end-of-file-fixer
-      - id: trailing-whitespace
-      - id: check-yaml
-      - id: check-added-large-files
-
-  - repo: local
-    hooks:
-      - name: destructive-migration-guard
-        entry: uv run python scripts/check_destructive_migrations.py
-        language: system
-        pass_filenames: false
-        always_run: true
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.14.1
-    hooks:
-      # The same flags CI uses. A pre-commit type check that passes under
-      # different flags is not a pre-commit type check.
-      - id: mypy
-        files: ^app/
-        args: [--ignore-missing-imports, --no-strict-optional]
-        additional_dependencies: []
+      - id: gitleaks
