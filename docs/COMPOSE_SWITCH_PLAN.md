@@ -41,27 +41,45 @@ That is not free: the build takes minutes, the migration container starts
 against production, and the container is replaced. A docs-only merge should
 not do any of that, and it does not need to.
 
-The fix is a path filter on the deploy job, so it only runs when something
-that can change the running artefact changes:
+The fix is to make the deploy job skip itself when nothing that can change
+the running artefact changed. Note that **job-level `paths:` is not a
+GitHub Actions key** — `paths` only exists on a workflow trigger, and
+putting it there would filter the *whole* workflow, so a docs-only push would
+stop running the tests as well. The deploy job therefore checks out the push,
+diffs it against the previous `main`, and skips its own steps:
 
 ```yaml
-    deploy:
-      name: deploy
-      needs: [backend, migrate-check]
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      paths:
-        - 'app/**'
-        - 'alembic/**'
-        - 'mcp_server/**'
-        - 'Dockerfile'
-        - 'docker-compose.yml'
-        - 'docker-compose.prod.yml'
-        - 'pyproject.toml'
-        - 'uv.lock'
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect whether this push can change what runs
+        id: changes
+        run: |
+          set -euo pipefail
+          BEFORE="${{ github.event.before }}"
+          CHANGED="$(git diff --name-only "$BEFORE" "${{ github.sha }}")"
+          DEPLOY=no
+          while read -r file; do
+            case "$file" in
+              app/*|alembic/*|mcp_server/*|scripts/*|Dockerfile|docker-compose.yml|docker-compose.prod.yml|pyproject.toml|uv.lock|.github/workflows/ci.yml)
+                DEPLOY=yes; break ;;
+            esac
+          done <<< "$CHANGED"
+          echo "deploy=$DEPLOY" >> "$GITHUB_OUTPUT"
+
+      - name: Set up SSH
+        if: steps.changes.outputs.deploy == 'yes'
+        ...
+
+      - name: Pull, build, migrate, then start
+        if: steps.changes.outputs.deploy == 'yes'
+        ...
 ```
 
 The `backend` and `migrations down then up` jobs still run on every push, so
-the tests do not stop being the gate — only the deploy does.
+the tests do not stop being the gate — only the deploy does. The list has to
+be complete: a file left out merges **without** deploying.
 
 This is a **separate small pull request** from the compose switch, because it
 is a different change with a different risk: the filter has to be complete, or
