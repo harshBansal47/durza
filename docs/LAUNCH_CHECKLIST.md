@@ -174,7 +174,50 @@ Everything below is recorded, not forgotten.
 
 ---
 
-## 5. If something has to be undone
+## 5. Two settings that break the site quietly if they are wrong
+
+### `CORS_ORIGINS` — both origins, always
+
+The API answers browser requests only for the origins it lists
+(`app/main.py`: `allow_origins=settings.cors_origin_list`, and
+`allow_credentials=True`). The storefront is served from **two** origins, and
+a request from an origin that is not on the list is blocked in the browser
+before the API ever sees it.
+
+```
+CORS_ORIGINS=https://durza.in,https://www.durza.in
+```
+
+Both, comma-separated, no trailing slash, no spaces. Leaving out
+`https://www.durza.in` means the consent call fails from the www host: no
+`cz_consent` cookie is issued, no analytics are recorded, and the only
+symptom is a CORS error in the browser console. Leaving out
+`https://durza.in` does the same for the apex host.
+
+This matters more than a usual CORS setting because `allow_credentials=True`:
+the consent cookie is a credential, and a wildcard origin cannot be used with
+credentials. The exact origin has to be listed.
+
+### Rotating `SECRET_KEY` invalidates four things at once
+
+`SECRET_KEY` signs the login tokens (`app/core/security.py:31`), the consent
+cookie (`app/core/consent.py`, used at `app/routers/api/v1/analytics.py:229`
+and `:256`), the admin session (`app/admin/auth.py:37`) and — when
+`IP_HASH_SALT` is not set — the IP hashes (`app/core/request_meta.py:29`).
+
+| What breaks | Who notices | How soon |
+|---|---|---|
+| Every signed-in user is signed out; their access token no longer verifies | everyone | immediately |
+| Every consent cookie stops verifying, so analytics stop being recorded until the browser asks for a new one | the analytics counters | quietly, over the next visits |
+| The admin session is invalidated | the operator | on the next admin page |
+| With no `IP_HASH_SALT`, every IP hash changes and the rate limiters start from zero | the abuse protection | quietly |
+
+Set **`IP_HASH_SALT` to its own value before you ever rotate `SECRET_KEY`** —
+that keeps the hashes out of it. And expect a signed-out wave plus an
+analytics dip when you rotate; the storefront re-issues the consent cookie on
+load, so the analytics recover on their own, the sign-ins do not.
+
+## 6. If something has to be undone
 
 - **A bad deploy:** `docs/ROLLBACK.md` and `docs/POST_DEPLOY.md`. A rollback
   needs a restore point; take one first.

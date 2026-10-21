@@ -162,6 +162,40 @@ The v1 scores of this dataset take **1 distinct value(s)** across 44 candidates 
 
 So the v1 order is chronological, not a ranking: the shipped weights are 70% trust (verification status + community votes) and 30% EPC, and a freshly researched offer has neither — no verification, no votes, no clicks. Every such offer scores the same, and the tie-break is `created_at DESC`. That is worth knowing before comparing it with anything: a diff between two orders that are both chronological shows less about the algorithms than about the data.
 
+## Is the community-success fix in v1, or only meant for v2?
+
+**It is in v1. It is not a v2 thing, and there is no v2 code path for it to
+live in.**
+
+The fix — that the community success rate is pulled toward the prior by the
+number of reports behind it, so one "it worked" is not treated as evidence —
+is in `compute_quality`, which is the single formula in the codebase:
+
+- `app/services/quality.py:313` — `samples = inputs.success_count +
+  inputs.fail_count if inputs.success_rate is not None else 0`, the report
+  counts that decide how much the raw rate is trusted.
+- `app/services/quality.py:316` — `community_success` is computed with
+  `_community_success(inputs.success_rate, samples=samples)`.
+- `app/services/quality.py:190-207` — `_community_success` shrinks the rate
+  toward 0.5 by `samples / (samples + 10)`, so the pull is gone by about ten
+  reports.
+
+And that formula is what writes **v1**:
+
+- `app/services/quality.py:339` — `score_for_coupon` builds the inputs from a
+  coupon row, passing `success_count=coupon.success_count` and
+  `fail_count=coupon.fail_count` (`:360-361`).
+- `app/ingestion/pipeline.py:1001` — `coupon.quality_score =
+  quality.score_for_coupon(coupon)`, which is the v1 column.
+- `app/services/conversion_sync.py:484` — the same call again, with the
+  coupon's EPC.
+
+So a coupon with one report is scored on a shrunk rate in production today,
+not only in some future version. The only caveat is that `score_for_coupon`
+sets `success_rate` to `None` when a coupon has no reports at all
+(`app/services/quality.py:353`), so the component is absent and its weight is
+redistributed rather than counted as a zero.
+
 ## What a v2 would have to decide
 
 1. **The formula.** There is no second one in the code. The weights are
