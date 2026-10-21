@@ -1,3 +1,4 @@
+from app.core.config import get_settings
 import enum
 import uuid
 from collections.abc import Sequence
@@ -125,7 +126,9 @@ async def list_coupons(
 
     if sort is CouponSort.recommended:
         # The score is computed and stored by the ranking engine; this only reads it.
-        stmt = stmt.order_by(Coupon.quality_score.desc(), Coupon.created_at.desc())
+        from app.core.config import get_settings
+        score_col = Coupon.quality_score_v2 if get_settings().ranking_version == "v2" else Coupon.quality_score
+        stmt = stmt.order_by(score_col.desc(), Coupon.created_at.desc())
     elif sort is CouponSort.ending_soon:
         stmt = stmt.where(Coupon.expires_at.is_not(None), Coupon.expires_at > now)
         stmt = stmt.order_by(Coupon.expires_at.asc(), Coupon.created_at.desc())

@@ -52,6 +52,7 @@ class CouponPublicRead(BaseModel):
     # exactly what a shopper needs before trying a code.
     restrictions: dict[str, Any] | None = None
     created_at: datetime
+    ranking_version: str = "v1"
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -85,4 +86,5 @@ class VerificationHistoryItem(BaseModel):
     id: uuid.UUID
     worked: bool
     created_at: datetime
+    ranking_version: str = "v1"
     note: str | None = None
