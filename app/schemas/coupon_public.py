@@ -86,5 +86,4 @@ class VerificationHistoryItem(BaseModel):
     id: uuid.UUID
     worked: bool
     created_at: datetime
-    ranking_version: str = "v1"
     note: str | None = None
