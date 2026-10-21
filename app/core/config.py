@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     # local relay on 25 (MailHog, python -m smtpd) with no encryption.
     smtp_security: str = "starttls"
     email_from: str = "alerts@durza.in"
-    email_from_name: str = "Durza"
+    email_from_name: str = "Durza Coupons"
 
     # ---- Web push (pywebpush) -------------------------------------------
     # Generate with: python -m app.core.push_keys  (prints a VAPID key pair).
