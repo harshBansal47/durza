@@ -82,9 +82,77 @@
               exit 1
             )
 
+    migrate-check:
+      name: migrations down then up
+      runs-on: ubuntu-latest
+      needs: backend
+      timeout-minutes: 30
+
+      # A throwaway Postgres, never the Neon database. `alembic downgrade base`
+      # drops every table, so this must never run against anything real.
+      services:
+        postgres:
+          image: postgres:16-alpine
+          env:
+            POSTGRES_USER: durza
+            POSTGRES_PASSWORD: durza
+            POSTGRES_DB: durza_migrate
+          ports: ["5432:5432"]
+          options: >-
+            --health-cmd "pg_isready -U durza"
+            --health-interval 5s
+            --health-timeout 5s
+            --health-retries 10
+
+      # Job-level, not per-step. `database_url` is a required setting with no
+      # default, so a step that forgets it does not fall back to something
+      # harmless - it fails at import time. Setting it once here means no step
+      # can forget. ENVIRONMENT is not production, so the guard in
+      # alembic/env.py does not block this job.
+      env:
+        ENVIRONMENT: test
+        DATABASE_URL: postgresql+asyncpg://durza:durza@localhost:5432/durza_migrate
+
+      steps:
+        - uses: actions/checkout@v4
+        - uses: astral-sh/setup-uv@v5
+          with:
+            enable-cache: true
+            cache-dependency-glob: "uv.lock"
+        - run: uv sync --frozen --extra dev
+
+        - name: Upgrade, seed, downgrade to base, upgrade again
+          # A migration that cannot be rolled back is a migration nobody can
+          # safely deploy: the only recovery from a bad one becomes restoring a
+          # database from backup, which is an outage measured in how stale the
+          # backup is.
+          #
+          # Every table is seeded before the downgrade, because dropping an
+          # *empty* table only proves the DROP statement parses. The seed fills
+          # every NOT NULL column from the real schema, satisfies the CHECK
+          # constraints, and resolves foreign keys against rows it already
+          # inserted, so a migration that made a column NOT NULL without a
+          # default or a backfill fails here rather than in production.
+          run: |
+            uv run alembic upgrade head
+
+            uv run python scripts/migration_roundtrip.py seed
+
+            uv run alembic downgrade base
+            uv run alembic upgrade head
+
+            # The re-upgrade has to leave every seeded table empty, not resurrected.
+            uv run python scripts/migration_roundtrip.py check
+
+            # And the re-upgraded schema has to be the schema the models describe.
+            uv run alembic check
+
     deploy:
       name: deploy
-      needs: backend
+      # Wait for the roundtrip job too: if the migration chain cannot be
+      # downgraded and re-upgraded with data in it, it is not safe to deploy
+      # to the database that holds the real rows.
+      needs: [backend, migrate-check]
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       runs-on: ubuntu-latest
       env:
