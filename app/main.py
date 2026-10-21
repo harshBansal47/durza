@@ -88,8 +88,10 @@ app.add_middleware(RequestContextMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
+    allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "X-Session-Id", "Accept", "Origin"],
+    expose_headers=["Set-Cookie"],
 )
 
 for _router in (

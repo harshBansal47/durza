@@ -10,7 +10,7 @@ import re
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +18,7 @@ from app.core.database import get_db
 from app.core.limiter import limiter
 from app.models.analytics_event import AnalyticsEvent
 from app.models.coupon_impression import CouponImpression, ImpressionType
+from app.services.visitor_identity import get_or_create_session
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -42,14 +43,22 @@ class ImpressionRequest(BaseModel):
 async def record_impression(
     payload: ImpressionRequest,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Record a coupon impression. Idempotent by design: no dedup needed
     because each render is a unique event from the user's perspective."""
+    session_id = request.headers.get("x-session-id") or request.cookies.get("cz_sid")
+    if not session_id:
+        session = await get_or_create_session(request, response, db)
+        session_id = str(session.id)
+
+    country = payload.country or request.headers.get("x-vercel-ip-country")
+
     impression = CouponImpression(
         coupon_id=payload.coupon_id,
         merchant_id=payload.merchant_id,
-        session_id=request.headers.get("x-session-id"),
+        session_id=session_id,
         visitor_id=request.cookies.get("cz_vid"),
         page_type=payload.page_type,
         page_id=payload.page_id,
@@ -59,7 +68,7 @@ async def record_impression(
         source=payload.source,
         referrer=payload.referrer,
         device_type=payload.device_type,
-        country=payload.country,
+        country=country,
         sponsored=payload.sponsored,
         created_at=datetime.now(UTC),
     )
@@ -137,13 +146,14 @@ class EventRequest(BaseModel):
 async def record_event(
     payload: EventRequest,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Record a shopper interaction. Fire-and-forget like impressions: 202, no body."""
     db.add(
         AnalyticsEvent(
             name=payload.event.value,
-            session_id=request.headers.get("x-session-id"),
+            session_id=request.headers.get("x-session-id") or request.cookies.get("cz_sid") or str((await get_or_create_session(request, response, db)).id),
             visitor_id=request.cookies.get("cz_vid"),
             coupon_id=_uuid_or_none(payload.coupon_id),
             store_id=_uuid_or_none(payload.merchant_id or payload.store_id),
@@ -153,3 +163,25 @@ async def record_event(
         )
     )
     await db.commit()
+
+
+class ConsentChoice(str, enum.Enum):
+    accepted = "accepted"
+    declined = "declined"
+
+
+class ConsentRequest(BaseModel):
+    choice: ConsentChoice
+
+
+@router.post("/consent", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
+async def record_consent(
+    payload: ConsentRequest,
+    request: Request,
+    response: Response,
+) -> None:
+    """Record a consent choice. On decline, clear visitor/session cookies."""
+    if payload.choice == ConsentChoice.declined:
+        response.delete_cookie("cz_vid", path="/", samesite="lax")
+        response.delete_cookie("cz_sid", path="/", samesite="lax")
