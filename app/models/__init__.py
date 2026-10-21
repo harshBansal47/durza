@@ -60,6 +60,7 @@ from app.models.job import JobRun, JobStatus
 from app.models.page import Page
 from app.models.product import PricePoint, Product
 from app.models.revenue_event import RevenueEvent, RevenueSourceType
+from app.models.sale import SaleEdition, SaleEditionCouponRule, SaleSeries, SaleSlugHistory
 from app.models.source import Source, SourceKind, SourceStatus
 from app.models.sponsored import (
     CampaignModel,
@@ -135,6 +136,10 @@ __all__ = [
     "RevenueSourceType",
     "RevenueStatus",
     "RunStatus",
+    "SaleEdition",
+    "SaleEditionCouponRule",
+    "SaleSeries",
+    "SaleSlugHistory",
     "SavedCoupon",
     "SavedStore",
     "Source",
