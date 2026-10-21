@@ -148,6 +148,13 @@ class Settings(BaseSettings):
     ingestion_quarantine_mode: str = "shadow"
     ingestion_quarantine_discount_pct: int = 90
 
+    # ---- Personalization ------------------------------------------------
+    personalization_enabled: bool = False
+    personalization_half_life_days: int = 14
+    personalization_ttl_days: int = 90
+    personalization_allowed_categories: str = ""
+    personalization_max_signals: int = 50
+
     # ---- Ranking --------------------------------------------------------
     # ---- Ranking exploration --------------------------------------------
     exploration_enabled: bool = False

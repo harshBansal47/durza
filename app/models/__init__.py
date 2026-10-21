@@ -81,6 +81,7 @@ from app.models.tracking import (
     TrackedProduct,
 )
 from app.models.user import User
+from app.models.user_interest import UserInterest
 from app.models.verification_attempt import AttemptOutcome, VerificationAttempt
 
 __all__ = [
@@ -159,6 +160,7 @@ __all__ = [
     "TrackedProduct",
     "TrafficSource",
     "User",
+    "UserInterest",
     "VerificationAttempt",
     "VerificationStatus",
 ]
