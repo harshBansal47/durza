@@ -40,6 +40,7 @@ async def go_to_ad(
     ad_id: uuid.UUID,
     request: Request,
     src: str | None = Query(default=None, max_length=40),
+    content_ref: str | None = Query(default=None, max_length=80),
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
     """Tracked redirect to the advertiser. The only place `target_url` is revealed."""
@@ -54,6 +55,7 @@ async def go_to_ad(
         store=None,
         ad=ad,
         src=src,
+        content_ref=content_ref,
         visitor_hash=hash_ip(client_ip(request)),
         user_agent=request.headers.get("user-agent"),
     )

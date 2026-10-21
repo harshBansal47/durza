@@ -19,6 +19,7 @@ from app.services import affiliate
 DEDUPE_WINDOW = timedelta(seconds=10)
 
 _SRC_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
+_CONTENT_REF_RE = re.compile(r"^[a-z0-9:_-]{1,80}$")
 _BOT_MARKERS = (
     "bot",
     "crawl",
@@ -44,6 +45,12 @@ def normalize_src(raw: str | None) -> str:
     return "unknown"
 
 
+def normalize_content_ref(raw: str | None) -> str | None:
+    if raw and _CONTENT_REF_RE.match(raw.strip()):
+        return raw.strip()
+    return None
+
+
 def looks_like_bot(user_agent: str | None) -> bool:
     if not user_agent:
         return True
@@ -63,6 +70,7 @@ async def record_click(
     product: Product | None = None,
     ad: Ad | None = None,
     src: str | None,
+    content_ref: str | None = None,
     visitor_hash: str,
     user_agent: str | None,
 ) -> tuple[ClickEvent, bool]:
@@ -92,6 +100,7 @@ async def record_click(
         ad_id=ad.id if ad else None,
         store_id=store.id if store else None,
         src=normalize_src(src),
+        content_ref=normalize_content_ref(content_ref),
         network=affiliate.normalize_network(store.affiliate_network if store else None),
         visitor_hash=visitor_hash,
         is_bot=is_bot,
