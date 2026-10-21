@@ -147,6 +147,11 @@
             # And the re-upgraded schema has to be the schema the models describe.
             uv run alembic check
 
+            # A deploy with nothing pending has to succeed too: the migration
+            # command runs on every deploy, so it must be a no-op when the
+            # schema is already at head.
+            uv run alembic upgrade head
+
     deploy:
       name: deploy
       # Wait for the roundtrip job too: if the migration chain cannot be
@@ -185,6 +190,11 @@
         # default: over a non-interactive SSH there is no TTY to allocate, and
         # the run would fail before the migration started.
         #
+        # `-e ALLOW_PROD_MIGRATION=1` is the per-run override the production
+        # guard asks for. It is passed to this one container and nowhere else:
+        # it is not written into the VM's .env, so no later, unrelated run can
+        # pick it up, and it disappears with the container.
+        #
         # `podman image prune -f` is deliberately NOT run for this deploy: the
         # previous image has to stay on the VM so a rollback is a tag away.
         # It is restored in a follow-up.
@@ -193,5 +203,5 @@
             ssh "$VM_USER@$VM_HOST" "cd ~/durza \
               && git pull origin main \
               && podman-compose build app \
-              && podman-compose run --rm --no-deps -T app alembic upgrade head \
+              && podman-compose run --rm --no-deps -T -e ALLOW_PROD_MIGRATION=1 app alembic upgrade head \
               && podman-compose up -d app"

@@ -1,5 +1,5 @@
 import asyncio
-import os
+import sys
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from alembic import context
 from app.core.config import get_settings
 from app.core.database import Base
+from app.core.migration_guard import enforce_from_environment, resolve_command
 
 # Import every model module here so its table is registered on Base.metadata
 # before autogenerate compares it against the live database.
@@ -70,11 +71,28 @@ COMPARE_OPTIONS: dict[str, bool] = {
 }
 
 settings = get_settings()
-if settings.environment == "production" and os.getenv("ALLOW_PROD_MIGRATION") != "1":
-    raise RuntimeError(
-        "Refusing to run Alembic against production. "
-        "Set ALLOW_PROD_MIGRATION=1 only for an approved production migration."
-    )
+
+
+# Which alembic command is running, and whether it may run against production.
+#
+# The check happens here, before the engine is created and before any
+# connection is opened, so a refused command touches nothing at all.
+#
+# `downgrade` and `stamp` are refused in production with no override.
+# `upgrade` needs ALLOW_PROD_MIGRATION=1 in the environment of that one run.
+# Everything else is read-only and allowed.
+def _running_command() -> str:
+    """The alembic command this process is running.
+
+    Read from the command line, which is how alembic is invoked everywhere
+    here (`alembic upgrade head` in the deploy step, `alembic check` in CI).
+    A command that cannot be identified stays unidentified, and an
+    unidentified command is refused in production rather than guessed at.
+    """
+    return resolve_command(sys.argv)
+
+
+enforce_from_environment(_running_command(), settings.environment)
 # ConfigParser would try to interpolate "%" in e.g. URL-encoded passwords.
 config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
