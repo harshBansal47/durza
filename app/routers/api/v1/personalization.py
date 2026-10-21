@@ -1,18 +1,18 @@
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.limiter import limiter
 from app.core.deps import get_current_user
+from app.core.limiter import limiter
 from app.models.user import User
 from app.models.user_interest import UserInterest
+from app.services.personalization import purge_expired_interests
 from app.services.segmentation import compute_segment
-from sqlalchemy import select, delete
 
 router = APIRouter(prefix="/personalization", tags=["personalization"])
 
@@ -29,12 +29,16 @@ class Signal(BaseModel):
 
 class SyncRequest(BaseModel):
     consent: bool
-    signals: list[Signal] = Field(default_factory=list, max_length=get_settings().personalization_max_signals)
+    signals: list[Signal] = Field(
+        default_factory=list, max_length=get_settings().personalization_max_signals
+    )
 
 
 class ComputeRequest(BaseModel):
     consent: bool
-    signals: list[Signal] = Field(default_factory=list, max_length=get_settings().personalization_max_signals)
+    signals: list[Signal] = Field(
+        default_factory=list, max_length=get_settings().personalization_max_signals
+    )
 
 
 def _decay(occurred_at: datetime, now: datetime, half_life_days: int) -> float:
@@ -71,23 +75,32 @@ async def sync_interests(
     user: User = Depends(get_current_user),
 ):
     if not get_settings().personalization_enabled:
-        raise HTTPException(status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"})
+        raise HTTPException(
+            status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"}
+        )
     if not payload.consent or not user.personalization_consent:
-        raise HTTPException(status_code=403, detail="Personalization consent required", headers={"Cache-Control": "private, no-store"})
+        raise HTTPException(
+            status_code=403,
+            detail="Personalization consent required",
+            headers={"Cache-Control": "private, no-store"},
+        )
     _no_store_headers(response)
+    await purge_expired_interests(db, user.id)
     now = datetime.now(UTC)
     ttl = timedelta(days=get_settings().personalization_ttl_days)
     for sig in payload.signals:
         if not _allowed(sig.interest_key, sig.interest_type):
             continue
         score = _decay(sig.occurred_at, now, get_settings().personalization_half_life_days)
-        existing = (await db.execute(
-            select(UserInterest).where(
-                UserInterest.user_id == user.id,
-                UserInterest.interest_type == sig.interest_type,
-                UserInterest.interest_key == sig.interest_key,
+        existing = (
+            await db.execute(
+                select(UserInterest).where(
+                    UserInterest.user_id == user.id,
+                    UserInterest.interest_type == sig.interest_type,
+                    UserInterest.interest_key == sig.interest_key,
+                )
             )
-        )).scalar_one_or_none()
+        ).scalar_one_or_none()
         if existing is None:
             existing = UserInterest(
                 user_id=user.id,
@@ -109,9 +122,15 @@ async def sync_interests(
 @limiter.limit("30/minute")
 async def compute_interests(payload: ComputeRequest, request: Request, response: Response):
     if not get_settings().personalization_enabled:
-        raise HTTPException(status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"})
+        raise HTTPException(
+            status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"}
+        )
     if get_settings().personalization_purpose_required and not payload.consent:
-        raise HTTPException(status_code=403, detail="Personalization consent required", headers={"Cache-Control": "private, no-store"})
+        raise HTTPException(
+            status_code=403,
+            detail="Personalization consent required",
+            headers={"Cache-Control": "private, no-store"},
+        )
     _no_store_headers(response)
     now = datetime.now(UTC)
     scores: dict[str, float] = {}
@@ -126,16 +145,43 @@ async def compute_interests(payload: ComputeRequest, request: Request, response:
 
 @router.delete("/interests", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("30/minute")
-async def delete_interests(request: Request, response: Response, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+async def delete_interests(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _no_store_headers(response)
     await db.execute(delete(UserInterest).where(UserInterest.user_id == user.id))
+    user.personalization_consent = False
     await db.commit()
 
 
 @router.get("/export", status_code=status.HTTP_200_OK)
 @limiter.limit("30/minute")
-async def export_interests(request: Request, response: Response, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    rows = (await db.execute(select(UserInterest).where(UserInterest.user_id == user.id))).scalars().all()
-    return [{"interest_type": r.interest_type, "interest_key": r.interest_key, "score": r.score, "updated_at": r.updated_at.isoformat()} for r in rows]
+async def export_interests(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    _no_store_headers(response)
+    await purge_expired_interests(db, user.id)
+    await db.commit()
+    rows = (
+        (await db.execute(select(UserInterest).where(UserInterest.user_id == user.id)))
+        .scalars()
+        .all()
+    )
+    return [
+        {
+            "interest_type": r.interest_type,
+            "interest_key": r.interest_key,
+            "score": r.score,
+            "updated_at": r.updated_at.isoformat(),
+        }
+        for r in rows
+    ]
 
 
 @router.get("/picked-for-you", status_code=status.HTTP_200_OK)
@@ -143,7 +189,9 @@ async def export_interests(request: Request, response: Response, db: AsyncSessio
 async def picked_for_you(request: Request, response: Response):
     _no_store_headers(response)
     if not get_settings().personalization_enabled:
-        raise HTTPException(status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"})
+        raise HTTPException(
+            status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"}
+        )
     return {"items": [], "reason": "No personalized items yet.", "reason_code": "no_signal"}
 
 
@@ -152,7 +200,9 @@ async def picked_for_you(request: Request, response: Response):
 async def continue_where_left_off(request: Request, response: Response):
     _no_store_headers(response)
     if not get_settings().personalization_enabled:
-        raise HTTPException(status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"})
+        raise HTTPException(
+            status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"}
+        )
     return {"items": [], "reason": "No recent activity.", "reason_code": "no_signal"}
 
 
@@ -161,22 +211,32 @@ async def continue_where_left_off(request: Request, response: Response):
 async def ending_soon_saved(request: Request, response: Response):
     _no_store_headers(response)
     if not get_settings().personalization_enabled:
-        raise HTTPException(status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"})
+        raise HTTPException(
+            status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"}
+        )
     return {"items": [], "reason": "No saved stores.", "reason_code": "no_signal"}
 
 
 class SegmentRequest(BaseModel):
     consent: bool
-    signals: list[Signal] = Field(default_factory=list, max_length=get_settings().personalization_max_signals)
+    signals: list[Signal] = Field(
+        default_factory=list, max_length=get_settings().personalization_max_signals
+    )
 
 
 @router.post("/segment", status_code=status.HTTP_200_OK)
 @limiter.limit("30/minute")
 async def segment_stateless(payload: SegmentRequest, request: Request, response: Response):
     if not get_settings().personalization_enabled:
-        raise HTTPException(status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"})
+        raise HTTPException(
+            status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"}
+        )
     if get_settings().personalization_purpose_required and not payload.consent:
-        raise HTTPException(status_code=403, detail="Personalization consent required", headers={"Cache-Control": "private, no-store"})
+        raise HTTPException(
+            status_code=403,
+            detail="Personalization consent required",
+            headers={"Cache-Control": "private, no-store"},
+        )
     _no_store_headers(response)
     now = datetime.now(UTC)
     scores: dict[str, float] = {}
@@ -186,17 +246,40 @@ async def segment_stateless(payload: SegmentRequest, request: Request, response:
         key = f"{sig.interest_type}:{sig.interest_key}"
         score = _decay(sig.occurred_at, now, get_settings().personalization_half_life_days)
         scores[key] = max(scores.get(key, 0.0), score)
-    return {"segment": compute_segment(scores), "version": get_settings().personalization_segment_version}
+    return {
+        "segment": compute_segment(scores),
+        "version": get_settings().personalization_segment_version,
+    }
 
 
 @router.get("/segment", status_code=status.HTTP_200_OK)
 @limiter.limit("30/minute")
-async def segment_logged_in(request: Request, response: Response, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+async def segment_logged_in(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     if not get_settings().personalization_enabled:
-        raise HTTPException(status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"})
+        raise HTTPException(
+            status_code=404, detail="Not found", headers={"Cache-Control": "private, no-store"}
+        )
     if not user.personalization_consent:
-        raise HTTPException(status_code=403, detail="Personalization consent required", headers={"Cache-Control": "private, no-store"})
+        raise HTTPException(
+            status_code=403,
+            detail="Personalization consent required",
+            headers={"Cache-Control": "private, no-store"},
+        )
     _no_store_headers(response)
-    rows = (await db.execute(select(UserInterest).where(UserInterest.user_id == user.id))).scalars().all()
+    await purge_expired_interests(db, user.id)
+    await db.commit()
+    rows = (
+        (await db.execute(select(UserInterest).where(UserInterest.user_id == user.id)))
+        .scalars()
+        .all()
+    )
     scores = {f"{r.interest_type}:{r.interest_key}": r.score for r in rows}
-    return {"segment": compute_segment(scores), "version": get_settings().personalization_segment_version}
+    return {
+        "segment": compute_segment(scores),
+        "version": get_settings().personalization_segment_version,
+    }
