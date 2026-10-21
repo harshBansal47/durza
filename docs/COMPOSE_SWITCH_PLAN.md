@@ -30,6 +30,44 @@ What that costs us today:
    runs `podman-compose up`.
 5. Stray edits on the host are a production restart.
 
+## Note: every merge to `main` deploys
+
+The `deploy` job runs on **every** push to `main`, and the workflow has no
+path filter. A merge that only touches documentation — this plan, a runbook, a
+comment in a doc file — therefore rebuilds the image, runs the migration
+container and recreates the app container on the deploy host.
+
+That is not free: the build takes minutes, the migration container starts
+against production, and the container is replaced. A docs-only merge should
+not do any of that, and it does not need to.
+
+The fix is a path filter on the deploy job, so it only runs when something
+that can change the running artefact changes:
+
+```yaml
+    deploy:
+      name: deploy
+      needs: [backend, migrate-check]
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      paths:
+        - 'app/**'
+        - 'alembic/**'
+        - 'mcp_server/**'
+        - 'Dockerfile'
+        - 'docker-compose.yml'
+        - 'docker-compose.prod.yml'
+        - 'pyproject.toml'
+        - 'uv.lock'
+```
+
+The `backend` and `migrations down then up` jobs still run on every push, so
+the tests do not stop being the gate — only the deploy does.
+
+This is a **separate small pull request** from the compose switch, because it
+is a different change with a different risk: the filter has to be complete, or
+a change that matters will be merged without deploying. Proposed as its own
+PR so it can be reviewed on its own merits.
+
 ## Before the change: prove what is reachable
 
 Record the "before" state. Every one of these is read-only.
