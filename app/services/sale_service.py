@@ -1,11 +1,15 @@
 import re
+import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.category import Category
+from app.models.coupon import Coupon
 from app.models.editorial import EditorialContent
 from app.models.sale import SaleEdition, SaleEditionCouponRule, SaleSeries
+from app.models.store import Store
 
 CONTENT_REF_RE = re.compile(r"^sale:[a-z0-9:_-]{1,80}$")
 MAX_RULES = 20
@@ -177,7 +181,15 @@ async def add_rule(
     db: AsyncSession, edition: SaleEdition, rule_type: str, rule_value: str
 ) -> SaleEditionCouponRule:
     validate_rule(rule_type, rule_value)
-    count = len(edition.rules)
+    # Counted with a query, not with `len(edition.rules)`: the relationship is
+    # lazy, and a lazy load in an async session is an error, not a number.
+    count = (
+        await db.execute(
+            select(func.count())
+            .select_from(SaleEditionCouponRule)
+            .where(SaleEditionCouponRule.edition_id == edition.id)
+        )
+    ).scalar_one()
     if count >= MAX_RULES:
         raise ValueError("too many rules")
     rule = SaleEditionCouponRule(
@@ -190,3 +202,76 @@ async def add_rule(
     await db.commit()
     await db.refresh(rule)
     return rule
+
+
+#: How many coupons a hub shows. A hub is a shelf, not a catalogue.
+EDITION_COUPON_LIMIT = 24
+
+
+async def edition_coupons(
+    db: AsyncSession, edition: SaleEdition, *, limit: int = EDITION_COUPON_LIMIT
+) -> list[Coupon]:
+    """The coupons a hub shows, resolved from its rules.
+
+    A rule is a store slug, a category slug, or a tag. Store and category
+    resolve to the coupons of that store or category; a tag does not resolve
+    yet (there is no tag on a coupon), so it is skipped rather than guessed
+    at — a rule that cannot be resolved must not silently show nothing and
+    look like an empty hub.
+
+    Only active coupons are returned: a hub is a shelf of things that still
+    work, and the coupon list does the same.
+    """
+    rules = (
+        (
+            await db.execute(
+                select(SaleEditionCouponRule)
+                .where(SaleEditionCouponRule.edition_id == edition.id)
+                .order_by(SaleEditionCouponRule.sort_order, SaleEditionCouponRule.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rules:
+        return []
+
+    store_slugs = [r.rule_value for r in rules if r.rule_type == "store"]
+    category_slugs = [r.rule_value for r in rules if r.rule_type == "category"]
+    if not store_slugs and not category_slugs:
+        return []
+
+    store_ids: list[uuid.UUID] = []
+    if store_slugs:
+        store_ids = list(
+            (await db.execute(select(Store.id).where(Store.slug.in_(store_slugs)))).scalars().all()
+        )
+    category_ids: list[uuid.UUID] = []
+    if category_slugs:
+        category_ids = list(
+            (await db.execute(select(Category.id).where(Category.slug.in_(category_slugs))))
+            .scalars()
+            .all()
+        )
+    if not store_ids and not category_ids:
+        return []
+
+    clauses = []
+    if store_ids:
+        clauses.append(Coupon.store_id.in_(store_ids))
+    if category_ids:
+        clauses.append(Coupon.category_id.in_(category_ids))
+
+    coupons = (
+        (
+            await db.execute(
+                select(Coupon)
+                .where(Coupon.is_active.is_(True), or_(*clauses))
+                .order_by(Coupon.expires_at.asc().nulls_last(), Coupon.created_at.desc())
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(coupons)
