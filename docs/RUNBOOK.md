@@ -120,6 +120,40 @@ The **production database is backed up by Neon**, not by this repository. The
 ops database (a local Postgres with the `durza_ops` schema) is a different
 thing and has its own backup command — see `durza-ops/docs/BACKUP.md`.
 
+## Creating and publishing a sale hub
+
+A sale hub — "Diwali 2026" — is a series, one or more dated editions, and the
+rules that decide which coupons the edition shows.
+
+1. **The guide first.** The hub points at a piece of editorial content, and
+   that content has to be published before the hub can be published. A draft
+   guide means a refused publish, by design.
+2. **Create the series** in the back office (`/admin` → *Sale series*): the
+   slug (`diwali-2026`, part of the URL, so pick it once), the title and a
+   one-line description.
+3. **Create the edition**: the dates, the year, the source the dates come
+   from, and the published guide it points at.
+4. **Add the rules**: one per store slug (`croma`) or category slug. A rule
+   naming a store or category that does not exist is ignored; a `tag` rule
+   resolves to nothing, because a coupon has no tag. Up to 20 per edition.
+5. **Publish**: select the edition → *Publish*. The service refuses an
+   edition whose guide is not published or whose confirmed dates have no
+   source.
+6. **The lifecycle** (`announced` → `upcoming` → `live` → `ended` →
+   `archived`) follows the dates only when the scheduler is on, so for a hub
+   that has to be live now, set `lifecycle_status` to `live` yourself. A
+   published `announced` edition is still shown as the current one.
+7. **The storefront** answers 404 on every `/sales` route while
+   `NEXT_PUBLIC_SALE_HUBS_ENABLED` is off — turning it on is a web deploy,
+   not a content change.
+
+The full runbook, with the exact fields, is `docs/SALE_HUBS.md` (added by
+PR #14). Check the result with:
+
+```bash
+curl -s https://api.durza.in/api/v1/sales/diwali-2026 | head -c 400
+```
+
 ## The kill switch
 
 `durza_ops.governance.killswitch` is a file (`OPS_KILLSWITCH_FILE`) that turns
