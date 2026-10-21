@@ -58,6 +58,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import metrics
+from app.core.config import get_settings
 from app.core.observability import get_logger
 from app.core.slugs import generate_unique_slug
 from app.ingestion import (
@@ -67,6 +68,7 @@ from app.ingestion import (
     merchant_resolution,
     merchants,
     probe,
+    quarantine,
     validate,
 )
 from app.ingestion import normalize as normalize_mod
@@ -792,16 +794,13 @@ async def _ingest_one(
     store = match.store
 
     try:
-        reason = quarantine.quarantine_reason(offer, store_domain=getattr(store, "normalized_domain", None))
+        reason = quarantine.quarantine_reason(
+            offer, store_domain=getattr(store, "normalized_domain", None)
+        )
     except Exception as exc:
         logger.exception("quarantine check failed", extra={"error": str(exc)})
         reason = None
-    mode = getattr(get_settings(), "ingestion_quarantine_mode", "shadow") if False else None
-    try:
-        from app.core.config import get_settings
-        mode = get_settings().ingestion_quarantine_mode
-    except Exception:
-        mode = "shadow"
+    mode = get_settings().ingestion_quarantine_mode
     if reason and mode == "enforce":
         run.quarantined += 1
         logger.info("offer quarantined", extra={"reason": reason})

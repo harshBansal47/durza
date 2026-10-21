@@ -1,14 +1,13 @@
-from app.core.config import get_settings
 import enum
-import uuid
 import hashlib
-from datetime import datetime, timedelta, UTC
+import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.exceptions import EntityNotFoundError
 from app.core.pagination import paginate
 from app.core.slugs import generate_unique_slug
@@ -55,20 +54,29 @@ class CouponSort(str, enum.Enum):
     biggest_discount = "biggest_discount"
 
 
-
-async def exploration_ids(db: AsyncSession, *, now=None, listing_key: str = "home:recommended") -> set[uuid.UUID]:
-    from app.core.config import get_settings
+async def exploration_ids(
+    db: AsyncSession, *, now=None, listing_key: str = "home:recommended"
+) -> set[uuid.UUID]:
     settings = get_settings()
     if not getattr(settings, "exploration_enabled", False):
         return set()
     now = now or datetime.now(UTC)
+    from sqlalchemy import or_, select
+
     from app.models.coupon import Coupon, VerificationStatus
-    from sqlalchemy import select, or_
-    score_col = Coupon.quality_score_v2 if settings.ranking_version == "v2" else Coupon.quality_score
-    stmt = select(Coupon).where(
-        Coupon.is_active.is_(True),
-        or_(Coupon.expires_at.is_(None), Coupon.expires_at > now),
-    ).order_by(score_col.desc(), Coupon.created_at.desc()).limit(1000)
+
+    score_col = (
+        Coupon.quality_score_v2 if settings.ranking_version == "v2" else Coupon.quality_score
+    )
+    stmt = (
+        select(Coupon)
+        .where(
+            Coupon.is_active.is_(True),
+            or_(Coupon.expires_at.is_(None), Coupon.expires_at > now),
+        )
+        .order_by(score_col.desc(), Coupon.created_at.desc())
+        .limit(1000)
+    )
     rows = (await db.execute(stmt)).scalars().all()
 
     eligible = []
@@ -84,7 +92,11 @@ async def exploration_ids(db: AsyncSession, *, now=None, listing_key: str = "hom
                 continue
         if c.fail_count > c.success_count and reports >= 3:
             continue
-        age_days = (now - c.created_at.replace(tzinfo=UTC) if c.created_at.tzinfo is None else now - c.created_at).days
+        age_days = (
+            now - c.created_at.replace(tzinfo=UTC)
+            if c.created_at.tzinfo is None
+            else now - c.created_at
+        ).days
         under_sampled = (
             c.clicks_count < settings.exploration_under_sampled_clicks
             and reports < settings.exploration_under_sampled_reports
@@ -105,7 +117,6 @@ async def exploration_ids(db: AsyncSession, *, now=None, listing_key: str = "hom
     n = min(n, 10)
     selected = ranked[:n]
     return {c.id for c in selected}
-
 
 
 async def list_coupons(
@@ -182,7 +193,12 @@ async def list_coupons(
     if sort is CouponSort.recommended:
         # The score is computed and stored by the ranking engine; this only reads it.
         from app.core.config import get_settings
-        score_col = Coupon.quality_score_v2 if get_settings().ranking_version == "v2" else Coupon.quality_score
+
+        score_col = (
+            Coupon.quality_score_v2
+            if get_settings().ranking_version == "v2"
+            else Coupon.quality_score
+        )
         stmt = stmt.order_by(score_col.desc(), Coupon.created_at.desc())
     elif sort is CouponSort.ending_soon:
         stmt = stmt.where(Coupon.expires_at.is_not(None), Coupon.expires_at > now)

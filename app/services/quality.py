@@ -118,7 +118,19 @@ class QualityWeights:
         ):
             if value < 0:
                 raise ValueError("quality weights must be non-negative")
-        total = sum((self.verification_status, self.community_success, self.source_confidence, self.multi_source, self.recency, self.expiry_urgency, self.conversion_rate, self.merchant_popularity, self.expected_revenue))
+        total = sum(
+            (
+                self.verification_status,
+                self.community_success,
+                self.source_confidence,
+                self.multi_source,
+                self.recency,
+                self.expiry_urgency,
+                self.conversion_rate,
+                self.merchant_popularity,
+                self.expected_revenue,
+            )
+        )
         if total <= 0:
             raise ValueError("quality weights must sum to a positive number")
         trust = self.verification_status + self.community_success

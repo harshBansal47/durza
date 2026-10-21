@@ -21,11 +21,6 @@ from app.models.base import TimestampMixin, UUIDPKMixin
 class SaleSeries(Base, UUIDPKMixin, TimestampMixin):
     __tablename__ = "sale_series"
 
-    __table_args__ = (
-        UniqueConstraint("slug", name="uq_sale_series_slug"),
-        CheckConstraint("length(slug) <= 40", name="ck_sale_series_slug_length"),
-    )
-
     slug: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -41,7 +36,9 @@ class SaleSeries(Base, UUIDPKMixin, TimestampMixin):
         ),
     )
 
-    editions: Mapped[list["SaleEdition"]] = relationship(back_populates="series", cascade="all, delete-orphan")
+    editions: Mapped[list["SaleEdition"]] = relationship(
+        back_populates="series", cascade="all, delete-orphan"
+    )
 
 
 class SaleEdition(Base, UUIDPKMixin, TimestampMixin):
@@ -64,26 +61,48 @@ class SaleEdition(Base, UUIDPKMixin, TimestampMixin):
         Index("ix_sale_edition_end", "end_at"),
     )
 
-    series_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sale_series.id", ondelete="CASCADE"), nullable=False, index=True)
+    series_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("sale_series.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     slug: Mapped[str] = mapped_column(String(30), nullable=False)
     year: Mapped[int] = mapped_column(nullable=False)
-    publication_status: Mapped[str] = mapped_column(String(20), default="draft", server_default="draft", nullable=False, index=True)
-    lifecycle_status: Mapped[str] = mapped_column(String(20), default="announced", server_default="announced", nullable=False, index=True)
+    publication_status: Mapped[str] = mapped_column(
+        String(20), default="draft", server_default="draft", nullable=False, index=True
+    )
+    lifecycle_status: Mapped[str] = mapped_column(
+        String(20), default="announced", server_default="announced", nullable=False, index=True
+    )
     start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    dates_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    dates_confirmed: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    editorial_content_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("editorial_contents.id", ondelete="SET NULL"), nullable=True, index=True)
-    coupon_rules_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
-    manual_override: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    last_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    editorial_content_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("editorial_contents.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    coupon_rules_version: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
+    manual_override: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     manual_override_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     manual_override_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
-    manual_override_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    archived_after_days: Mapped[int] = mapped_column(Integer, default=30, server_default="30", nullable=False)
+    manual_override_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    archived_after_days: Mapped[int] = mapped_column(
+        Integer, default=30, server_default="30", nullable=False
+    )
 
     series: Mapped["SaleSeries"] = relationship(back_populates="editions")
-    rules: Mapped[list["SaleEditionCouponRule"]] = relationship(back_populates="edition", cascade="all, delete-orphan")
+    rules: Mapped[list["SaleEditionCouponRule"]] = relationship(
+        back_populates="edition", cascade="all, delete-orphan"
+    )
 
 
 class SaleEditionCouponRule(Base, UUIDPKMixin, TimestampMixin):
@@ -94,7 +113,9 @@ class SaleEditionCouponRule(Base, UUIDPKMixin, TimestampMixin):
         Index("ix_sale_rules_edition", "edition_id"),
     )
 
-    edition_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sale_editions.id", ondelete="CASCADE"), nullable=False, index=True)
+    edition_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("sale_editions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
     rule_type: Mapped[str] = mapped_column(String(20), nullable=False)
     rule_value: Mapped[str] = mapped_column(String(160), nullable=False)

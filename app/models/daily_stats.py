@@ -227,9 +227,19 @@ class DailyContentStats(Base, UUIDPKMixin, TimestampMixin):
     scroll_50: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     scroll_75: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     scroll_100: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
-    engaged_time_sum_ms: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
-    engaged_time_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
-    outbound_clicks: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    engaged_time_sum_ms: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    engaged_time_count: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
+    outbound_clicks: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
     conversions: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
-    confirmed_revenue: Mapped[float] = mapped_column(Numeric(12, 2, asdecimal=False), default=0.0, server_default="0.0", nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), default="USD", server_default="USD", nullable=False)
+    confirmed_revenue: Mapped[float] = mapped_column(
+        Numeric(12, 2, asdecimal=False), default=0.0, server_default="0.0", nullable=False
+    )
+    currency: Mapped[str] = mapped_column(
+        String(3), default="USD", server_default="USD", nullable=False
+    )
