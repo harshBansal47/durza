@@ -1,4 +1,5 @@
 import asyncio
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -27,27 +28,27 @@ from app.models import analytics_session as _analytics_session  # noqa: F401
 from app.models import attribution as _attribution  # noqa: F401
 from app.models import base as _base  # noqa: F401
 from app.models import category as _category  # noqa: F401
-from app.models import click as _click
-from app.models import coupon_staging as _coupon_staging  # noqa: F401
+from app.models import click as _click  # noqa: F401
 from app.models import conversion as _conversion  # noqa: F401
 from app.models import coupon as _coupon  # noqa: F401
 from app.models import coupon_impression as _coupon_impression  # noqa: F401
 from app.models import coupon_source as _coupon_source  # noqa: F401
+from app.models import coupon_staging as _coupon_staging  # noqa: F401
 from app.models import coupon_verification as _coupon_verification  # noqa: F401
 from app.models import daily_stats as _daily_stats  # noqa: F401
-from app.models import editorial as _editorial
-from app.models import sale as _sale  # noqa: F401
+from app.models import editorial as _editorial  # noqa: F401
 from app.models import ingestion_run as _ingestion_run  # noqa: F401
 from app.models import job as _job  # noqa: F401
 from app.models import page as _page  # noqa: F401
 from app.models import product as _product  # noqa: F401
 from app.models import revenue_event as _revenue_event  # noqa: F401
+from app.models import sale as _sale  # noqa: F401
 from app.models import source as _source  # noqa: F401
 from app.models import sponsored as _sponsored  # noqa: F401
 from app.models import store as _store  # noqa: F401
 from app.models import tracking as _tracking  # noqa: F401
-from app.models import user as _user
-from app.models import user_interest as _user_interest
+from app.models import user as _user  # noqa: F401
+from app.models import user_interest as _user_interest  # noqa: F401
 from app.models import user_segment as _user_segment  # noqa: F401
 from app.models import verification_attempt as _verification_attempt  # noqa: F401
 
@@ -69,6 +70,11 @@ COMPARE_OPTIONS: dict[str, bool] = {
 }
 
 settings = get_settings()
+if settings.environment == "production" and os.getenv("ALLOW_PROD_MIGRATION") != "1":
+    raise RuntimeError(
+        "Refusing to run Alembic against production. "
+        "Set ALLOW_PROD_MIGRATION=1 only for an approved production migration."
+    )
 # ConfigParser would try to interpolate "%" in e.g. URL-encoded passwords.
 config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 

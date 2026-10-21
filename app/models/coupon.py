@@ -14,7 +14,7 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -175,8 +175,12 @@ class Coupon(Base, UUIDPKMixin, TimestampMixin):
     # discount. Providers disagree about these constantly and none of them are
     # reliably derivable, so the raw claims are kept rather than guessed at.
     restrictions: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
-    valid_regions: Mapped[list[str] | None] = mapped_column(JSON, nullable=True, default=None)
-    payment_methods: Mapped[list[str] | None] = mapped_column(JSON, nullable=True, default=None)
+    valid_regions: Mapped[list[str] | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=True, default=None
+    )
+    payment_methods: Mapped[list[str] | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=True, default=None
+    )
 
     # Free-form categories a provider supplied, beyond our own taxonomy.
     source_categories: Mapped[list[str]] = mapped_column(

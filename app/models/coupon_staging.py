@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -15,10 +15,11 @@ class CouponStaging(Base, UUIDPKMixin, TimestampMixin):
         UniqueConstraint(
             "source_id", "external_id", "content_hash", name="uq_coupon_staging_dedupe"
         ),
+        Index("ix_coupon_staging_source", "source_id"),
     )
 
     source_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("sources.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("sources.id", ondelete="CASCADE"), nullable=False
     )
     store_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("stores.id", ondelete="SET NULL"), nullable=True
