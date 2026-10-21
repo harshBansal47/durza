@@ -29,6 +29,7 @@ from app.models.analytics_session import (
 from app.models.attribution import Attribution, AttributionModel
 from app.models.category import Category
 from app.models.click import ClickEvent
+from app.models.coupon_staging import CouponStaging
 from app.models.conversion import Conversion, ConversionStatus
 from app.models.coupon import (
     PUBLICLY_VISIBLE_STATUSES,
@@ -100,6 +101,7 @@ __all__ = [
     "CampaignStatus",
     "Category",
     "ClickEvent",
+    "CouponStaging",
     "CommissionType",
     "Conversion",
     "ConversionStatus",

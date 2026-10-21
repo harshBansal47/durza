@@ -791,6 +791,24 @@ async def _ingest_one(
     match = await _resolve_merchant(db, offer, source)
     store = match.store
 
+    try:
+        reason = quarantine.quarantine_reason(offer, store_domain=getattr(store, "normalized_domain", None))
+    except Exception as exc:
+        logger.exception("quarantine check failed", extra={"error": str(exc)})
+        reason = None
+    mode = getattr(get_settings(), "ingestion_quarantine_mode", "shadow") if False else None
+    try:
+        from app.core.config import get_settings
+        mode = get_settings().ingestion_quarantine_mode
+    except Exception:
+        mode = "shadow"
+    if reason and mode == "enforce":
+        run.quarantined += 1
+        logger.info("offer quarantined", extra={"reason": reason})
+        return
+    if reason and mode == "shadow":
+        logger.info("offer would be quarantined", extra={"reason": reason})
+
     content_hash = dedupe.content_hash(offer)
     coupon = await _identify_coupon(db, source, store.id, offer, content_hash)
 

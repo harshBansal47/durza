@@ -93,6 +93,7 @@ class IngestionRun(Base, UUIDPKMixin, TimestampMixin):
     # here means the provider changed their payload shape, not that the data was
     # bad — a completely different fix.
     malformed: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    quarantined: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     # Expired on arrival — ingested and immediately retired, kept for history.
     expired: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
 

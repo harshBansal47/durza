@@ -27,7 +27,8 @@ from app.models import analytics_session as _analytics_session  # noqa: F401
 from app.models import attribution as _attribution  # noqa: F401
 from app.models import base as _base  # noqa: F401
 from app.models import category as _category  # noqa: F401
-from app.models import click as _click  # noqa: F401
+from app.models import click as _click
+from app.models import coupon_staging as _coupon_staging  # noqa: F401
 from app.models import conversion as _conversion  # noqa: F401
 from app.models import coupon as _coupon  # noqa: F401
 from app.models import coupon_impression as _coupon_impression  # noqa: F401
