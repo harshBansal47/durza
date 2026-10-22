@@ -510,6 +510,25 @@ async def last_run(db: AsyncSession, name: str) -> JobRun | None:
     )
     return result.scalar_one_or_none()
 
+async def last_runs(db: AsyncSession, names: list[str]) -> dict[str, JobRun | None]:
+    """Fetch the most recent non-skipped run for each named job in ONE query.
+
+    Used by /health/deep so the readiness check pays for a single round trip
+    instead of one per job. Keeps the same return shape as repeated last_run
+    calls (a mapping of job name -> JobRun or None).
+    """
+    if not names:
+        return {n: None for n in names}
+    result = await db.execute(
+        select(JobRun)
+        .where(JobRun.job.in_(names), JobRun.status != JobStatus.skipped)
+        .order_by(JobRun.job, JobRun.started_at.desc())
+    )
+    found: dict[str, JobRun] = {}
+    for row in result.scalars().all():
+        found.setdefault(row.job, row)
+    return {name: found.get(name) for name in names}
+
 
 async def recent_runs(db: AsyncSession, limit: int = 50) -> list[JobRun]:
     result = await db.execute(select(JobRun).order_by(JobRun.started_at.desc()).limit(limit))

@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import bump_coupon_cache_version
 from app.core.config import get_settings
 from app.core.exceptions import EntityNotFoundError
 from app.core.pagination import paginate
@@ -17,7 +18,6 @@ from app.models.coupon import Coupon, DiscountType
 from app.models.coupon_verification import CouponVerification
 from app.models.store import Store
 from app.schemas.coupon import CouponCreate, CouponUpdate
-from app.services import ranking
 
 VERIFICATION_COOLDOWN = timedelta(hours=24)
 
@@ -66,7 +66,9 @@ async def exploration_ids(
 
     from app.models.coupon import Coupon, VerificationStatus
 
-    score_col = ranking.ranking_score(settings.ranking_version)
+    score_col = (
+        Coupon.quality_score_v2 if settings.ranking_version == "v2" else Coupon.quality_score
+    )
     stmt = (
         select(Coupon)
         .where(
@@ -193,7 +195,11 @@ async def list_coupons(
         # The score is computed and stored by the ranking engine; this only reads it.
         from app.core.config import get_settings
 
-        score_col = ranking.ranking_score(get_settings().ranking_version)
+        score_col = (
+            Coupon.quality_score_v2
+            if get_settings().ranking_version == "v2"
+            else Coupon.quality_score
+        )
         stmt = stmt.order_by(score_col.desc(), Coupon.created_at.desc())
     elif sort is CouponSort.ending_soon:
         stmt = stmt.where(Coupon.expires_at.is_not(None), Coupon.expires_at > now)
@@ -229,7 +235,20 @@ async def list_coupons(
         stmt = stmt.order_by(recent.c.n.desc(), Coupon.created_at.desc())
     else:
         stmt = stmt.order_by(Coupon.created_at.desc())
-    return await paginate(db, stmt, skip, limit)
+    # Get the page and the total in one round trip using a window function.
+    # (paginate() did two queries: COUNT(*) then SELECT ... LIMIT/OFFSET.)
+    window_stmt = stmt.add_columns(func.count().over().label("total")).offset(skip).limit(limit)
+    result = await db.execute(window_stmt)
+    rows = result.all()
+    if rows:
+        items = [r[0] for r in rows]
+        total = int(rows[0]._mapping["total"])
+        return items, total
+    # Offset past the end (or empty result): the window total is lost, so fall
+    # back to a separate COUNT. Also covers the empty-table case.
+    total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
+    return [], int(total or 0)
+
 
 
 async def get_coupon(db: AsyncSession, coupon_id: uuid.UUID) -> Coupon | None:
@@ -270,6 +289,7 @@ async def create_coupon(db: AsyncSession, payload: CouponCreate, created_by: uui
     db.add(coupon)
     await db.commit()
     await db.refresh(coupon)
+    await bump_coupon_cache_version()
     return coupon
 
 
@@ -284,6 +304,7 @@ async def update_coupon(db: AsyncSession, coupon: Coupon, payload: CouponUpdate)
         setattr(coupon, field, value)
     await db.commit()
     await db.refresh(coupon)
+    await bump_coupon_cache_version()
     return coupon
 
 
@@ -330,6 +351,7 @@ async def record_verification(
     coupon.last_verified_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(coupon)
+    await bump_coupon_cache_version()
     return coupon
 
 
