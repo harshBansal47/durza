@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +9,6 @@ from app.core.database import get_db
 from app.core.deps import require_role
 from app.core.exceptions import EntityNotFoundError
 from app.core.limiter import limiter
-from app.core.cache import cache_get, cache_set, coupon_cache_version, normalized_params_hash
 from app.core.pagination import Paginated
 from app.core.request_meta import client_ip, hash_ip
 from app.models.coupon import Coupon, DiscountType
@@ -51,24 +50,7 @@ async def list_coupons(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    response: Response = None,
 ) -> Paginated[CouponPublicRead]:
-    # ---- cache lookup (fail open) ----
-    _params = {
-        "store_id": store_id, "category_id": category_id, "search": search,
-        "active_only": active_only, "sort": sort, "discount_type": discount_type,
-        "has_code": has_code, "verified": verified, "min_success_rate": min_success_rate,
-        "expires_within_days": expires_within_days, "verified_within_hours": verified_within_hours,
-        "skip": skip, "limit": limit,
-    }
-    _ver = await coupon_cache_version()
-    _key = "coupons:list:v%s:%s" % (_ver, normalized_params_hash(_params))
-    _cached = await cache_get(_key)
-    if _cached is not None:
-        if response is not None:
-            response.headers["X-Cache"] = "HIT"
-        return Paginated[CouponPublicRead].model_validate(_cached)
-
     items, total = await coupon_service.list_coupons(
         db,
         store_id=store_id,
@@ -88,7 +70,7 @@ async def list_coupons(
     exploration = set()
     if sort == coupon_service.CouponSort.recommended:
         exploration = await exploration_ids(db, listing_key="home:recommended")
-    _result = Paginated(
+    return Paginated(
         items=[
             CouponPublicRead.model_validate(item).model_copy(
                 update={
@@ -102,10 +84,6 @@ async def list_coupons(
         skip=skip,
         limit=limit,
     )
-    if response is not None:
-        response.headers["X-Cache"] = "MISS"
-    await cache_set(_key, _result.model_dump(mode="json"), ttl=45)
-    return _result
 
 
 @router.get("/by-slug/{slug}", response_model=CouponPublicRead)

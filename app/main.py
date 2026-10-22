@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.admin import setup_admin
 from app.core.config import get_settings
@@ -30,7 +29,6 @@ from app.routers.api.v1.products import router as products_router
 from app.routers.api.v1.sales import router as sales_router
 from app.routers.api.v1.stores import router as stores_router
 from app.routers.api.v1.system import router as system_router
-from app.services.ranking import RankingVersionNotReadyError, assert_ranking_version_ready
 from app.services.scheduler import start_scheduler, stop_scheduler
 
 settings = get_settings()
@@ -40,28 +38,6 @@ settings = get_settings()
 # lastResort handler as a bare traceback with no timestamp.
 configure_logging(level=settings.log_level, fmt=settings.log_format)
 logger = get_logger("durza")
-
-
-async def _check_ranking_version() -> None:
-    """Refuse to start on a ranking version the data cannot support.
-
-    `RANKING_VERSION=v2` asks the listing to sort by a column that nothing
-    writes, so the ranking would silently become "newest first". A loud
-    refusal is better: the operator finds out before the storefront does.
-
-    The check only refuses when it can *prove* the version is not ready. A
-    database that cannot be reached is its own incident — failing to start on
-    it would turn a degraded service into an absent one — so that case is
-    logged and the application starts.
-    """
-    try:
-        async with AsyncSessionLocal() as session:
-            await assert_ranking_version_ready(session, ranking_version=settings.ranking_version)
-    except RankingVersionNotReadyError:
-        raise
-    except SQLAlchemyError:
-        logger.exception("could not check the ranking version at startup")
-        return
 
 
 @asynccontextmanager
@@ -78,7 +54,6 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         extra={"environment": settings.environment, "version": app.version},
     )
     init_sentry()
-    await _check_ranking_version()
     await start_scheduler()
     try:
         yield
