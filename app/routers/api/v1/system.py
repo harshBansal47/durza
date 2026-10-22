@@ -23,7 +23,7 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.observability import get_logger
 from app.models.job import JobStatus
-from app.services.scheduler import backoff_state, last_run
+from app.services.scheduler import backoff_state, last_run, last_runs
 
 router = APIRouter(tags=["system"])
 logger = get_logger("durza.health")
@@ -78,12 +78,17 @@ async def health_deep(response: Response, db: AsyncSession = Depends(get_db)) ->
         checks["database"] = {"status": "error", "error": type(exc).__name__}
         logger.warning("database health check failed", extra={"error": str(exc)})
 
+    try:
+        runs = await last_runs(db, list(_STALE_AFTER.keys()))
+    except Exception:  # noqa: BLE001
+        runs = {job: None for job in _STALE_AFTER}
+
     for job, limit in _STALE_AFTER.items():
         # These hit the same database that just failed. Reporting "unknown"
         # instead of raising is the entire point of a check endpoint: it has to
         # stay answerable precisely when things are broken.
         try:
-            report = await _job_health(db, job, limit)
+            report = _job_health(job, limit, runs.get(job))
         except Exception:  # noqa: BLE001
             report = {"status": "unknown"}
 
@@ -114,7 +119,7 @@ async def health_deep(response: Response, db: AsyncSession = Depends(get_db)) ->
     return {"status": "ok" if healthy else "degraded", "checks": checks}
 
 
-async def _job_health(db: AsyncSession, job: str, limit: timedelta) -> dict[str, object]:
+def _job_health(job: str, limit: timedelta, row: object) -> dict[str, object]:
     """Report one scheduled job's freshness.
 
     A job that has never run is *not* reported as stale. The scheduler is off by
@@ -122,7 +127,6 @@ async def _job_health(db: AsyncSession, job: str, limit: timedelta) -> dict[str,
     environment and in CI — calling that unhealthy would train everyone to
     ignore this endpoint.
     """
-    row = await last_run(db, job)
     if row is None:
         return {"status": "never run"}
 
