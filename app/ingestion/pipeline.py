@@ -840,6 +840,7 @@ async def _ingest_one(
         run.created += 1
         is_own = True
     else:
+        assert coupon is not None
         is_own = coupon.source_id == source.id
         run.updated += 1 if is_own else 0
         run.duplicated += 0 if is_own else 1

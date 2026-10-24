@@ -186,7 +186,7 @@ async def verify_code(db: AsyncSession, *, email: str, code: str) -> User:
         )
         .values(consumed_at=now, attempts=EmailOtpChallenge.attempts + 1)
     )
-    if consumed.rowcount != 1:
+    if getattr(consumed, "rowcount", 0) != 1:
         await db.rollback()
         raise InvalidOtpError
 
