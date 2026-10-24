@@ -4,9 +4,11 @@ Revision ID: 350adf915c8b
 Revises: 566231899a40
 Create Date: 2026-10-21
 """
-from alembic import op
+
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision = "350adf915c8b"
 down_revision = "566231899a40"

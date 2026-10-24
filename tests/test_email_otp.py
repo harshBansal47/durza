@@ -77,16 +77,16 @@ async def test_hourly_per_address_cap_is_enforced(async_session_maker, outbox, m
     monkeypatch.setattr(settings, "otp_requests_per_email_per_hour", 2)
 
     async with async_session_maker() as db:
-        outcomes = [
-            await email_otp.request_code(db, email="cap@example.com") for _ in range(3)
-        ]
+        outcomes = [await email_otp.request_code(db, email="cap@example.com") for _ in range(3)]
 
     assert outcomes == [True, True, False]
     assert len(outbox.messages) == 2
 
 
 @pytest.mark.asyncio
-async def test_successful_verification_creates_a_plain_user(async_session_maker, outbox, monkeypatch):
+async def test_successful_verification_creates_a_plain_user(
+    async_session_maker, outbox, monkeypatch
+):
     monkeypatch.setattr(get_settings(), "otp_resend_cooldown_seconds", 0)
     async with async_session_maker() as db:
         await email_otp.request_code(db, email="new@example.com")

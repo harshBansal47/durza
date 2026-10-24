@@ -52,16 +52,12 @@ async def _request_code(client: AsyncClient, email: str) -> None:
 async def _otp_tokens(client: AsyncClient, outbox: OtpOutbox, email: str) -> dict:
     await _request_code(client, email)
     code = outbox.last_code
-    response = await client.post(
-        "/api/v1/auth/email/verify", json={"email": email, "code": code}
-    )
+    response = await client.post("/api/v1/auth/email/verify", json={"email": email, "code": code})
     assert response.status_code == 200, response.text
     return response.json()
 
 
-async def _otp_headers(
-    client: AsyncClient, outbox: OtpOutbox, email: str
-) -> dict[str, str]:
+async def _otp_headers(client: AsyncClient, outbox: OtpOutbox, email: str) -> dict[str, str]:
     tokens = await _otp_tokens(client, outbox, email)
     return {"Authorization": f"Bearer {tokens['access_token']}"}
 
@@ -97,9 +93,7 @@ async def test_request_is_generic_for_known_and_unknown_addresses(
 ):
     await _signed_in(async_session_maker, "known@example.com")
 
-    unknown = await client.post(
-        "/api/v1/auth/email/request", json={"email": "nobody@example.com"}
-    )
+    unknown = await client.post("/api/v1/auth/email/request", json={"email": "nobody@example.com"})
     known = await client.post("/api/v1/auth/email/request", json={"email": "known@example.com"})
 
     assert unknown.status_code == known.status_code == 202
@@ -157,9 +151,7 @@ async def test_otp_sign_in_preserves_an_existing_staff_password(
 
 
 @pytest.mark.asyncio
-async def test_wrong_code_exhausts_attempts_and_then_rejects_the_right_one(
-    client, otp_outbox
-):
+async def test_wrong_code_exhausts_attempts_and_then_rejects_the_right_one(client, otp_outbox):
     await _request_code(client, "attempts@example.com")
     code = otp_outbox.last_code
     wrong = "000000" if code != "000000" else "111111"
@@ -233,9 +225,7 @@ async def test_expired_code_is_rejected(client, otp_outbox, async_session_maker)
 
 
 @pytest.mark.asyncio
-async def test_inactive_account_cannot_finish_otp_sign_in(
-    client, otp_outbox, async_session_maker
-):
+async def test_inactive_account_cannot_finish_otp_sign_in(client, otp_outbox, async_session_maker):
     async with async_session_maker() as db:
         user = await user_service.create_user(db, UserCreate(email="off@example.com"))
         user.is_active = False
@@ -293,7 +283,9 @@ async def test_logout_revokes_access_and_refresh_tokens(client, otp_outbox):
 async def test_update_me_changes_and_clears_display_name(client, async_session_maker):
     headers = await _signed_in(async_session_maker, "profile@example.com", full_name="Temp")
 
-    changed = await client.patch("/api/v1/auth/me", json={"full_name": "Ada Lovelace"}, headers=headers)
+    changed = await client.patch(
+        "/api/v1/auth/me", json={"full_name": "Ada Lovelace"}, headers=headers
+    )
     cleared = await client.patch("/api/v1/auth/me", json={"full_name": ""}, headers=headers)
 
     assert changed.status_code == 200
@@ -337,7 +329,10 @@ async def test_delete_account_succeeds_with_matching_email(client, async_session
     headers = await _signed_in(async_session_maker, "delete-me@example.com")
 
     response = await client.request(
-        "DELETE", "/api/v1/auth/me", json={"confirm_email": "delete-me@example.com"}, headers=headers
+        "DELETE",
+        "/api/v1/auth/me",
+        json={"confirm_email": "delete-me@example.com"},
+        headers=headers,
     )
 
     assert response.status_code == 204
@@ -396,7 +391,9 @@ def _tokeninfo(email: str, **extra: object) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_google_login_stores_avatar_name_and_verified_email(client, monkeypatch, async_session_maker):
+async def test_google_login_stores_avatar_name_and_verified_email(
+    client, monkeypatch, async_session_maker
+):
     _stub_google(
         monkeypatch,
         _tokeninfo(

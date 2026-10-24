@@ -4,8 +4,10 @@ Revision ID: d06c8ddc0123
 Revises: d5cb21a2cc57
 Create Date: 2026-10-21
 """
-from alembic import op
+
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "d06c8ddc0123"
 down_revision = "d5cb21a2cc57"

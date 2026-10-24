@@ -4,9 +4,11 @@ Revision ID: 955c936b8912
 Revises: 34ae35ad3935
 Create Date: 2026-10-21
 """
-from alembic import op
+
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision = "955c936b8912"
 down_revision = "34ae35ad3935"
@@ -23,11 +25,16 @@ def upgrade() -> None:
         sa.Column("slug", sa.String(length=40), nullable=False),
         sa.Column("title", sa.String(length=240), nullable=False),
         sa.Column("description", sa.Text(), nullable=False, server_default=""),
-        sa.Column("publication_status", sa.String(length=20), nullable=False, server_default="draft"),
+        sa.Column(
+            "publication_status", sa.String(length=20), nullable=False, server_default="draft"
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("slug", name="uq_sale_series_slug"),
         sa.CheckConstraint("length(slug) <= 40", name="ck_sale_series_slug_length"),
-        sa.CheckConstraint("publication_status IN ('draft','in_review','published')", name="ck_sale_series_publication_status"),
+        sa.CheckConstraint(
+            "publication_status IN ('draft','in_review','published')",
+            name="ck_sale_series_publication_status",
+        ),
     )
     op.create_index("ix_sale_series_slug", "sale_series", ["slug"])
 
@@ -39,8 +46,12 @@ def upgrade() -> None:
         sa.Column("series_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("slug", sa.String(length=30), nullable=False),
         sa.Column("year", sa.Integer(), nullable=False),
-        sa.Column("publication_status", sa.String(length=20), nullable=False, server_default="draft"),
-        sa.Column("lifecycle_status", sa.String(length=20), nullable=False, server_default="announced"),
+        sa.Column(
+            "publication_status", sa.String(length=20), nullable=False, server_default="draft"
+        ),
+        sa.Column(
+            "lifecycle_status", sa.String(length=20), nullable=False, server_default="announced"
+        ),
         sa.Column("start_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("end_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("dates_confirmed", sa.Boolean(), nullable=False, server_default=sa.false()),
@@ -54,12 +65,20 @@ def upgrade() -> None:
         sa.Column("manual_override_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("archived_after_days", sa.Integer(), nullable=False, server_default="30"),
         sa.ForeignKeyConstraint(["series_id"], ["sale_series.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["editorial_content_id"], ["editorial_contents.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["editorial_content_id"], ["editorial_contents.id"], ondelete="SET NULL"
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("series_id", "slug", name="uq_sale_edition_series_slug"),
         sa.CheckConstraint("length(slug) <= 30", name="ck_sale_edition_slug_length"),
-        sa.CheckConstraint("publication_status IN ('draft','in_review','published')", name="ck_sale_edition_publication_status"),
-        sa.CheckConstraint("lifecycle_status IN ('announced','upcoming','live','ended','archived')", name="ck_sale_edition_lifecycle_status"),
+        sa.CheckConstraint(
+            "publication_status IN ('draft','in_review','published')",
+            name="ck_sale_edition_publication_status",
+        ),
+        sa.CheckConstraint(
+            "lifecycle_status IN ('announced','upcoming','live','ended','archived')",
+            name="ck_sale_edition_lifecycle_status",
+        ),
     )
     op.create_index("ix_sale_edition_series_slug", "sale_editions", ["series_id", "slug"])
     op.create_index("ix_sale_edition_lifecycle", "sale_editions", ["lifecycle_status"])

@@ -4,9 +4,11 @@ Revision ID: 34ae35ad3935
 Revises: d06c8ddc0123
 Create Date: 2026-10-21
 """
-from alembic import op
+
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision = "34ae35ad3935"
 down_revision = "d06c8ddc0123"
@@ -18,10 +20,14 @@ def upgrade() -> None:
     with op.get_context().autocommit_block():
         op.execute("ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'analytics_viewer'")
     op.add_column("analytics_events", sa.Column("content_id", sa.String(length=80), nullable=True))
-    op.add_column("analytics_events", sa.Column("content_type", sa.String(length=30), nullable=True))
+    op.add_column(
+        "analytics_events", sa.Column("content_type", sa.String(length=30), nullable=True)
+    )
     op.add_column("analytics_events", sa.Column("list_id", sa.String(length=80), nullable=True))
     op.add_column("analytics_events", sa.Column("position", sa.Integer(), nullable=True))
-    op.add_column("analytics_events", sa.Column("ranking_version", sa.String(length=20), nullable=True))
+    op.add_column(
+        "analytics_events", sa.Column("ranking_version", sa.String(length=20), nullable=True)
+    )
     op.add_column("analytics_events", sa.Column("schema_version", sa.Integer(), nullable=True))
 
     op.add_column("coupon_impressions", sa.Column("list_id", sa.String(length=80), nullable=True))
@@ -48,12 +54,21 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("date", "content_ref", "content_type", name="uq_daily_content_stats"),
     )
-    op.create_index("ix_daily_content_stats_ref_date", "daily_content_stats", ["content_ref", "date"])
+    op.create_index(
+        "ix_daily_content_stats_ref_date", "daily_content_stats", ["content_ref", "date"]
+    )
 
 
 def downgrade() -> None:
     op.drop_index("ix_daily_content_stats_ref_date", table_name="daily_content_stats")
     op.drop_table("daily_content_stats")
     op.drop_column("coupon_impressions", "list_id")
-    for col in ("schema_version", "ranking_version", "position", "list_id", "content_type", "content_id"):
+    for col in (
+        "schema_version",
+        "ranking_version",
+        "position",
+        "list_id",
+        "content_type",
+        "content_id",
+    ):
         op.drop_column("analytics_events", col)

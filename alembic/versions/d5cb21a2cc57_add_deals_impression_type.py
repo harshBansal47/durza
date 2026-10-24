@@ -4,6 +4,7 @@ Revision ID: d5cb21a2cc57
 Revises: f3a41b7c9d20
 Create Date: 2026-10-21
 """
+
 from alembic import op
 
 revision = "d5cb21a2cc57"
