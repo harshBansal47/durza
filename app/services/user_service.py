@@ -1,26 +1,33 @@
-import secrets
-from datetime import UTC, datetime, timedelta
-
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
-from app.core.security import hash_password, verify_password
-from app.core.timezones import ensure_utc
-from app.models.user import PasswordResetToken, Role, User
+from app.core.email_address import normalize_email
+from app.core.security import hash_password
+from app.models.user import Role, User
 from app.schemas.user import UserCreate, UserUpdate
-from app.services.email import ResetPasswordContent, send_reset_email
 
 
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
-    result = await db.execute(select(User).where(User.email == email))
+    """Look up by canonical address, so case cannot create a second account.
+
+    `lower()` rather than an exact match because accounts created before
+    normalization existed may retain mixed-case addresses. New rows are always
+    written normalized; this is the compatibility half of the same rule.
+    """
+    result = await db.execute(select(User).where(func.lower(User.email) == normalize_email(email)))
     return result.scalar_one_or_none()
 
 
 async def create_user(db: AsyncSession, user_in: UserCreate, role: Role = Role.user) -> User:
+    """Create a user.
+
+    `password` is optional: public accounts are created through Google or an
+    email code and have no password at all. It remains supported for staff
+    accounts seeded by an administrator, which still authenticate with one.
+    """
     user = User(
-        email=user_in.email,
-        hashed_password=hash_password(user_in.password),
+        email=normalize_email(user_in.email),
+        hashed_password=hash_password(user_in.password) if user_in.password else None,
         full_name=user_in.full_name,
         role=role,
     )
@@ -31,132 +38,13 @@ async def create_user(db: AsyncSession, user_in: UserCreate, role: Role = Role.u
 
 
 async def update_user(db: AsyncSession, user: User, user_in: "UserUpdate") -> User:
-    """Apply a profile edit. A password change requires the current one."""
-    if user_in.password is not None:
-        if (
-            user.hashed_password is None
-            or user_in.current_password is None
-            or not verify_password(user_in.current_password, user.hashed_password)
-        ):
-            raise ValueError("Current password is incorrect")
-        user.hashed_password = hash_password(user_in.password)
-
+    """Apply a self-service profile edit. Only the display name is editable."""
     if user_in.full_name is not None:
         user.full_name = user_in.full_name or None
 
     await db.commit()
     await db.refresh(user)
     return user
-
-
-async def create_password_reset_token(db: AsyncSession, email: str) -> str | None:
-    """Generate a password reset token for the user.
-
-    Returns the plain token (to be emailed) or None if no such user.
-    The token is single-use and expires in RESET_TOKEN_TTL_HOURS.
-    """
-    user = await get_user_by_email(db, email)
-    if user is None:
-        return None
-
-    # Invalidate any existing tokens for this user
-    from sqlalchemy import delete
-
-    await db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
-
-    plain_token = secrets.token_urlsafe(32)
-    import hashlib
-
-    token_hash = hashlib.sha256(plain_token.encode()).hexdigest()
-
-    settings = get_settings()
-    expires_at = datetime.now(UTC) + timedelta(hours=settings.reset_token_ttl_hours)
-
-    db.add(
-        PasswordResetToken(
-            user_id=user.id,
-            token_hash=token_hash,
-            expires_at=expires_at,
-        )
-    )
-    await db.commit()
-
-    return plain_token
-
-
-async def consume_password_reset_token(db: AsyncSession, token: str) -> User | None:
-    """Validate and consume a password reset token.
-
-    Returns the user if the token is valid and not expired, otherwise None.
-    The token is deleted on success (single-use).
-    """
-    import hashlib
-
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-
-    result = await db.execute(
-        select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
-    )
-    reset_token = result.scalar_one_or_none()
-
-    if reset_token is None:
-        return None
-
-    # SQLite returns naive datetimes from `timestamptz` columns — see
-    # `app.core.timezones`. Without the coercion this comparison raises
-    # `TypeError` wherever the value comes back naive, which is every run of
-    # this suite.
-    if ensure_utc(reset_token.expires_at) < datetime.now(UTC):
-        await db.delete(reset_token)
-        await db.commit()
-        return None
-
-    user = await db.get(User, reset_token.user_id)
-    if user is None or not user.is_active:
-        return None
-
-    await db.delete(reset_token)
-    await db.commit()
-    return user
-
-
-async def send_password_reset_email(db: AsyncSession, email: str) -> bool:
-    """Send a password reset email to the user.
-
-    Returns True if the email was sent (or queued), False on failure.
-    Always returns True for non-existent emails to avoid user enumeration.
-    """
-    plain_token = await create_password_reset_token(db, email)
-    if plain_token is None:
-        # Don't reveal whether the email exists
-        return True
-
-    settings = get_settings()
-    reset_url = f"{settings.site_url.rstrip('/')}/account/reset-password?token={plain_token}"
-
-    content = ResetPasswordContent(
-        reset_url=reset_url,
-        expires_hours=settings.reset_token_ttl_hours,
-    )
-
-    return await send_reset_email(email, content)
-
-
-async def reset_password(db: AsyncSession, token: str, new_password: str) -> bool:
-    """Reset the user's password using a valid token.
-
-    Returns True on success, False if the token is invalid/expired.
-    """
-    if len(new_password) < 8:
-        return False
-
-    user = await consume_password_reset_token(db, token)
-    if user is None:
-        return False
-
-    user.hashed_password = hash_password(new_password)
-    await db.commit()
-    return True
 
 
 async def delete_user(db: AsyncSession, user: User) -> None:

@@ -74,23 +74,39 @@ class AlertContent:
 
 
 @dataclass(frozen=True)
-class ResetPasswordContent:
-    """Data needed for a password reset email."""
+class OtpEmailContent:
+    """A sign-in code and the window it is valid for.
 
-    reset_url: str
-    expires_hours: int
+    Kept separate from delivery so the template can be snapshotted by tests
+    without a mail server, and so the only place the plaintext code exists is
+    this object plus the message body.
+    """
+
+    code: str
+    expires_minutes: int
 
 
-def render_reset_text(content: ResetPasswordContent, recipient: str) -> str:
+def _html_escape(value: str) -> str:
+    return (
+        value.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def render_otp_text(content: OtpEmailContent, recipient: str) -> str:
     lines = [
-        "Reset your Durza password",
+        "Your Durza sign-in code",
         "",
-        f"Someone requested a password reset for {recipient}.",
-        f"This link expires in {content.expires_hours} hours:",
+        f"Use this code to sign in as {recipient}:",
         "",
-        content.reset_url,
+        content.code,
         "",
-        "If you did not request this, you can ignore this email.",
+        f"It expires in {content.expires_minutes} minutes and can be used once.",
+        "",
+        "If you did not try to sign in, you can ignore this email. Nobody can",
+        "access your account without this code.",
         "",
         "— Durza",
         "",
@@ -98,19 +114,11 @@ def render_reset_text(content: ResetPasswordContent, recipient: str) -> str:
     return _wrap("\n".join(lines))
 
 
-def render_reset_html(content: ResetPasswordContent, recipient: str) -> str:
-    def esc(value: str) -> str:
-        return (
-            value.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;")
-        )
-
+def render_otp_html(content: OtpEmailContent, recipient: str) -> str:
     return f"""<!doctype html>
 <html lang="en">
 <body style="margin:0;padding:24px;background:#f6f5f2;font-family:Georgia,'Times New Roman',serif;color:#1c1b18">
-  <span style="display:none;max-height:0;overflow:hidden">Reset your Durza password</span>
+  <span style="display:none;max-height:0;overflow:hidden">Your Durza sign-in code expires in {content.expires_minutes} minutes.</span>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border:1px solid #dcd8d0">
@@ -118,15 +126,14 @@ def render_reset_html(content: ResetPasswordContent, recipient: str) -> str:
           <p style="margin:0;font:700 22px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:-.02em;color:#ffffff">Durza <span style="font:500 13px/1 ui-sans-serif,system-ui,sans-serif;letter-spacing:0;margin-left:6px">Coupon &amp; Deals</span></p>
         </td></tr>
         <tr><td style="padding:8px 28px 24px">
-          <h1 style="margin:0 0 12px;font:26px/1.2 Georgia,serif">Reset your password</h1>
-          <p style="margin:0 0 12px;font:15px/1.6 ui-sans-serif,system-ui,sans-serif;color:#3d3a34">Someone requested a password reset for {esc(recipient)}. This link expires in {content.expires_hours} hours.</p>
-          <p style="margin:0 0 24px">
-            <a href="{esc(content.reset_url)}" style="display:inline-block;padding:11px 18px;background:#C2410C;color:#fff;text-decoration:none;font:600 14px ui-sans-serif,system-ui,sans-serif">Reset password</a>
-          </p>
+          <h1 style="margin:0 0 12px;font:26px/1.2 Georgia,serif">Sign in to Durza</h1>
+          <p style="margin:0 0 18px;font:15px/1.6 ui-sans-serif,system-ui,sans-serif;color:#3d3a34">Enter this code to sign in as {_html_escape(recipient)}. It expires in {content.expires_minutes} minutes and can be used once.</p>
+          <p style="margin:0 0 18px;padding:16px 20px;background:#f6f5f2;border:1px solid #dcd8d0;font:700 34px/1.1 ui-monospace,Menlo,monospace;letter-spacing:.28em;color:#1c1b18">{content.code}</p>
+          <p style="margin:0 0 8px;font:14px/1.6 ui-sans-serif,system-ui,sans-serif;color:#3d3a34">If you did not try to sign in, you can ignore this email. Nobody can access your account without this code.</p>
         </td></tr>
         <tr><td style="padding:16px 28px;border-top:1px solid #e6e2da">
           <p style="margin:0;font:12px/1.6 ui-sans-serif,system-ui,sans-serif;color:#6b675f">
-            If you did not request this, you can ignore this email.
+            For your security, do not forward this code. Durza will never ask you for it.
           </p>
         </td></tr>
       </table>
@@ -136,45 +143,42 @@ def render_reset_html(content: ResetPasswordContent, recipient: str) -> str:
 </html>"""
 
 
-def build_reset_message(to: str, content: ResetPasswordContent) -> EmailMessage:
+def build_otp_message(to: str, content: OtpEmailContent) -> EmailMessage:
     settings = get_settings()
     message = EmailMessage()
-    message["Subject"] = "Reset your Durza password"
+    message["Subject"] = f"Your Durza sign-in code: {content.code}"
     message["From"] = formataddr((settings.email_from_name, settings.email_from))
     message["To"] = to
+    if settings.email_reply_to:
+        message["Reply-To"] = settings.email_reply_to
     message["Date"] = formatdate(localtime=True)
     message["Message-ID"] = make_msgid(domain=settings.email_from.rpartition("@")[2] or None)
-    message["List-Unsubscribe"] = f"<{unsubscribe_url(to)}>"
-    message["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+    # A sign-in code is transactional, not marketing: there is no unsubscribe
+    # link, and the subject carries the code so it is visible without rendering
+    # HTML (while the body repeats it for screen readers and text clients).
     message["Auto-Submitted"] = "auto-generated"
 
-    message.set_content(render_reset_text(content, to))
-    message.add_alternative(render_reset_html(content, to), subtype="html")
+    message.set_content(render_otp_text(content, to))
+    message.add_alternative(render_otp_html(content, to), subtype="html")
     return message
 
 
-async def send_reset_email(to: str, content: ResetPasswordContent) -> bool:
-    """Deliver a password reset email."""
+async def send_otp_email(to: str, content: OtpEmailContent) -> bool:
+    """Deliver a sign-in code. Never logs the code itself."""
     settings = get_settings()
     if not settings.email_configured:
-        logger.info(
-            "reset email queued (no SMTP_HOST configured)",
-            extra={"to": to},
-        )
+        logger.info("sign-in email queued (no SMTP_HOST configured)", extra={"to": to})
         return True
 
     try:
         import aiosmtplib
 
-        await aiosmtplib.send(build_reset_message(to, content), **_send_kwargs())
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "reset email send failed",
-            extra={"to": to, "error": str(exc)},
-        )
+        await aiosmtplib.send(build_otp_message(to, content), **_send_kwargs())
+    except Exception as exc:  # noqa: BLE001 — any SMTP failure is a send failure
+        logger.warning("sign-in email send failed", extra={"to": to, "error": str(exc)})
         return False
 
-    logger.info("reset email sent", extra={"to": to})
+    logger.info("sign-in email sent", extra={"to": to})
     return True
 
 
@@ -272,6 +276,8 @@ def build_message(to: str, alert: AlertContent) -> EmailMessage:
     # clients show the first text line in the inbox list instead of Subject.
     message["From"] = formataddr((settings.email_from_name, settings.email_from))
     message["To"] = to
+    if settings.email_reply_to:
+        message["Reply-To"] = settings.email_reply_to
     message["Date"] = formatdate(localtime=True)
     message["Message-ID"] = make_msgid(domain=settings.email_from.rpartition("@")[2] or None)
     message["List-Unsubscribe"] = f"<{unsubscribe_url(to)}>"
@@ -296,6 +302,9 @@ def _send_kwargs() -> dict[str, Any]:
         "start_tls": security == "starttls",
         "username": settings.smtp_user,
         "password": settings.smtp_password,
+        # Certificates are verified by default and this makes that explicit:
+        # a self-signed relay is not worth accepting silently in production.
+        "validate_certs": True,
         "timeout": 30,
     }
 

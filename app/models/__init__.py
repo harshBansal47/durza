@@ -80,7 +80,7 @@ from app.models.tracking import (
     TrackAlertState,
     TrackedProduct,
 )
-from app.models.user import User
+from app.models.user import EmailOtpChallenge, User
 from app.models.user_interest import UserInterest
 from app.models.user_segment import UserSegment
 from app.models.verification_attempt import AttemptOutcome, VerificationAttempt
@@ -124,6 +124,7 @@ __all__ = [
     "EditorialEntityLink",
     "EditorialFAQ",
     "EditorialRelation",
+    "EmailOtpChallenge",
     "ImpressionType",
     "IngestionRun",
     "JobRun",

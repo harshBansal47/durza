@@ -1,8 +1,7 @@
 import enum
-import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, Enum, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -25,6 +24,17 @@ class User(Base, UUIDPKMixin, TimestampMixin):
     # Google account photo URL, refreshed on every Google sign-in. Password
     # accounts have none; the UI falls back to initials when it is missing.
     avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # Set when the address is proven: Google says so on every ID token, and a
+    # consumed email code proves control of the inbox. Password-only staff
+    # accounts may legitimately have NULL here.
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Included in every JWT as `ver` and compared on each request. Logging out
+    # increments it, which revokes every token issued before that moment.
+    token_version: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
     role: Mapped[Role] = mapped_column(
         Enum(Role, name="user_role", native_enum=True), default=Role.user, nullable=False
     )
@@ -37,21 +47,30 @@ class User(Base, UUIDPKMixin, TimestampMixin):
         return self.email
 
 
-class PasswordResetToken(Base, UUIDPKMixin, TimestampMixin):
-    """Single-use, time-limited token for password recovery.
+class EmailOtpChallenge(Base, UUIDPKMixin, TimestampMixin):
+    """A passwordless sign-in code, stored as an HMAC digest.
 
-    Created by `forgot_password`, consumed by `reset_password`. The expiry is
-    deliberately short — a leaked token in a sent-mail folder should not be
-    usable days later.
+    The row is deliberately not tied to a user id. A request for an address
+    with no account must look and behave exactly like one for an existing
+    account — including creating a challenge and sending mail — or the endpoint
+    becomes an account-enumeration oracle. The account is resolved (and created,
+    under the product's open-registration policy) only after the code verifies.
+
+    One active challenge per address: issuing a new code consumes every older
+    unconsumed row for that address, so a code is single-use even if the user
+    requests several and keeps an old email open.
     """
 
-    __tablename__ = "password_reset_tokens"
+    __tablename__ = "email_otp_challenges"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    token_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Hashed with the same salt as every other IP-derived value in the app. It
+    # is useful for abuse investigation and should not outlive the challenge.
+    request_ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     def __str__(self) -> str:
-        return f"reset token for user {self.user_id}"
+        return f"email code for {self.email}"

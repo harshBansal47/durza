@@ -61,15 +61,20 @@ docker compose exec app python scripts/seed_admin.py --email admin@example.com -
 
 ## Trying the auth flow
 
-```bash
-# Register (always creates a plain "user")
-curl -X POST http://localhost:8000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email": "alice@example.com", "password": "supersecret123"}'
+Public sign-in is passwordless: Google OAuth, or an email sign-in code that is
+sent to the inbox and verified once.
 
-# Log in (OAuth2 password flow — form-encoded, "username" is the email)
-curl -X POST http://localhost:8000/api/v1/auth/login \
-  -d "username=alice@example.com&password=supersecret123"
+```bash
+# Ask for a sign-in code (generic 202 response, identical for new and known
+# addresses; per-IP 5/min and per-address hourly/cooldown limits are enforced)
+curl -X POST http://localhost:8000/api/v1/auth/email/request \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@example.com"}'
+
+# Exchange the six-digit code for a token pair
+curl -X POST http://localhost:8000/api/v1/auth/email/verify \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@example.com", "code": "123456"}'
 
 # Call a protected route
 curl http://localhost:8000/api/v1/auth/me -H "Authorization: Bearer <access_token>"
@@ -79,9 +84,24 @@ curl -X POST http://localhost:8000/api/v1/auth/refresh \
   -H "Content-Type: application/json" \
   -d '{"refresh_token": "<refresh_token>"}'
 
+# Revoke the session and every token issued before it
+curl -X POST http://localhost:8000/api/v1/auth/logout \
+  -H "Authorization: Bearer <access_token>"
+
 # Admin-only demo route (403 for a regular user, 200 for an admin)
 curl http://localhost:8000/api/v1/auth/admin-ping -H "Authorization: Bearer <access_token>"
 ```
+
+Google OAuth still signs the visitor in through
+`POST /api/v1/auth/google` with a Google ID token; the frontend callback verifies
+the code exchange and then calls the backend. The back office at `/admin` keeps
+its own password login, because staff accounts are seeded with one.
+
+The OTP design: the code is six cryptographically random digits, valid for
+`OTP_TTL_MINUTES` (5) minutes, and only an HMAC-SHA256 digest is stored in
+`email_otp_challenges`; attempts and consumption are tracked, prior codes are
+superseded, and failed deliveries retire the code. Sign-in responses are generic
+to avoid account enumeration.
 
 ## Running tests
 
@@ -120,12 +140,12 @@ Four gaps that "the backend is done" glossed over, now fixed:
   specifically, since that's the one thing that runs client-side rather than
   server-side. Configure allowed origins via `CORS_ORIGINS` (comma-separated)
   in `.env`; defaults to `http://localhost:3000` for local dev.
-- **Rate limiting on auth.** `/auth/register` (5/min), `/auth/login` (10/min),
-  and `/auth/refresh` (20/min) are now throttled per IP via slowapi, on top of
-  the existing per-coupon 24h cooldown on `/coupons/{id}/verify`. Without
-  this, login had zero brute-force protection. In-memory by default — fine
-  for one instance; point `Limiter` at Redis (`app/core/limiter.py`) if you
-  run more than one API process.
+- **Rate limiting on auth.** `/auth/email/request` (5/min per IP) and
+  `/auth/email/verify` (10/min per IP) are throttled via slowapi, on top of the
+  OTP service's per-address hourly request cap and resend cooldown. Without
+  this, the sign-in code path had zero brute-force protection. In-memory by
+  default — fine for one instance; point `Limiter` at Redis (`app/core/limiter.py`)
+  if you run more than one API process.
 - **Security headers.** `X-Content-Type-Options`, `X-Frame-Options`,
   `Referrer-Policy` on every response; `Strict-Transport-Security` added
   automatically once `ENVIRONMENT=production`.
@@ -133,13 +153,12 @@ Four gaps that "the backend is done" glossed over, now fixed:
   drops to a `appuser` (UID 1000, matching the typical first non-root Linux
   user, so bind-mounted volumes in local dev don't hit permission errors).
 
-**Still worth knowing, not yet built:** no email verification on
-registration (anyone can register with any email address, confirmed or not),
-no account lockout after repeated failed logins beyond the per-IP rate limit,
-no dependency vulnerability scanning wired into CI (no CI exists yet at all),
-and the non-root Docker change is untested against a real `docker compose up`
-in this environment — Docker itself isn't available here, so it's reviewed
-carefully but not run.
+**Still worth knowing, not yet built:** the admin UI does not yet show a
+per-user password status for public accounts, no account lockout exists beyond
+the rate limits (per IP and per address), no dependency vulnerability scanning is
+wired into CI (no CI exists yet at all), and the non-root Docker change is
+untested against a real `docker compose up` in this environment — Docker itself
+isn't available here, so it's reviewed carefully but not run.
 
 ## Priority #3, completed: the MCP server
 
@@ -286,8 +305,16 @@ delete needs `admin`. Every list endpoint returns
   Promoting someone to admin/editor is a deliberate, out-of-band action via
   the seed script (or, later, an existing admin using the admin panel) —
   never something a request body can grant itself.
+
+  Public sign-in no longer accepts a password at all: it is Google OAuth or an
+  email code. Existing staff accounts still hold a bcrypt password and use the
+  separate `/admin` login; that is a staff credential, not a public product
+  credential.
+
 - **Access vs refresh tokens** carry a `"type"` claim and each endpoint checks
-  it, so a leaked access token can't be replayed against `/refresh`.
+  it, so a leaked access token can't be replayed against `/refresh`. They also
+  carry a `"ver"` claim checked against the server's token-version counter, so
+  `POST /auth/logout` revokes every token issued before it.
 - **Tests use SQLite in-memory** (with foreign keys switched on to mimic Postgres), not Postgres, via a `get_db` dependency
   override in `tests/conftest.py` — fast, no Docker needed to run `pytest`
   locally. The `Uuid`/`Enum` column types were chosen specifically because

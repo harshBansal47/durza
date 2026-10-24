@@ -1,367 +1,363 @@
-import json
+"""Authentication: passwordless email codes, Google, refresh, and account lifecycle.
+
+Public password sign-in and password reset are gone. These tests exercise what
+replaced them end to end through the HTTP API, and keep the Google profile
+behaviour that predates the change. Delivery is always stubbed at the sender
+boundary: no test talks to a real SMTP server, and no test reads a code from a
+log because the application never writes one there.
+"""
+
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Self
 
 import pytest
 from httpx import AsyncClient, Response
+from sqlalchemy import select
+
+from app.core.config import get_settings
+from app.core.security import create_access_token
+from app.models.user import EmailOtpChallenge, Role, User
+from app.schemas.user import UserCreate
+from app.services import email_otp, user_service
+
+
+class OtpOutbox:
+    """Captures the plaintext code at the only boundary where it exists."""
+
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, object]] = []
+
+    async def __call__(self, to: str, content: object) -> bool:
+        self.sent.append((to, content))
+        return True
+
+    @property
+    def last_code(self) -> str:
+        return self.sent[-1][1].code  # type: ignore[attr-defined]
+
+
+@pytest.fixture
+def otp_outbox(monkeypatch) -> OtpOutbox:
+    outbox = OtpOutbox()
+    monkeypatch.setattr(email_otp, "send_otp_email", outbox)
+    return outbox
+
+
+async def _request_code(client: AsyncClient, email: str) -> None:
+    response = await client.post("/api/v1/auth/email/request", json={"email": email})
+    assert response.status_code == 202
+
+
+async def _otp_tokens(client: AsyncClient, outbox: OtpOutbox, email: str) -> dict:
+    await _request_code(client, email)
+    code = outbox.last_code
+    response = await client.post(
+        "/api/v1/auth/email/verify", json={"email": email, "code": code}
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+async def _otp_headers(
+    client: AsyncClient, outbox: OtpOutbox, email: str
+) -> dict[str, str]:
+    tokens = await _otp_tokens(client, outbox, email)
+    return {"Authorization": f"Bearer {tokens['access_token']}"}
 
 
 async def _signed_in(
-    client: AsyncClient, email: str, full_name: str | None = None
+    async_session_maker,
+    email: str,
+    *,
+    full_name: str | None = None,
+    role: Role = Role.user,
+    password: str | None = None,
 ) -> dict[str, str]:
-    """Register, sign in, and return auth headers for that account.
+    """Mint a token for an existing account without going through sign-in.
 
-    Goes through the real login flow rather than minting a token by hand, so
-    these tests exercise the credentials the API actually accepts.
+    Used by tests whose subject is not the sign-in flow itself.
     """
-    await client.post(
-        "/api/v1/auth/register",
-        json={"email": email, "password": "supersecret123", "full_name": full_name},
-    )
-    login_resp = await client.post(
-        "/api/v1/auth/login",
-        data={"username": email, "password": "supersecret123"},
-    )
-    assert login_resp.status_code == 200
-    return {"Authorization": f"Bearer {login_resp.json()['access_token']}"}
+    async with async_session_maker() as session:
+        user = await user_service.create_user(
+            session,
+            UserCreate(email=email, password=password, full_name=full_name),
+            role=role,
+        )
+        token = create_access_token(str(user.id), user.role.value, user.token_version)
+    return {"Authorization": f"Bearer {token}"}
+
+
+# ---- Email OTP ---------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_register_and_login_flow(client):
-    register_resp = await client.post(
-        "/api/v1/auth/register",
-        json={"email": "user@example.com", "password": "supersecret123"},
+async def test_request_is_generic_for_known_and_unknown_addresses(
+    client, otp_outbox, async_session_maker
+):
+    await _signed_in(async_session_maker, "known@example.com")
+
+    unknown = await client.post(
+        "/api/v1/auth/email/request", json={"email": "nobody@example.com"}
     )
-    assert register_resp.status_code == 201
-    body = register_resp.json()
-    assert body["email"] == "user@example.com"
+    known = await client.post("/api/v1/auth/email/request", json={"email": "known@example.com"})
+
+    assert unknown.status_code == known.status_code == 202
+    assert unknown.json() == known.json()
+    assert [to for to, _ in otp_outbox.sent] == ["nobody@example.com", "known@example.com"]
+
+
+@pytest.mark.asyncio
+async def test_otp_sign_in_creates_a_plain_user_and_stores_only_a_digest(
+    client, otp_outbox, async_session_maker
+):
+    tokens = await _otp_tokens(client, otp_outbox, "New.User@Example.COM")
+    code = otp_outbox.last_code
+
+    me = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['access_token']}"}
+    )
+    assert me.status_code == 200
+    body = me.json()
+    assert body["email"] == "new.user@example.com"
     assert body["role"] == "user"
+    assert "has_password" not in body
 
-    login_resp = await client.post(
-        "/api/v1/auth/login",
-        data={"username": "user@example.com", "password": "supersecret123"},
-    )
-    assert login_resp.status_code == 200
-    tokens = login_resp.json()
-    assert "access_token" in tokens
-    assert "refresh_token" in tokens
+    async with async_session_maker() as db:
+        user = (await db.execute(select(User))).scalar_one()
+        challenge = (await db.execute(select(EmailOtpChallenge))).scalar_one()
+
+    assert user.hashed_password is None
+    assert user.email_verified_at is not None
+    assert user.token_version == 0
+    assert challenge.email == "new.user@example.com"
+    assert challenge.code_hash != code
+    assert challenge.consumed_at is not None
 
 
 @pytest.mark.asyncio
-async def test_duplicate_registration_rejected(client):
-    payload = {"email": "dupe@example.com", "password": "supersecret123"}
-    first = await client.post("/api/v1/auth/register", json=payload)
-    assert first.status_code == 201
+async def test_otp_sign_in_preserves_an_existing_staff_password(
+    client, otp_outbox, async_session_maker
+):
+    async with async_session_maker() as db:
+        existing = await user_service.create_user(
+            db, UserCreate(email="staff@example.com", password="supersecret123"), role=Role.editor
+        )
+        original_hash = existing.hashed_password
 
-    second = await client.post("/api/v1/auth/register", json=payload)
+    tokens = await _otp_tokens(client, otp_outbox, "staff@example.com")
+    me = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {tokens['access_token']}"}
+    )
+
+    assert me.json()["role"] == "editor"
+    async with async_session_maker() as db:
+        refreshed = await db.get(User, existing.id)
+    assert refreshed.hashed_password == original_hash
+
+
+@pytest.mark.asyncio
+async def test_wrong_code_exhausts_attempts_and_then_rejects_the_right_one(
+    client, otp_outbox
+):
+    await _request_code(client, "attempts@example.com")
+    code = otp_outbox.last_code
+    wrong = "000000" if code != "000000" else "111111"
+
+    for _ in range(get_settings().otp_max_attempts):
+        response = await client.post(
+            "/api/v1/auth/email/verify",
+            json={"email": "attempts@example.com", "code": wrong},
+        )
+        assert response.status_code == 400
+
+    # The right code cannot rescue a challenge that has spent its budget.
+    response = await client.post(
+        "/api/v1/auth/email/verify", json={"email": "attempts@example.com", "code": code}
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_code_is_single_use(client, otp_outbox):
+    await _request_code(client, "once@example.com")
+    code = otp_outbox.last_code
+
+    first = await client.post(
+        "/api/v1/auth/email/verify", json={"email": "once@example.com", "code": code}
+    )
+    second = await client.post(
+        "/api/v1/auth/email/verify", json={"email": "once@example.com", "code": code}
+    )
+
+    assert first.status_code == 200
     assert second.status_code == 400
 
 
 @pytest.mark.asyncio
-async def test_login_rejects_wrong_password(client):
-    await client.post(
-        "/api/v1/auth/register",
-        json={"email": "wrongpw@example.com", "password": "supersecret123"},
-    )
-    resp = await client.post(
-        "/api/v1/auth/login",
-        data={"username": "wrongpw@example.com", "password": "not-the-password"},
-    )
-    assert resp.status_code == 401
+async def test_resend_invalidates_the_previous_code(client, otp_outbox, monkeypatch):
+    monkeypatch.setattr(get_settings(), "otp_resend_cooldown_seconds", 0)
+    await _request_code(client, "resend@example.com")
+    first_code = otp_outbox.last_code
 
-
-@pytest.mark.asyncio
-async def test_me_requires_auth(client):
-    resp = await client.get("/api/v1/auth/me")
-    assert resp.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_me_returns_current_user(client):
-    await client.post(
-        "/api/v1/auth/register",
-        json={"email": "me@example.com", "password": "supersecret123"},
-    )
-    login_resp = await client.post(
-        "/api/v1/auth/login",
-        data={"username": "me@example.com", "password": "supersecret123"},
-    )
-    token = login_resp.json()["access_token"]
-
-    resp = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
-    assert resp.status_code == 200
-    assert resp.json()["email"] == "me@example.com"
-
-
-@pytest.mark.asyncio
-async def test_admin_only_endpoint_forbidden_for_regular_user(client):
-    await client.post(
-        "/api/v1/auth/register",
-        json={"email": "regular@example.com", "password": "supersecret123"},
-    )
-    login_resp = await client.post(
-        "/api/v1/auth/login",
-        data={"username": "regular@example.com", "password": "supersecret123"},
-    )
-    token = login_resp.json()["access_token"]
-
-    resp = await client.get("/api/v1/auth/admin-ping", headers={"Authorization": f"Bearer {token}"})
-    assert resp.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_admin_only_endpoint_allowed_for_admin(client, async_session_maker):
-    from app.core.security import create_access_token
-    from app.models.user import Role
-    from app.schemas.user import UserCreate
-    from app.services import user_service
-
-    async with async_session_maker() as session:
-        admin = await user_service.create_user(
-            session,
-            UserCreate(email="admin@example.com", password="supersecret123"),
-            role=Role.admin,
-        )
-        token = create_access_token(str(admin.id), admin.role.value)
-
-    resp = await client.get("/api/v1/auth/admin-ping", headers={"Authorization": f"Bearer {token}"})
-    assert resp.status_code == 200
-    assert "admin@example.com" in resp.json()["message"]
-
-
-@pytest.mark.asyncio
-async def test_refresh_token_issues_new_access_token(client):
-    await client.post(
-        "/api/v1/auth/register",
-        json={"email": "refresh@example.com", "password": "supersecret123"},
-    )
-    login_resp = await client.post(
-        "/api/v1/auth/login",
-        data={"username": "refresh@example.com", "password": "supersecret123"},
-    )
-    refresh_token = login_resp.json()["refresh_token"]
-
-    resp = await client.post("/api/v1/auth/refresh", json={"refresh_token": refresh_token})
-    assert resp.status_code == 200
-    assert "access_token" in resp.json()
-
-
-@pytest.mark.asyncio
-async def test_access_token_rejected_by_refresh_endpoint(client):
-    login_payload = {"email": "wrongtype@example.com", "password": "supersecret123"}
-    await client.post("/api/v1/auth/register", json=login_payload)
-    login_resp = await client.post(
-        "/api/v1/auth/login",
-        data={"username": "wrongtype@example.com", "password": "supersecret123"},
-    )
-    access_token = login_resp.json()["access_token"]
-
-    resp = await client.post("/api/v1/auth/refresh", json={"refresh_token": access_token})
-    assert resp.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_update_me_changes_display_name(client):
-    """PATCH /auth/me is how a user sets the name shown in the header."""
-    headers = await _signed_in(client, "profile@example.com")
-
-    response = await client.patch(
-        "/api/v1/auth/me",
-        json={"full_name": "Ada Lovelace"},
-        headers={**headers, "Content-Type": "application/json"},
-    )
-
-    assert response.status_code == 200
-    assert response.json()["full_name"] == "Ada Lovelace"
-
-    me = await client.request(
-        "GET", "/api/v1/auth/me", headers={**headers, "Content-Type": "application/json"}
-    )
-    assert me.json()["full_name"] == "Ada Lovelace"
-
-
-@pytest.mark.asyncio
-async def test_update_me_clears_display_name(client):
-    headers = await _signed_in(client, "clearname@example.com", full_name="Temporary")
-
-    response = await client.patch(
-        "/api/v1/auth/me",
-        json={"full_name": ""},
-        headers={**headers, "Content-Type": "application/json"},
-    )
-
-    assert response.status_code == 200
-    assert response.json()["full_name"] is None
-
-
-@pytest.mark.asyncio
-async def test_update_me_rejects_password_change_without_current_password(client):
-    """Changing a password must be proven, or a stolen session could lock the owner out."""
-    headers = await _signed_in(client, "nopassword@example.com")
-
-    response = await client.patch(
-        "/api/v1/auth/me",
-        json={"password": "brand-new-password"},
-        headers={**headers, "Content-Type": "application/json"},
-    )
-
-    assert response.status_code == 400
-    assert "current password" in response.json()["detail"].lower()
-
-
-@pytest.mark.asyncio
-async def test_update_me_rejects_wrong_current_password(client):
-    headers = await _signed_in(client, "wrongcurrent@example.com")
-
-    response = await client.patch(
-        "/api/v1/auth/me",
-        json={"password": "brand-new-password", "current_password": "not-the-password"},
-        headers={**headers, "Content-Type": "application/json"},
-    )
-
-    assert response.status_code == 400
-
-
-@pytest.mark.asyncio
-async def test_update_me_changes_password(client):
-    headers = await _signed_in(client, "rotate@example.com")
-
-    accepted = await client.patch(
-        "/api/v1/auth/me",
-        json={"password": "brand-new-password", "current_password": "supersecret123"},
-        headers={**headers, "Content-Type": "application/json"},
-    )
-    assert accepted.status_code == 200
+    await _request_code(client, "resend@example.com")
+    second_code = otp_outbox.last_code
 
     stale = await client.post(
-        "/api/v1/auth/login",
-        data={"username": "rotate@example.com", "password": "supersecret123"},
+        "/api/v1/auth/email/verify",
+        json={"email": "resend@example.com", "code": first_code},
     )
-    assert stale.status_code == 401
-
     fresh = await client.post(
-        "/api/v1/auth/login",
-        data={"username": "rotate@example.com", "password": "brand-new-password"},
+        "/api/v1/auth/email/verify",
+        json={"email": "resend@example.com", "code": second_code},
     )
+
+    assert stale.status_code == 400
     assert fresh.status_code == 200
 
 
 @pytest.mark.asyncio
-async def test_update_me_rejects_unknown_fields(client):
-    """Role and email must not be settable through the profile endpoint."""
-    headers = await _signed_in(client, "escalate@example.com")
+async def test_expired_code_is_rejected(client, otp_outbox, async_session_maker):
+    await _request_code(client, "expired@example.com")
+    code = otp_outbox.last_code
 
-    response = await client.patch(
-        "/api/v1/auth/me",
-        json={"email": "someone-else@example.com", "role": "admin"},
-        headers={**headers, "Content-Type": "application/json"},
+    async with async_session_maker() as db:
+        challenge = (await db.execute(select(EmailOtpChallenge))).scalar_one()
+        challenge.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+        await db.commit()
+
+    response = await client.post(
+        "/api/v1/auth/email/verify", json={"email": "expired@example.com", "code": code}
     )
-
-    assert response.status_code == 422
+    assert response.status_code == 400
 
 
 @pytest.mark.asyncio
-async def test_update_me_rejects_short_password(client):
-    headers = await _signed_in(client, "short@example.com")
+async def test_inactive_account_cannot_finish_otp_sign_in(
+    client, otp_outbox, async_session_maker
+):
+    async with async_session_maker() as db:
+        user = await user_service.create_user(db, UserCreate(email="off@example.com"))
+        user.is_active = False
+        await db.commit()
+
+    await _request_code(client, "off@example.com")
+    response = await client.post(
+        "/api/v1/auth/email/verify",
+        json={"email": "off@example.com", "code": otp_outbox.last_code},
+    )
+    assert response.status_code == 403
+
+
+# ---- Refresh and logout ------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_refresh_issues_new_tokens(client, otp_outbox):
+    tokens = await _otp_tokens(client, otp_outbox, "refresh@example.com")
+
+    response = await client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    )
+    assert response.status_code == 200
+    assert "access_token" in response.json()
+
+
+@pytest.mark.asyncio
+async def test_refresh_rejects_an_access_token(client, otp_outbox):
+    tokens = await _otp_tokens(client, otp_outbox, "wrongtype@example.com")
+
+    response = await client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": tokens["access_token"]}
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_logout_revokes_access_and_refresh_tokens(client, otp_outbox):
+    tokens = await _otp_tokens(client, otp_outbox, "logout@example.com")
+    headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+    assert (await client.post("/api/v1/auth/logout", headers=headers)).status_code == 204
+    assert (await client.get("/api/v1/auth/me", headers=headers)).status_code == 401
+    refreshed = await client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    )
+    assert refreshed.status_code == 401
+
+
+# ---- Profile and deletion ----------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_me_changes_and_clears_display_name(client, async_session_maker):
+    headers = await _signed_in(async_session_maker, "profile@example.com", full_name="Temp")
+
+    changed = await client.patch("/api/v1/auth/me", json={"full_name": "Ada Lovelace"}, headers=headers)
+    cleared = await client.patch("/api/v1/auth/me", json={"full_name": ""}, headers=headers)
+
+    assert changed.status_code == 200
+    assert changed.json()["full_name"] == "Ada Lovelace"
+    assert cleared.status_code == 200
+    assert cleared.json()["full_name"] is None
+
+
+@pytest.mark.asyncio
+async def test_update_me_rejects_credentials_and_unknown_fields(client, async_session_maker):
+    headers = await _signed_in(async_session_maker, "escalate@example.com")
 
     response = await client.patch(
         "/api/v1/auth/me",
-        json={"password": "short", "current_password": "supersecret123"},
-        headers={**headers, "Content-Type": "application/json"},
+        json={"email": "someone-else@example.com", "role": "admin", "password": "new-password"},
+        headers=headers,
     )
-
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_update_me_requires_authentication(client):
-    response = await client.patch("/api/v1/auth/me", json={"full_name": "Nobody"})
+    assert (await client.patch("/api/v1/auth/me", json={"full_name": "Nobody"})).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_delete_account_requires_the_matching_email(client, async_session_maker):
+    headers = await _signed_in(async_session_maker, "delete@example.com")
+
+    wrong = await client.request(
+        "DELETE", "/api/v1/auth/me", json={"confirm_email": "other@example.com"}, headers=headers
+    )
+    me_after_wrong = await client.get("/api/v1/auth/me", headers=headers)
+
+    assert wrong.status_code == 400
+    assert me_after_wrong.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_delete_account_succeeds_with_matching_email(client, async_session_maker):
+    headers = await _signed_in(async_session_maker, "delete-me@example.com")
+
+    response = await client.request(
+        "DELETE", "/api/v1/auth/me", json={"confirm_email": "delete-me@example.com"}, headers=headers
+    )
+
+    assert response.status_code == 204
+    assert (await client.get("/api/v1/auth/me", headers=headers)).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_delete_account_requires_email_confirmation(client, async_session_maker):
+    headers = await _signed_in(async_session_maker, "missing-confirm@example.com")
+    response = await client.request("DELETE", "/api/v1/auth/me", json={}, headers=headers)
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_delete_account_requires_authentication(client):
+    response = await client.request("DELETE", "/api/v1/auth/me", json={"confirm_email": "a@b.co"})
     assert response.status_code == 401
 
 
-# ---- Google-only accounts ----
-#
-# The Google endpoint itself cannot be exercised without Google, but the two
-# account states it creates can: a user with no password, and the derived
-# `has_password` flag the settings page branches on.
-
-
-async def _google_only_headers(async_session_maker, email: str) -> dict[str, str]:
-    """A signed-in user exactly as POST /auth/google creates one: no password."""
-    from app.core.security import create_access_token
-    from app.models.user import Role, User
-
-    async with async_session_maker() as session:
-        user = User(email=email, hashed_password=None, role=Role.user)
-        session.add(user)
-        await session.commit()
-        await session.refresh(user)
-        token = create_access_token(str(user.id), user.role.value)
-    return {"Authorization": f"Bearer {token}"}
-
-
-@pytest.mark.asyncio
-async def test_me_reports_whether_a_password_exists(client):
-    headers = await _signed_in(client, "haspass@example.com")
-    me = await client.get("/api/v1/auth/me", headers=headers)
-    assert me.status_code == 200
-    assert me.json()["has_password"] is True
-
-
-@pytest.mark.asyncio
-async def test_me_reports_false_for_google_only_account(client, async_session_maker):
-    headers = await _google_only_headers(async_session_maker, "nopass@example.com")
-    me = await client.get("/api/v1/auth/me", headers=headers)
-    assert me.status_code == 200
-    assert me.json()["has_password"] is False
-
-
-@pytest.mark.asyncio
-async def test_set_password_turns_google_only_account_into_password_account(
-    client, async_session_maker
-):
-    headers = await _google_only_headers(async_session_maker, "googleonly@example.com")
-
-    resp = await client.post(
-        "/api/v1/auth/set-password",
-        json={"new_password": "a-brand-new-pass"},
-        headers=headers,
-    )
-    assert resp.status_code == 204
-
-    login = await client.post(
-        "/api/v1/auth/login",
-        data={"username": "googleonly@example.com", "password": "a-brand-new-pass"},
-    )
-    assert login.status_code == 200
-
-
-@pytest.mark.asyncio
-async def test_set_password_rejects_short_password(client, async_session_maker):
-    headers = await _google_only_headers(async_session_maker, "shortpass@example.com")
-
-    resp = await client.post(
-        "/api/v1/auth/set-password",
-        json={"new_password": "short"},
-        headers=headers,
-    )
-    assert resp.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_set_password_requires_authentication(client):
-    resp = await client.post(
-        "/api/v1/auth/set-password",
-        json={"new_password": "a-brand-new-pass"},
-    )
-    assert resp.status_code == 401
-
-
-# ---- Google sign-in profile sync ----
-#
-# The endpoint talks to Google's tokeninfo service, which tests cannot reach;
-# the response is stubbed at the httpx boundary so account creation and the
-# profile refresh logic run for real.
+# ---- Google sign-in ----------------------------------------------------------
 
 
 class _StubTokeninfo:
@@ -381,7 +377,6 @@ class _StubTokeninfo:
 
 
 def _stub_google(monkeypatch, payload: dict) -> None:
-    """Point the Google endpoint at a fake tokeninfo response."""
     from app.routers.api.v1 import auth as auth_router
 
     monkeypatch.setattr(
@@ -391,11 +386,17 @@ def _stub_google(monkeypatch, payload: dict) -> None:
 
 
 def _tokeninfo(email: str, **extra: object) -> dict:
-    return {"aud": "test-client-id", "email": email, "email_verified": True, **extra}
+    return {
+        "aud": "test-client-id",
+        "iss": "https://accounts.google.com",
+        "email": email,
+        "email_verified": True,
+        **extra,
+    }
 
 
 @pytest.mark.asyncio
-async def test_google_login_stores_avatar_and_name(client, monkeypatch):
+async def test_google_login_stores_avatar_name_and_verified_email(client, monkeypatch, async_session_maker):
     _stub_google(
         monkeypatch,
         _tokeninfo(
@@ -405,14 +406,19 @@ async def test_google_login_stores_avatar_and_name(client, monkeypatch):
         ),
     )
 
-    resp = await client.post("/api/v1/auth/google", json={"id_token": "stub"})
-    assert resp.status_code == 200
-    headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+    response = await client.post("/api/v1/auth/google", json={"id_token": "stub"})
+    assert response.status_code == 200
+    headers = {"Authorization": f"Bearer {response.json()['access_token']}"}
 
     me = await client.get("/api/v1/auth/me", headers=headers)
     assert me.status_code == 200
     assert me.json()["full_name"] == "Ava Tar"
     assert me.json()["avatar_url"] == "https://lh3.googleusercontent.com/a/abc=s96-c"
+
+    async with async_session_maker() as db:
+        user = (await db.execute(select(User))).scalar_one()
+    assert user.email_verified_at is not None
+    assert user.hashed_password is None
 
 
 @pytest.mark.asyncio
@@ -424,126 +430,81 @@ async def test_google_login_refreshes_avatar_on_each_sign_in(client, monkeypatch
     first = await client.post("/api/v1/auth/google", json={"id_token": "stub"})
     assert first.status_code == 200
 
-    # Google rotates the photo URL; the second sign-in must pick the new one up.
     _stub_google(
         monkeypatch,
         _tokeninfo("refresh@example.com", picture="https://lh3.googleusercontent.com/new=s96-c"),
     )
     second = await client.post("/api/v1/auth/google", json={"id_token": "stub"})
-    assert second.status_code == 200
-
     headers = {"Authorization": f"Bearer {second.json()['access_token']}"}
     me = await client.get("/api/v1/auth/me", headers=headers)
+
     assert me.json()["avatar_url"] == "https://lh3.googleusercontent.com/new=s96-c"
 
 
 @pytest.mark.asyncio
-async def test_google_login_links_existing_password_account_without_losing_password(
-    client, monkeypatch
+async def test_google_login_links_existing_account_without_removing_staff_password(
+    client, monkeypatch, async_session_maker
 ):
-    headers = await _signed_in(client, "linkme@example.com")
+    await _signed_in(async_session_maker, "linkme@example.com", password="supersecret123")
 
+    _stub_google(monkeypatch, _tokeninfo("LinkMe@Example.com", name="Linked User"))
+    response = await client.post("/api/v1/auth/google", json={"id_token": "stub"})
+
+    assert response.status_code == 200
+    async with async_session_maker() as db:
+        user = (
+            await db.execute(select(User).where(User.email == "linkme@example.com"))
+        ).scalar_one()
+    assert user.hashed_password is not None
+    assert user.email_verified_at is not None
+
+
+@pytest.mark.asyncio
+async def test_google_login_rejects_unverified_email(client, monkeypatch):
+    # The string "false" is the case a truthiness check gets wrong.
+    _stub_google(monkeypatch, _tokeninfo("unverified@example.com", email_verified="false"))
+
+    response = await client.post("/api/v1/auth/google", json={"id_token": "stub"})
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_google_login_rejects_wrong_issuer(client, monkeypatch):
     _stub_google(
         monkeypatch,
-        _tokeninfo(
-            "linkme@example.com",
-            name="Linked User",
-            picture="https://lh3.googleusercontent.com/a/linked=s96-c",
-        ),
+        _tokeninfo("issuer@example.com", iss="https://example.com"),
     )
-    resp = await client.post("/api/v1/auth/google", json={"id_token": "stub"})
-    assert resp.status_code == 200
-    google_headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
-    me = await client.get("/api/v1/auth/me", headers=google_headers)
-    assert me.json()["avatar_url"] == "https://lh3.googleusercontent.com/a/linked=s96-c"
-    assert me.json()["full_name"] == "Linked User"
-    # Linking must not wipe the password: email + password sign-in still works.
-    assert me.json()["has_password"] is True
-    login = await client.post(
+    response = await client.post("/api/v1/auth/google", json={"id_token": "stub"})
+    assert response.status_code == 401
+
+
+# ---- RBAC --------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_admin_only_endpoint_forbidden_for_regular_user(client, otp_outbox):
+    headers = await _otp_headers(client, otp_outbox, "regular@example.com")
+    response = await client.get("/api/v1/auth/admin-ping", headers=headers)
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_only_endpoint_allowed_for_admin(client, async_session_maker):
+    headers = await _signed_in(async_session_maker, "admin@example.com", role=Role.admin)
+    response = await client.get("/api/v1/auth/admin-ping", headers=headers)
+    assert response.status_code == 200
+    assert "admin@example.com" in response.json()["message"]
+
+
+@pytest.mark.asyncio
+async def test_removed_password_endpoints_are_not_routed(client):
+    for path in (
+        "/api/v1/auth/register",
         "/api/v1/auth/login",
-        data={"username": "linkme@example.com", "password": "supersecret123"},
-    )
-    assert login.status_code == 200
-
-    # Password sign-in itself keeps returning the same profile.
-    me_again = await client.get("/api/v1/auth/me", headers=headers)
-    assert me_again.json()["avatar_url"] == "https://lh3.googleusercontent.com/a/linked=s96-c"
-
-
-# ---- Account deletion tests ----
-
-
-@pytest.mark.asyncio
-async def test_delete_account_requires_correct_password(client):
-    """Deleting an account must require the correct current password."""
-    headers = await _signed_in(client, "delete_me@example.com", full_name="Delete Me")
-    # Wrong password should be rejected
-    resp = await client.request(
-        "DELETE",
-        "/api/v1/auth/me",
-        content=json.dumps({"current_password": "wrong-password"}),
-        headers={**headers, "Content-Type": "application/json"},
-    )
-    assert resp.status_code == 400
-    assert "The password you entered is not correct" in resp.json()["detail"]
-    # Verify account still exists
-    me = await client.request(
-        "GET", "/api/v1/auth/me", headers={**headers, "Content-Type": "application/json"}
-    )
-    assert me.status_code == 200
-
-
-@pytest.mark.asyncio
-async def test_delete_account_rejects_missing_password(client):
-    """Omitting the password field must be rejected."""
-    headers = await _signed_in(client, "missing_pw@example.com")
-    resp = await client.request(
-        "DELETE",
-        "/api/v1/auth/me",
-        content=json.dumps({}),
-        headers={**headers, "Content-Type": "application/json"},
-    )
-    assert resp.status_code == 400
-    assert "The password you entered is not correct" in resp.json()["detail"]
-
-
-@pytest.mark.asyncio
-async def test_delete_account_rejects_empty_password(client):
-    """Empty string password must be rejected."""
-    headers = await _signed_in(client, "empty_pw@example.com")
-    resp = await client.request(
-        "DELETE",
-        "/api/v1/auth/me",
-        content=json.dumps({"current_password": ""}),
-        headers={**headers, "Content-Type": "application/json"},
-    )
-    assert resp.status_code == 400
-    assert "The password you entered is not correct" in resp.json()["detail"]
-
-
-@pytest.mark.asyncio
-async def test_delete_account_succeeds_with_correct_password(client):
-    """Correct password deletes the account and logs the user out."""
-    headers = await _signed_in(client, "delete_ok@example.com")
-    resp = await client.request(
-        "DELETE",
-        "/api/v1/auth/me",
-        content=json.dumps({"current_password": "supersecret123"}),
-        headers={**headers, "Content-Type": "application/json"},
-    )
-    assert resp.status_code == 204
-    # Subsequent requests with the same token should fail
-    me = await client.request(
-        "GET", "/api/v1/auth/me", headers={**headers, "Content-Type": "application/json"}
-    )
-    assert me.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_delete_account_requires_authentication(client):
-    """Unauthenticated requests must be rejected."""
-    resp = await client.request(
-        "DELETE", "/api/v1/auth/me", content=json.dumps({"current_password": "anything"})
-    )
-    assert resp.status_code == 401
+        "/api/v1/auth/forgot-password",
+        "/api/v1/auth/reset-password",
+        "/api/v1/auth/set-password",
+    ):
+        response = await client.post(path, json={})
+        assert response.status_code == 404, path

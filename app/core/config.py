@@ -1,7 +1,7 @@
 from functools import lru_cache
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from pydantic import field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Schemes this app treats as Postgres. All of them are rewritten to the one
@@ -75,17 +75,29 @@ class Settings(BaseSettings):
     google_client_id: str | None = None
 
     # ---- Email (aiosmtplib) ---------------------------------------------
+    # Only SMTP is implemented. The field exists so an unsupported provider in
+    # the environment fails loudly instead of silently falling back to a
+    # delivery path that will never send anything.
+    email_provider: str = "smtp"
     # Unset SMTP_HOST means "log and report queued" — the alert engine keeps
     # working locally with no mail server, and nothing silently disappears.
     smtp_host: str | None = None
     smtp_port: int = 587
-    smtp_user: str | None = None
+    # EMAIL_PROVIDER=smtp deployments commonly use SMTP_USERNAME; the older
+    # SMTP_USER spelling is kept so existing local environments keep working.
+    smtp_user: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("SMTP_USERNAME", "SMTP_USER", "smtp_user"),
+    )
     smtp_password: str | None = None
     # "starttls" for port 587, "ssl" for implicit TLS on 465, "none" for a
     # local relay on 25 (MailHog, python -m smtpd) with no encryption.
     smtp_security: str = "starttls"
     email_from: str = "alerts@durza.in"
     email_from_name: str = "Durza Coupons"
+    # Replies to alert and sign-in mail should reach a monitored mailbox rather
+    # than the noreply-style sender address.
+    email_reply_to: str | None = None
 
     # ---- Web push (pywebpush) -------------------------------------------
     # Generate with: python -m app.core.push_keys  (prints a VAPID key pair).
@@ -95,10 +107,16 @@ class Settings(BaseSettings):
     # Push payloads over ~4KB are rejected by browsers, so keep bodies small.
     push_ttl_seconds: int = 3600
 
-    # ---- Account security ----------------------------------------------
-    # How long a password reset token is valid. Short by default because a
-    # leaked token in a sent-mail folder should not be usable days later.
-    reset_token_ttl_hours: int = 2
+    # ---- Passwordless email sign-in (OTP) -------------------------------
+    # Six digits, valid for a single short window. The digest key is separate
+    # from the JWT secret when set; falling back to SECRET_KEY keeps existing
+    # deployments working, but an explicit OTP_HASH_KEY means rotating one
+    # secret does not invalidate in-flight sign-in codes in the other.
+    otp_ttl_minutes: int = 5
+    otp_max_attempts: int = 5
+    otp_resend_cooldown_seconds: int = 60
+    otp_requests_per_email_per_hour: int = 5
+    otp_hash_key: str | None = None
 
     # ---- Telegram ------------------------------------------------------
     # Optional fourth channel. Off unless a bot token is supplied; the chat id
@@ -201,7 +219,16 @@ class Settings(BaseSettings):
 
     @property
     def email_configured(self) -> bool:
-        return bool(self.smtp_host)
+        return self.email_provider == "smtp" and bool(self.smtp_host)
+
+    @property
+    def otp_hash_secret(self) -> str:
+        """The key used for HMAC digests of sign-in codes.
+
+        A dedicated key is preferable; the JWT secret is a safe fallback
+        because it is already required to be strong in production.
+        """
+        return self.otp_hash_key or self.secret_key
 
     @property
     def push_configured(self) -> bool:
@@ -222,6 +249,46 @@ class Settings(BaseSettings):
         """
         if isinstance(value, str) and not value.strip():
             return None
+        return value
+
+    @field_validator("smtp_user", "smtp_password", "email_reply_to", "otp_hash_key", mode="before")
+    @classmethod
+    def _blank_optional_value_is_unset(cls, value: object) -> object:
+        """An empty env var means "not configured", not an empty credential.
+
+        Passing `username=""` to aiosmtplib takes the login branch and fails at
+        send time, which looks like a mail outage rather than the missing value
+        it actually is.
+        """
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("email_provider", mode="before")
+    @classmethod
+    def _default_blank_email_provider(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = value.strip().lower()
+            return value or "smtp"
+        return value
+
+    @field_validator("email_provider")
+    @classmethod
+    def _only_smtp_is_supported(cls, value: str) -> str:
+        if value != "smtp":
+            raise ValueError("EMAIL_PROVIDER must be 'smtp'")
+        return value
+
+    @field_validator(
+        "otp_ttl_minutes",
+        "otp_max_attempts",
+        "otp_resend_cooldown_seconds",
+        "otp_requests_per_email_per_hour",
+    )
+    @classmethod
+    def _otp_limits_are_positive(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("OTP limits must be at least 1")
         return value
 
     @model_validator(mode="after")

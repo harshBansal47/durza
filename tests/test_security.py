@@ -37,35 +37,25 @@ async def test_tracked_redirects_are_noindex(client):
     assert "x-robots-tag" not in normal.headers
 
 
-async def test_register_is_rate_limited(client):
+async def test_email_otp_request_is_rate_limited(client):
     for i in range(5):
         resp = await client.post(
-            "/api/v1/auth/register",
-            json={"email": f"burst{i}@example.com", "password": "supersecret123"},
+            "/api/v1/auth/email/request", json={"email": f"burst{i}@example.com"}
         )
-        assert resp.status_code == 201
+        assert resp.status_code == 202
 
-    sixth = await client.post(
-        "/api/v1/auth/register",
-        json={"email": "burst5@example.com", "password": "supersecret123"},
-    )
+    sixth = await client.post("/api/v1/auth/email/request", json={"email": "burst5@example.com"})
     assert sixth.status_code == 429
 
 
-async def test_login_is_rate_limited_independently_of_register(client):
-    await client.post(
-        "/api/v1/auth/register",
-        json={"email": "bruteforce@example.com", "password": "supersecret123"},
-    )
-    for _ in range(10):
+async def test_email_otp_verify_is_rate_limited(client):
+    for i in range(10):
         resp = await client.post(
-            "/api/v1/auth/login",
-            data={"username": "bruteforce@example.com", "password": "wrong-password"},
+            "/api/v1/auth/email/verify", json={"email": "bruteforce@example.com", "code": "123456"}
         )
-        assert resp.status_code == 401  # correctly rejected, not yet rate-limited
+        assert resp.status_code == 400  # bad code, not yet rate-limited
 
     eleventh = await client.post(
-        "/api/v1/auth/login",
-        data={"username": "bruteforce@example.com", "password": "wrong-password"},
+        "/api/v1/auth/email/verify", json={"email": "bruteforce@example.com", "code": "123456"}
     )
     assert eleventh.status_code == 429  # brute-force attempt now throttled

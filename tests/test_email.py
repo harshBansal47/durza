@@ -14,7 +14,17 @@ import pytest
 
 from app.core.config import get_settings
 from app.services import email as email_service
-from app.services.email import AlertContent, build_message, render_html, render_text
+from app.services.email import (
+    AlertContent,
+    OtpEmailContent,
+    build_message,
+    build_otp_message,
+    render_html,
+    render_otp_html,
+    render_otp_text,
+    render_text,
+    send_otp_email,
+)
 
 ALERT = AlertContent(
     subject="Sony WH-1000XM5 dropped to $279.00 USD",
@@ -172,3 +182,89 @@ def test_message_id_has_a_domain() -> None:
 def test_rendered_html_is_serialisable_json_safe() -> None:
     # Guards against a stray object sneaking into an f-string in the template.
     assert json.dumps({"html": render_html(ALERT, "a@example.com")}) is not None
+
+
+# ---- Passwordless email sign-in codes --------------------------------------
+
+
+OTP = OtpEmailContent(code="482913", expires_minutes=5)
+
+
+def test_otp_text_body_carries_the_code_and_expiry() -> None:
+    body = render_otp_text(OTP, "signer@example.com")
+    assert "482913" in body
+    assert "5 minutes" in body
+    assert "If you did not try to sign in" in body
+
+
+def test_otp_html_body_carries_the_code_and_has_no_unsubscribe_link() -> None:
+    html = render_otp_html(OTP, "signer@example.com")
+    assert "482913" in html
+    assert "expires in 5 minutes" in html
+    assert "unsubscribe" not in html.lower()
+
+
+def test_otp_html_escapes_the_recipient() -> None:
+    html = render_otp_html(OTP, "<script>bad@example.com</script>")
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_otp_message_is_multipart_and_addresses_the_recipient() -> None:
+    message = build_otp_message("signer@example.com", OTP)
+    assert message["Subject"] == "Your Durza sign-in code: 482913"
+    assert message["To"] == "signer@example.com"
+    assert message.is_multipart()
+    subtypes = {part.get_content_subtype() for part in message.walk()}
+    assert "plain" in subtypes
+    assert "html" in subtypes
+
+
+def test_otp_message_uses_the_reply_to_when_configured(monkeypatch) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "email_reply_to", "hello@durza.in", raising=False)
+    message = build_otp_message("signer@example.com", OTP)
+    assert message["Reply-To"] == "hello@durza.in"
+
+
+@pytest.mark.asyncio
+async def test_send_otp_without_smtp_configured_reports_queued() -> None:
+    assert get_settings().email_configured is False
+    assert await send_otp_email("signer@example.com", OTP) is True
+
+
+@pytest.mark.asyncio
+async def test_send_otp_failure_returns_false_and_does_not_raise(monkeypatch) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "smtp_host", "smtp.example.com", raising=False)
+
+    import aiosmtplib
+
+    async def _boom(*args, **kwargs):
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(aiosmtplib, "send", _boom)
+
+    assert await send_otp_email("signer@example.com", OTP) is False
+
+
+@pytest.mark.asyncio
+async def test_send_otp_uses_starttls_and_explicit_certificate_validation(monkeypatch) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "smtp_host", "smtp.example.com", raising=False)
+    monkeypatch.setattr(settings, "smtp_security", "starttls", raising=False)
+
+    captured: dict = {}
+
+    import aiosmtplib
+
+    async def _capture(message, **kwargs):
+        captured.update(kwargs)
+        captured["message"] = message
+
+    monkeypatch.setattr(aiosmtplib, "send", _capture)
+
+    assert await send_otp_email("signer@example.com", OTP) is True
+    assert captured["start_tls"] is True
+    assert captured["use_tls"] is False
+    assert captured["validate_certs"] is True

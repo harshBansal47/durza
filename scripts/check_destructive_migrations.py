@@ -28,6 +28,11 @@ _ALLOWLIST = {
     # Removed `ingestion_runs.skipped`, a column no code path ever wrote; the
     # pipeline never emitted it, so nothing was lost.
     "7b3f1a9c4d21_multi_source_core.py",
+    # Password reset was removed from the product entirely (public sign-in is
+    # Google + email codes). The table had one reader, the deleted endpoint; no
+    # user data lived in it beyond a short-lived token hash. Dropping it keeps
+    # the schema honest instead of leaving a dead table forever.
+    "a4f1c8e2d9b7_passwordless_email_otp.py",
 }
 
 

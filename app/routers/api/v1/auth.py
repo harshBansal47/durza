@@ -1,78 +1,85 @@
 import uuid
+from datetime import UTC, datetime
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# ... (keep existing imports)
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_role
+from app.core.email_address import normalize_email
 from app.core.limiter import limiter
-from app.core.security import (
-    create_access_token,
-    create_refresh_token,
-    decode_token,
-    hash_password,
-    verify_password,
-)
+from app.core.request_meta import client_ip, hash_ip
+from app.core.security import create_access_token, create_refresh_token, decode_token
 from app.models.user import Role, User
-from app.schemas.auth import GoogleLoginRequest, RefreshRequest, Token
-from app.schemas.user import (
-    ForgotPasswordRequest,
-    ResetPasswordRequest,
-    SetPasswordRequest,
-    UserCreate,
-    UserRead,
-    UserUpdate,
+from app.schemas.auth import (
+    EmailOtpRequest,
+    EmailOtpVerifyRequest,
+    GoogleLoginRequest,
+    RefreshRequest,
+    Token,
 )
-from app.services import user_service
+from app.schemas.user import DeleteAccountRequest, UserRead, UserUpdate
+from app.services import email_otp, user_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+_GENERIC_OTP_MESSAGE = "If that address can sign in, a sign-in code is on its way."
 
-@router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+
+def _tokens_for(user: User) -> Token:
+    version = user.token_version
+    return Token(
+        access_token=create_access_token(str(user.id), user.role.value, version),
+        refresh_token=create_refresh_token(str(user.id), user.role.value, version),
+    )
+
+
+@router.post("/email/request", status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit("5/minute")
-async def register(
-    request: Request, user_in: UserCreate, db: AsyncSession = Depends(get_db)
-) -> User:
-    """Public self-registration. Always creates a plain 'user' — admins are seeded, not signed up."""
-    existing = await user_service.get_user_by_email(db, user_in.email)
-    if existing is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
-        )
-    return await user_service.create_user(db, user_in, role=Role.user)
-
-
-@router.post("/login", response_model=Token)
-@limiter.limit("10/minute")
-async def login(
+async def request_email_code(
     request: Request,
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    payload: EmailOtpRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """Send a sign-in code, whether or not the address has an account.
+
+    The status and body never vary: cooldowns, hourly caps, unknown addresses
+    and delivery failures all produce this same response, so this endpoint
+    cannot be used to enumerate customers.
+    """
+    await email_otp.request_code(
+        db,
+        email=payload.email,
+        request_ip_hash=hash_ip(client_ip(request)),
+    )
+    return {"message": _GENERIC_OTP_MESSAGE}
+
+
+@router.post("/email/verify", response_model=Token)
+@limiter.limit("10/minute")
+async def verify_email_code(
+    request: Request,
+    payload: EmailOtpVerifyRequest,
     db: AsyncSession = Depends(get_db),
 ) -> Token:
-    """OAuth2 password flow: send email as 'username' and the password, form-encoded."""
-    user = await user_service.get_user_by_email(db, form_data.username)
-    if (
-        user is None
-        or user.hashed_password is None
-        or not verify_password(form_data.password, user.hashed_password)
-    ):
+    """Exchange a valid code for a session, creating a plain `user` if needed."""
+    try:
+        user = await email_otp.verify_code(db, email=payload.email, code=payload.code)
+    except email_otp.InvalidOtpError as exc:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive account")
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="That code is invalid or has expired. Request a new one.",
+        ) from exc
+    except email_otp.InactiveAccountError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account is inactive.",
+        ) from exc
 
-    return Token(
-        access_token=create_access_token(str(user.id), user.role.value),
-        refresh_token=create_refresh_token(str(user.id), user.role.value),
-    )
+    return _tokens_for(user)
 
 
 @router.post("/refresh", response_model=Token)
@@ -90,14 +97,37 @@ async def refresh(
     if data.get("type") != "refresh":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
 
-    user = await db.get(User, uuid.UUID(data["sub"]))
-    if user is None or not user.is_active:
+    try:
+        user_id = uuid.UUID(data["sub"])
+        token_version = int(data.get("ver", 0))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
+        ) from exc
+
+    user = await db.get(User, user_id)
+    if user is None or not user.is_active or user.token_version != token_version:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User no longer valid")
 
-    return Token(
-        access_token=create_access_token(str(user.id), user.role.value),
-        refresh_token=create_refresh_token(str(user.id), user.role.value),
-    )
+    return _tokens_for(user)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
+async def logout(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Revoke every token issued to this account so far.
+
+    JWTs are stateless, so "logging out" is a token-version bump: the next
+    request with an older `ver` claim fails in `get_current_user`, including a
+    refresh token that was never rotated. A refresh token already rotated
+    before this call shares the old version and is revoked with the rest.
+    """
+    current_user.token_version += 1
+    await db.commit()
 
 
 @router.get("/me", response_model=UserRead)
@@ -113,72 +143,34 @@ async def update_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Self-service profile edit: display name and password."""
-    try:
-        return await user_service.update_user(db, current_user, payload)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-
-
-@router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
-@limiter.limit("3/hour")
-async def forgot_password(
-    request: Request,
-    payload: ForgotPasswordRequest,
-    db: AsyncSession = Depends(get_db),
-) -> dict[str, str]:
-    """Request a password reset email.
-
-    Always returns 202 even if the email doesn't exist, to prevent user enumeration.
-    """
-    await user_service.send_password_reset_email(db, payload.email)
-    return {"message": "If an account exists, a reset email has been sent."}
-
-
-@router.post("/reset-password", status_code=status.HTTP_200_OK)
-@limiter.limit("5/hour")
-async def reset_password(
-    request: Request,
-    payload: ResetPasswordRequest,
-    db: AsyncSession = Depends(get_db),
-) -> dict[str, str]:
-    """Reset the password using a valid token."""
-    if not await user_service.reset_password(db, payload.token, payload.new_password):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired reset token",
-        )
-    return {"message": "Password has been reset. You can now log in."}
+    """Self-service profile edit. Only the display name is editable."""
+    return await user_service.update_user(db, current_user, payload)
 
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("1/hour")
 async def delete_account(
     request: Request,
-    payload: UserUpdate,
+    payload: DeleteAccountRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Delete the current user's account and all associated data.
 
     This is a hard delete: the user, their saved items, tracked products,
-    alert history, and notification preferences are all removed.
-    Verification reports submitted by the user are preserved (without the
-    account attached) because they are public attestations.
+    alert history, and notification preferences are all removed. Verification
+    reports submitted by the user are preserved (without the account attached)
+    because they are public attestations.
 
-    Requires the current password to confirm the deletion.
+    The signed-in session authorises the delete; typing the account email is a
+    mis-click guard. There is no password to ask for on OTP-only accounts.
     """
-    if (
-        not payload.current_password
-        or current_user.hashed_password is None
-        or not verify_password(payload.current_password, current_user.hashed_password)
-    ):
+    if normalize_email(str(payload.confirm_email)) != normalize_email(current_user.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The password you entered is not correct.",
+            detail="The email address does not match your account.",
         )
     await user_service.delete_user(db, current_user)
-    # The response is 204 with no content
 
 
 @router.post("/google", response_model=Token)
@@ -188,8 +180,10 @@ async def google_login(
 ) -> Token:
     """Sign in (or sign up) with a Google ID token.
 
-    Verifies the token with Google, then finds or creates a local user.
-    Google-only accounts have no password.
+    Google has already verified the address (checked below), so linking to an
+    existing account by email is safe: the caller controls that inbox. Existing
+    staff passwords are left untouched; public password sign-in no longer
+    exists.
     """
     settings = get_settings()
     client_id = settings.google_client_id
@@ -211,61 +205,54 @@ async def google_login(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Google token audience mismatch"
         )
+    issuer = info.get("iss")
+    if issuer not in {"accounts.google.com", "https://accounts.google.com"}:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Google token issuer mismatch"
+        )
     email = info.get("email")
-    if not email or not info.get("email_verified"):
+    verified = info.get("email_verified")
+    # Google's tokeninfo endpoint has returned both booleans and the strings
+    # "true"/"false" over the years. `bool("false")` is True, so a plain
+    # truthiness test would treat an unverified address as verified.
+    if not email or not (verified is True or str(verified).lower() == "true"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Google email not verified"
         )
 
+    normalized = normalize_email(email)
     name = info.get("name")
     picture = info.get("picture")
 
-    user = await user_service.get_user_by_email(db, email)
+    user = await user_service.get_user_by_email(db, normalized)
     if user is None:
         user = User(
-            email=email,
+            email=normalized,
             hashed_password=None,
             full_name=name,
             avatar_url=picture,
             role=Role.user,
+            email_verified_at=datetime.now(UTC),
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
     else:
         # Keep the Google-sourced profile fresh on every sign-in: the photo URL
-        # changes when the account's picture does, and an account that started
-        # with email + password may only sign in with Google much later.
-        changed = False
+        # changes when the account's picture does, and an account created by an
+        # earlier channel should gain a verified marker on its first Google
+        # sign-in.
+        user.email_verified_at = user.email_verified_at or datetime.now(UTC)
         if picture and picture != user.avatar_url:
             user.avatar_url = picture
-            changed = True
         if name and not (user.full_name or "").strip():
             user.full_name = name
-            changed = True
-        if changed:
-            await db.commit()
+        await db.commit()
 
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive account")
 
-    return Token(
-        access_token=create_access_token(str(user.id), user.role.value),
-        refresh_token=create_refresh_token(str(user.id), user.role.value),
-    )
-
-
-@router.post("/set-password", status_code=status.HTTP_204_NO_CONTENT)
-@limiter.limit("5/hour")
-async def set_password(
-    request: Request,
-    payload: SetPasswordRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> None:
-    """Set a password for an account that has none (e.g. Google-only)."""
-    current_user.hashed_password = hash_password(payload.new_password)
-    await db.commit()
+    return _tokens_for(user)
 
 
 @router.get("/admin-ping")

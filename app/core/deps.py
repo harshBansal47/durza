@@ -11,7 +11,7 @@ from app.core.database import get_db
 from app.core.security import decode_token
 from app.models.user import Role, User
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/email/verify")
 
 _credentials_exception = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -36,8 +36,19 @@ async def get_current_user(
     if user_id is None:
         raise _credentials_exception
 
-    user = await db.get(User, uuid.UUID(user_id))
+    try:
+        user_uuid = uuid.UUID(user_id)
+        token_version = int(payload.get("ver", 0))
+    except (TypeError, ValueError) as exc:
+        raise _credentials_exception from exc
+
+    user = await db.get(User, user_uuid)
     if user is None or not user.is_active:
+        raise _credentials_exception
+    # A logout increments token_version, which invalidates every access and
+    # refresh token issued before it. Tokens minted before this claim existed
+    # are treated as version 0, so deploying it does not sign everyone out.
+    if user.token_version != token_version:
         raise _credentials_exception
     return user
 

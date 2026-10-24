@@ -52,6 +52,11 @@ class AdminAuth(AuthenticationBackend):
         if user is None:
             verify_password(password, _DUMMY_HASH)
             return False
+        if user.hashed_password is None:
+            # Passwordless accounts (Google or email-code) cannot sign in to
+            # the back office, even if someone has elevated their role.
+            verify_password(password, _DUMMY_HASH)
+            return False
         if not verify_password(password, user.hashed_password):
             return False
         if not user.is_active or user.role not in STAFF_ROLES:
