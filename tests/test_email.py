@@ -8,11 +8,14 @@ attempt.
 """
 
 import json
+import re
 from email import message_from_string
+from urllib.parse import unquote
 
 import pytest
 
 from app.core.config import get_settings
+from app.core.unsubscribe import read_unsubscribe_token
 from app.services import email as email_service
 from app.services.email import (
     AlertContent,
@@ -48,7 +51,12 @@ def test_text_body_carries_the_actionable_facts() -> None:
 
 def test_text_body_always_offers_an_way_out() -> None:
     body = render_text(ALERT, "shopper@example.com")
-    assert "unsubscribe?email=shopper%40example.com" in body
+    # The link carries a signed token, not a bare address: anyone can type an
+    # address into a URL, but only the server can mint a token that unsubscribes it.
+    match = re.search(r"/account/unsubscribe\?token=(\S+)", body)
+    assert match is not None
+    assert read_unsubscribe_token(unquote(match.group(1))) == "shopper@example.com"
+    assert "shopper%40example.com" not in body and "shopper@example.com?" not in body
 
 
 def test_text_lines_are_wrapped_to_78_columns() -> None:
@@ -64,7 +72,10 @@ def test_text_lines_are_wrapped_to_78_columns() -> None:
         cta_url="https://durza.in/x",
     )
     for line in render_text(alert, "a@example.com").splitlines():
-        assert len(line) <= 78, line
+        # A line that is one unbroken token (a URL, which now carries a signed
+        # unsubscribe token) is emitted intact on purpose; only prose is wrapped.
+        if " " in line.strip():
+            assert len(line) <= 78, line
 
 
 def test_html_escapes_store_supplied_text() -> None:
@@ -98,9 +109,14 @@ def test_message_carries_list_unsubscribe_headers() -> None:
     # The one-click unsubscribe header is what makes a Gmail "Unsubscribe"
     # link appear; without it a marketing complaint is a support ticket.
     message = build_message("shopper@example.com", ALERT)
-    assert message["List-Unsubscribe"] == (
-        f"<{get_settings().site_url.rstrip('/')}/account/unsubscribe?email=shopper%40example.com>"
-    )
+    header = message["List-Unsubscribe"]
+    # RFC 8058: the header must point at something that accepts a bare POST, so it
+    # is the one-click endpoint, not the confirmation page, and the token in it
+    # must be one that unsubscribes this recipient.
+    prefix = f"<{get_settings().site_url.rstrip('/')}/account/unsubscribe/one-click?token="
+    assert header.startswith(prefix) and header.endswith(">")
+    token = unquote(header[len(prefix) : -1])
+    assert read_unsubscribe_token(token) == "shopper@example.com"
     assert "List-Unsubscribe=One-Click" in message["List-Unsubscribe-Post"]
 
 
