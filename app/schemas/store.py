@@ -125,3 +125,6 @@ class StoreRead(BaseModel):
     country_code: str | None
     currency: str | None
     created_at: datetime
+    # Live offers right now. Filled in by the listing endpoint, which counts them
+    # for the whole page in one query; None everywhere it was not asked for.
+    offer_count: int | None = None

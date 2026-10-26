@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import require_role
 from app.core.pagination import Paginated
-from app.models.coupon import DiscountType
 from app.models.editorial import EditorialContent, EditorialEntityLink, StoreFAQ, StoreRelationship
 from app.models.store import Store
 from app.models.user import Role, User
@@ -29,9 +28,11 @@ async def get_store_destination(
     if store is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
 
-    deals, _ = await coupon_service.list_coupons(
-        db, store_id=store.id, discount_type=DiscountType.deal, has_code=False, limit=100
-    )
+    # Two buckets that together cover every live offer: the ones with a code,
+    # and the ones without. (This used to ask for `discount_type=deal` as well,
+    # so a "20% off, no code needed" offer matched neither query and vanished
+    # from the store page while still being counted in its total.)
+    deals, _ = await coupon_service.list_coupons(db, store_id=store.id, has_code=False, limit=100)
     coupons, _ = await coupon_service.list_coupons(db, store_id=store.id, has_code=True, limit=100)
     faq_result = await db.scalars(
         select(StoreFAQ).where(StoreFAQ.store_id == store.id).order_by(StoreFAQ.sort_order)
@@ -98,8 +99,12 @@ async def list_stores(
     items, total = await store_service.list_stores(
         db, search=search, country_code=country_code, skip=skip, limit=limit
     )
+    counts = await store_service.live_offer_counts(db, [item.id for item in items])
     return Paginated(
-        items=[StoreRead.model_validate(item) for item in items],
+        items=[
+            StoreRead.model_validate(item).model_copy(update={"offer_count": counts.get(item.id, 0)})
+            for item in items
+        ],
         total=total,
         skip=skip,
         limit=limit,

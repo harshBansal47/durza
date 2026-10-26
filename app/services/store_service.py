@@ -1,11 +1,13 @@
 import uuid
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
+from datetime import UTC, datetime
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import paginate
 from app.core.slugs import generate_unique_slug
+from app.models.coupon import Coupon
 from app.models.editorial import StoreFAQ, StoreRelationship
 from app.models.store import Store
 from app.schemas.store import StoreCreate, StoreUpdate
@@ -33,6 +35,29 @@ async def list_stores(
         code = country_code.strip().upper()
         stmt = stmt.where((Store.country_code == code) | (Store.country_code.is_(None)))
     return await paginate(db, stmt.order_by(Store.name), skip, limit)
+
+
+async def live_offer_counts(db: AsyncSession, store_ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, int]:
+    """How many offers each store has right now, in one grouped query.
+
+    "Right now" is the storefront's own rule (active and not expired), so a
+    store card never promises more offers than the store page then shows.
+    Stores with none are simply absent from the result.
+    """
+    ids = list(store_ids)
+    if not ids:
+        return {}
+    now = datetime.now(UTC)
+    rows = await db.execute(
+        select(Coupon.store_id, func.count())
+        .where(
+            Coupon.store_id.in_(ids),
+            Coupon.is_active.is_(True),
+            or_(Coupon.expires_at.is_(None), Coupon.expires_at > now),
+        )
+        .group_by(Coupon.store_id)
+    )
+    return {store_id: count for store_id, count in rows.all()}
 
 
 async def get_store(db: AsyncSession, store_id: uuid.UUID) -> Store | None:
