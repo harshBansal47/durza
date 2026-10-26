@@ -50,7 +50,9 @@ async def unsubscribe_email(
     would be shared by all of them.
     """
     if not await email_preferences.unsubscribe_by_token(db, payload.token):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid unsubscribe link")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid unsubscribe link"
+        )
 
 
 @router.post("/email/request", status_code=status.HTTP_202_ACCEPTED)

@@ -33,10 +33,20 @@ def upgrade() -> None:
     op.add_column("alert_events", sa.Column("store_id", sa.Uuid(), nullable=True))
     op.add_column("alert_events", sa.Column("batch_id", sa.Uuid(), nullable=True))
     op.create_foreign_key(
-        "fk_alert_events_coupon_id", "alert_events", "coupons", ["coupon_id"], ["id"], ondelete="SET NULL"
+        "fk_alert_events_coupon_id",
+        "alert_events",
+        "coupons",
+        ["coupon_id"],
+        ["id"],
+        ondelete="SET NULL",
     )
     op.create_foreign_key(
-        "fk_alert_events_store_id", "alert_events", "stores", ["store_id"], ["id"], ondelete="SET NULL"
+        "fk_alert_events_store_id",
+        "alert_events",
+        "stores",
+        ["store_id"],
+        ["id"],
+        ondelete="SET NULL",
     )
     op.create_index(op.f("ix_alert_events_batch_id"), "alert_events", ["batch_id"], unique=False)
 
@@ -46,15 +56,31 @@ def upgrade() -> None:
         sa.Column("coupon_id", sa.Uuid(), nullable=False),
         sa.Column("kind", sa.String(length=30), nullable=False),
         sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["coupon_id"], ["coupons.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("user_id", "coupon_id", "kind", name="uq_deal_alert_marks_user_coupon_kind"),
+        sa.UniqueConstraint(
+            "user_id", "coupon_id", "kind", name="uq_deal_alert_marks_user_coupon_kind"
+        ),
     )
-    op.create_index(op.f("ix_deal_alert_marks_user_id"), "deal_alert_marks", ["user_id"], unique=False)
-    op.create_index(op.f("ix_deal_alert_marks_coupon_id"), "deal_alert_marks", ["coupon_id"], unique=False)
+    op.create_index(
+        op.f("ix_deal_alert_marks_user_id"), "deal_alert_marks", ["user_id"], unique=False
+    )
+    op.create_index(
+        op.f("ix_deal_alert_marks_coupon_id"), "deal_alert_marks", ["coupon_id"], unique=False
+    )
 
 
 def downgrade() -> None:

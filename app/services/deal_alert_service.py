@@ -30,7 +30,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import metrics
@@ -255,9 +255,7 @@ def build_digest(
                     store_name=store_name,
                 )
             case AlertKind.ending_soon:
-                when = (
-                    _hours_phrase(coupon.expires_at, now) if coupon.expires_at else "soon"
-                )
+                when = _hours_phrase(coupon.expires_at, now) if coupon.expires_at else "soon"
                 return AlertContent(
                     subject=f"Ending soon: {coupon.title}",
                     preheader=f"Ends {when}",
@@ -290,7 +288,8 @@ def build_digest(
         subject=f"{len(events)} updates on offers you follow",
         preheader=f"{shown[0].coupon.title}{more}",
         headline=f"{len(events)} updates on offers you follow",
-        detail="Here is what changed since we last wrote to you." + (f" Showing the first {len(shown)}." if hidden else ""),
+        detail="Here is what changed since we last wrote to you."
+        + (f" Showing the first {len(shown)}." if hidden else ""),
         cta_label="See everything",
         cta_url=f"{site}/account/saved",
         items=items,
@@ -386,9 +385,7 @@ async def evaluate_user(db: AsyncSession, user_id: uuid.UUID, now: datetime | No
 
     if delivered_any:
         for event in events:
-            db.add(
-                DealAlertMark(user_id=user.id, coupon_id=event.coupon.id, kind=event.kind.value)
-            )
+            db.add(DealAlertMark(user_id=user.id, coupon_id=event.coupon.id, kind=event.kind.value))
     await db.commit()
 
     logger.info(

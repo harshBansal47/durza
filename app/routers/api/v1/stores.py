@@ -102,7 +102,9 @@ async def list_stores(
     counts = await store_service.live_offer_counts(db, [item.id for item in items])
     return Paginated(
         items=[
-            StoreRead.model_validate(item).model_copy(update={"offer_count": counts.get(item.id, 0)})
+            StoreRead.model_validate(item).model_copy(
+                update={"offer_count": counts.get(item.id, 0)}
+            )
             for item in items
         ],
         total=total,

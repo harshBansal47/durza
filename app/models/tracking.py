@@ -142,7 +142,7 @@ class TrackAlertState(Base, UUIDPKMixin, TimestampMixin):
 
 
 class DealAlertMark(Base, UUIDPKMixin, TimestampMixin):
-    """"We already told this user about this" — one row per (user, offer, kind).
+    """ "We already told this user about this" — one row per (user, offer, kind).
 
     Deal alerts are derived from the current state of offers rather than from a
     stream of events, so without a memory every scan would re-send everything.
@@ -152,7 +152,9 @@ class DealAlertMark(Base, UUIDPKMixin, TimestampMixin):
 
     __tablename__ = "deal_alert_marks"
     __table_args__ = (
-        UniqueConstraint("user_id", "coupon_id", "kind", name="uq_deal_alert_marks_user_coupon_kind"),
+        UniqueConstraint(
+            "user_id", "coupon_id", "kind", name="uq_deal_alert_marks_user_coupon_kind"
+        ),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(

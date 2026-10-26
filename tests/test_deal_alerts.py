@@ -127,7 +127,9 @@ async def test_offers_that_are_not_live_are_not_announced(async_session_maker, s
         store, cat, user = await _world(db)
         await _follow(db, user, store)
         await _coupon(db, store, cat, title="Inactive", is_active=False)
-        await _coupon(db, store, cat, title="Expired", expires_at=datetime.now(UTC) - timedelta(hours=1))
+        await _coupon(
+            db, store, cat, title="Expired", expires_at=datetime.now(UTC) - timedelta(hours=1)
+        )
 
         assert await engine.evaluate_user(db, user.id) == 0
 
@@ -155,7 +157,9 @@ async def test_an_offer_ending_in_a_week_is_not_ending_soon(async_session_maker,
         assert await engine.evaluate_user(db, user.id) == 0
 
 
-async def test_ended_is_announced_only_if_it_ended_after_it_was_tracked(async_session_maker, sender):
+async def test_ended_is_announced_only_if_it_ended_after_it_was_tracked(
+    async_session_maker, sender
+):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
         ended_after = await _coupon(
@@ -177,17 +181,24 @@ async def test_ended_is_announced_only_if_it_ended_after_it_was_tracked(async_se
 async def test_a_pending_offer_has_not_ended(async_session_maker, sender):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
-        coupon = await _coupon(db, store, cat, is_active=False, status=CouponStatus.pending_validation)
+        coupon = await _coupon(
+            db, store, cat, is_active=False, status=CouponStatus.pending_validation
+        )
         await _track(db, user, coupon)
 
         assert await engine.evaluate_user(db, user.id) == 0
 
 
-async def test_confirmed_requires_verification_after_the_offer_was_tracked(async_session_maker, sender):
+async def test_confirmed_requires_verification_after_the_offer_was_tracked(
+    async_session_maker, sender
+):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
         fresh = await _coupon(
-            db, store, cat, title="Fresh",
+            db,
+            store,
+            cat,
+            title="Fresh",
             verification_status=VerificationStatus.verified,
             last_verified_at=datetime.now(UTC) - timedelta(hours=1),
         )
@@ -198,7 +209,10 @@ async def test_confirmed_requires_verification_after_the_offer_was_tracked(async
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
         stale = await _coupon(
-            db, store, cat, title="Stale",
+            db,
+            store,
+            cat,
+            title="Stale",
             verification_status=VerificationStatus.verified,
             last_verified_at=datetime.now(UTC) - 2 * DAY,
         )
@@ -210,7 +224,9 @@ async def test_one_mention_per_offer_and_the_urgent_one_wins(async_session_maker
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
         coupon = await _coupon(
-            db, store, cat,
+            db,
+            store,
+            cat,
             expires_at=datetime.now(UTC) + timedelta(hours=5),
             verification_status=VerificationStatus.verified,
             last_verified_at=datetime.now(UTC) - timedelta(hours=1),
@@ -329,7 +345,9 @@ def test_scheduler_runs_only_the_allowed_jobs(monkeypatch):
         "send_alerts",
     }
 
-    monkeypatch.setattr(scheduler, "get_settings", lambda: base.model_copy(update={"scheduler_jobs": ""}))
+    monkeypatch.setattr(
+        scheduler, "get_settings", lambda: base.model_copy(update={"scheduler_jobs": ""})
+    )
     all_jobs = {job.id for job in scheduler.build_scheduler().get_jobs()}
     assert "send_deal_alerts" in all_jobs and set(scheduler.JOBS) == all_jobs
 
@@ -371,7 +389,9 @@ async def test_unsubscribe_endpoint_switches_email_off_even_without_stored_prefs
         _store, _cat, user = await _world(db)
         email = user.email
 
-    ok = await client.post("/api/v1/auth/unsubscribe-email", json={"token": make_unsubscribe_token(email)})
+    ok = await client.post(
+        "/api/v1/auth/unsubscribe-email", json={"token": make_unsubscribe_token(email)}
+    )
     forged = await client.post("/api/v1/auth/unsubscribe-email", json={"token": email})
 
     assert ok.status_code == 204 and forged.status_code == 400

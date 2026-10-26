@@ -37,7 +37,9 @@ async def list_stores(
     return await paginate(db, stmt.order_by(Store.name), skip, limit)
 
 
-async def live_offer_counts(db: AsyncSession, store_ids: Iterable[uuid.UUID]) -> dict[uuid.UUID, int]:
+async def live_offer_counts(
+    db: AsyncSession, store_ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, int]:
     """How many offers each store has right now, in one grouped query.
 
     "Right now" is the storefront's own rule (active and not expired), so a
