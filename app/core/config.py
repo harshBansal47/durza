@@ -184,6 +184,9 @@ class Settings(BaseSettings):
     # Awin transaction report credentials.
     awin_api_key: str | None = None
     awin_publisher_id: str | None = None
+    # Admitad Publisher API OAuth credentials used by conversion sync.
+    admitad_client_id: str | None = None
+    admitad_client_secret: str | None = None
     # How often the conversion sync job runs, and how far back each sweep
     # looks. Networks validate sales over a window of days-to-weeks, so the
     # lookback must be wider than any single validation window to catch

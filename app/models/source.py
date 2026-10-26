@@ -77,6 +77,7 @@ class Source(Base, UUIDPKMixin, TimestampMixin):
     awin:   {"publisher_id": "...", "advertiser_ids": [...], "program_status": "active",
              "deal_types": ["coupon", "deal", "sale"], "currency": "USD",
              "regions": ["US", "GB", "DE", "FR"]}
+    admitad: {"website_id": "...", "page_size": 100}
 
     Credentials for every network-backed kind are NOT in here. Set
     `credential_ref` to the name of an env var and the adapter reads it.

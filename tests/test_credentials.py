@@ -207,6 +207,16 @@ async def test_credentials_satisfied_with_unresolvable_ref(monkeypatch):
     assert credentials_satisfied("awin", "GONE_KEY") is False
 
 
+async def test_admitad_requires_both_oauth_credentials(monkeypatch):
+    monkeypatch.setenv("ADMITAD_CLIENT_ID", "client")
+    monkeypatch.delenv("ADMITAD_CLIENT_SECRET", raising=False)
+
+    assert credentials_satisfied("admitad", "ADMITAD_CLIENT_ID,ADMITAD_CLIENT_SECRET") is False
+
+    monkeypatch.setenv("ADMITAD_CLIENT_SECRET", "secret")
+    assert credentials_satisfied("admitad", "ADMITAD_CLIENT_ID,ADMITAD_CLIENT_SECRET") is True
+
+
 async def test_credentials_satisfied_without_ref_is_kind_dependent():
     # An awin source with no key is an unfinished deployment step...
     assert credentials_satisfied("awin", None) is False

@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.observability import get_logger
 from app.ingestion.retry import with_retries
+from app.integrations.admitad import get_access_token, page_results
 from app.models.affiliate_provider import AffiliateProvider
 from app.models.affiliate_revenue import AffiliateRevenue, RevenueStatus
 from app.models.click import ClickEvent
@@ -335,6 +336,121 @@ class CuelinksTransactionsClient:
         )
 
 
+class AdmitadTransactionsClient:
+    """Fetches publisher actions from the Admitad statistics API."""
+
+    network = "admitad"
+
+    def __init__(
+        self,
+        *,
+        client_id: str,
+        client_secret: str,
+        base_url: str = "https://api.admitad.com",
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._base_url = base_url.rstrip("/")
+        self._client = client
+
+    async def fetch(self, *, since: datetime) -> list[NetworkTransaction]:
+        owns_client = self._client is None
+        client = self._client or httpx.AsyncClient(timeout=_TIMEOUT)
+        try:
+            token = await get_access_token(
+                client, client_id=self._client_id, client_secret=self._client_secret
+            )
+            headers = {
+                "User-Agent": _USER_AGENT,
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+            }
+            offset = 0
+            out: list[NetworkTransaction] = []
+            while True:
+
+                async def _request(
+                    offset: int = offset,
+                ) -> tuple[list[dict[str, Any]], bool]:
+                    response = await client.get(
+                        f"{self._base_url}/statistics/actions/",
+                        params={
+                            "date_start": since.date().isoformat(),
+                            "date_end": datetime.now(UTC).date().isoformat(),
+                            "limit": 100,
+                            "offset": offset,
+                        },
+                        headers=headers,
+                    )
+                    response.raise_for_status()
+                    return page_results(
+                        response.json(), offset=offset, limit=100, resource="actions"
+                    )
+
+                rows, has_next = await with_retries(
+                    _request, retryable=(httpx.HTTPError, TypeError)
+                )
+                for row in rows:
+                    txn = self._normalise(row)
+                    if txn is not None:
+                        out.append(txn)
+                if not has_next:
+                    break
+                offset += len(rows)
+            return out
+        finally:
+            if owns_client:
+                await client.aclose()
+
+    def _normalise(self, row: dict[str, Any]) -> NetworkTransaction | None:
+        txn_id = row.get("id") or row.get("action_id") or row.get("transaction_id")
+        if txn_id is None:
+            return None
+        sale_amount, sale_currency = _amount_and_currency(
+            row.get("order_sum")
+            or row.get("order_amount")
+            or row.get("sale_amount")
+            or row.get("amount")
+        )
+        commission_amount, commission_currency = _amount_and_currency(
+            row.get("payment_sum")
+            or row.get("payment")
+            or row.get("commission")
+            or row.get("commission_amount")
+        )
+        return NetworkTransaction(
+            network=self.network,
+            network_txn_id=str(txn_id),
+            clickref=(
+                row.get("subid1")
+                or row.get("subid")
+                or row.get("sub_id")
+                or row.get("clickref")
+                or row.get("click_ref")
+            ),
+            raw_status=str(row.get("status") or row.get("action_status") or ""),
+            sale_amount=sale_amount,
+            commission_amount=commission_amount,
+            currency=(
+                row.get("currency")
+                or row.get("order_currency")
+                or sale_currency
+                or commission_currency
+            ),
+            transaction_at=_parse_dt(
+                row.get("action_date")
+                or row.get("date")
+                or row.get("created_at")
+                or row.get("transaction_date")
+            ),
+            validated_at=_parse_dt(
+                row.get("approval_date") or row.get("validated_at") or row.get("updated_at")
+            ),
+            decline_reason=row.get("decline_reason") or row.get("reason"),
+        )
+
+
 def build_clients_from_settings() -> list[Any]:
     """Clients for every network with credentials configured, and only those."""
     settings = get_settings()
@@ -347,6 +463,13 @@ def build_clients_from_settings() -> list[Any]:
         )
     if settings.cuelinks_api_key:
         clients.append(CuelinksTransactionsClient(api_key=settings.cuelinks_api_key))
+    if settings.admitad_client_id and settings.admitad_client_secret:
+        clients.append(
+            AdmitadTransactionsClient(
+                client_id=settings.admitad_client_id,
+                client_secret=settings.admitad_client_secret,
+            )
+        )
     return clients
 
 

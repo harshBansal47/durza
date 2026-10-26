@@ -22,6 +22,7 @@ from being added to the enum and quietly failing forever at three in the morning
 """
 
 from app.ingestion.base import SourceAdapter
+from app.ingestion.sources.admitad import AdmitadSource
 from app.ingestion.sources.awin import AwinSource
 from app.ingestion.sources.csv_source import CsvSource
 from app.ingestion.sources.feed import FeedSource
@@ -33,6 +34,7 @@ _ADAPTERS: dict[SourceKind, type] = {
     SourceKind.static: StaticSource,
     SourceKind.feed: FeedSource,
     SourceKind.awin: AwinSource,
+    SourceKind.admitad: AdmitadSource,
 }
 
 #: Kinds we know about and have deliberately not written. Each needs its
@@ -41,7 +43,7 @@ _ADAPTERS: dict[SourceKind, type] = {
 #: plausible-looking adapter against an invented endpoint fails at runtime in
 #: exactly the way that looks like a provider outage.
 PENDING_KINDS: frozenset[SourceKind] = frozenset(
-    {SourceKind.rakuten, SourceKind.cj, SourceKind.admitad, SourceKind.impact}
+    {SourceKind.rakuten, SourceKind.cj, SourceKind.impact}
 )
 
 

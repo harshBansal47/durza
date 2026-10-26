@@ -182,6 +182,10 @@ def credentials_satisfied(kind: str, credential_ref: str | None) -> bool:
     (asking a key-less `csv` whether it has a key) or permanently `healthy` (not
     asking a key-less `awin`).
     """
+    if credential_ref and kind == "admitad":
+        required = {"ADMITAD_CLIENT_ID", "ADMITAD_CLIENT_SECRET"}
+        names = set(_referenced_names(credential_ref))
+        return required <= names and all(os.environ.get(name, "").strip() for name in required)
     if credential_ref:
         return is_configured(credential_ref)
     return not requires_credentials(kind)
