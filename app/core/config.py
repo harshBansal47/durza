@@ -127,8 +127,26 @@ class Settings(BaseSettings):
     # Off by default so tests and one-off containers never start background
     # jobs. Enable explicitly in the deployed service.
     scheduler_enabled: bool = False
+    # Which jobs run when the scheduler is on, as a comma-separated list of job
+    # names (see `scheduler.JOBS`). Empty means all of them. `SCHEDULER_ENABLED`
+    # alone starts every job, including ingestion and verification, which reach
+    # out to third parties; this lets a deployment turn on just the cheap ones,
+    # e.g. SCHEDULER_JOBS=send_deal_alerts,send_alerts,expire_coupons
+    scheduler_jobs: str = ""
     # Minutes between alert scans. Alerts are cheap; ingestion is not.
     alert_scan_interval_minutes: int = 30
+    # ---- Deal alerts (followed stores, tracked offers) -------------------
+    # Only offers that appeared / ended this recently are worth an email. This
+    # also stops a first scan after an outage, or after the scheduler is first
+    # enabled, from mailing people about things that happened weeks ago.
+    deal_alert_window_days: int = 7
+    # "Ending soon" fires when a tracked offer expires within this many hours.
+    deal_alert_ending_soon_hours: int = 48
+    # At most one deal-alert email per person in this many hours. Everything
+    # pending is batched into that one message.
+    deal_alert_min_hours_between_emails: int = 24
+    # Offers listed in a single digest; the rest are summarised as a count.
+    deal_alert_max_items: int = 6
     # Hours between ingestion sweeps. Each run re-fetches every enabled source.
     ingestion_interval_hours: int = 6
     # Hours between expiry sweeps — just a status flip, so this can be frequent.
@@ -216,6 +234,12 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def scheduler_job_names(self) -> set[str] | None:
+        """Allowed job names, or None for "all". Whitespace and case are forgiven."""
+        names = {part.strip().lower() for part in self.scheduler_jobs.split(",") if part.strip()}
+        return names or None
 
     @property
     def email_configured(self) -> bool:

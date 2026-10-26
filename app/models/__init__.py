@@ -74,6 +74,7 @@ from app.models.sponsored import (
 from app.models.store import Store, StoreStatus
 from app.models.tracking import (
     AlertEvent,
+    DealAlertMark,
     NotificationPreference,
     SavedCoupon,
     SavedStore,
@@ -94,6 +95,7 @@ __all__ = [
     "AffiliateProvider",
     "AffiliateRevenue",
     "AlertEvent",
+    "DealAlertMark",
     "AnalyticsEvent",
     "AnalyticsSession",
     "AttemptOutcome",

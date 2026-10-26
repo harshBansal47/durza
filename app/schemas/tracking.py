@@ -107,4 +107,9 @@ class AlertEventRead(BaseModel):
     detail: str | None
     delivered: bool
     price_point_id: uuid.UUID | None
+    # Deal alerts: the offer / store the alert leads with, and one id shared by
+    # every channel row of the same alert (the history groups on it).
+    coupon_id: uuid.UUID | None = None
+    store_id: uuid.UUID | None = None
+    batch_id: uuid.UUID | None = None
     created_at: datetime

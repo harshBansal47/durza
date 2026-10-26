@@ -57,6 +57,7 @@ _LOCK_VERIFY = 0x0C0FFEE3
 _LOCK_SCRUB_CLICKS = 0x0C0FFEE4
 _LOCK_SCRUB_VERIFICATIONS = 0x0C0FFEE7
 _LOCK_CONVERSIONS = 0x0C0FFEE5
+_LOCK_DEAL_ALERTS = 0x0C0FFEE8
 
 
 # A job that fails is recorded and re-raised so the caller can distinguish "ran
@@ -78,6 +79,13 @@ async def _refresh_job(db: AsyncSession, *, force: bool = False) -> str:
 async def _alerts_job(db: AsyncSession) -> str:
     sent = await run_alert_scan(db)
     return f"sent {sent} alert(s)"
+
+
+async def _deal_alerts_job(db: AsyncSession) -> str:
+    from app.services.deal_alert_service import run_deal_alert_scan
+
+    sent = await run_deal_alert_scan(db)
+    return f"sent {sent} deal alert digest(s)"
 
 
 async def _verify_job(db: AsyncSession) -> str:
@@ -114,6 +122,7 @@ JOBS: dict[str, tuple[Callable[..., Awaitable[str]], int]] = {
     "expire_coupons": (_expire_job, _LOCK_EXPIRE),
     "refresh_prices": (_refresh_job, _LOCK_REFRESH),
     "send_alerts": (_alerts_job, _LOCK_ALERTS),
+    "send_deal_alerts": (_deal_alerts_job, _LOCK_DEAL_ALERTS),
     "verify_coupons": (_verify_job, _LOCK_VERIFY),
     "scrub_clicks": (_scrub_clicks_job, _LOCK_SCRUB_CLICKS),
     "scrub_verifications": (_scrub_verifications_job, _LOCK_SCRUB_VERIFICATIONS),
@@ -413,6 +422,16 @@ def build_scheduler() -> AsyncIOScheduler:
     )
     scheduler.add_job(
         _fire,
+        IntervalTrigger(minutes=settings.alert_scan_interval_minutes),
+        args=["send_deal_alerts"],
+        id="send_deal_alerts",
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(UTC) + timedelta(seconds=offset + 75),
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _fire,
         IntervalTrigger(hours=settings.verification_interval_hours),
         args=["verify_coupons"],
         id="verify_coupons",
@@ -451,6 +470,15 @@ def build_scheduler() -> AsyncIOScheduler:
         next_run_time=datetime.now(UTC) + timedelta(seconds=offset + 150),
         replace_existing=True,
     )
+
+    allowed = settings.scheduler_job_names
+    if allowed is not None:
+        unknown = allowed - set(JOBS)
+        if unknown:
+            logger.warning("SCHEDULER_JOBS names unknown jobs", extra={"unknown": sorted(unknown)})
+        for job in scheduler.get_jobs():
+            if job.id not in allowed:
+                scheduler.remove_job(job.id)
     return scheduler
 
 

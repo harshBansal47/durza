@@ -137,6 +137,9 @@ def _build_alert(
                 price_line=price_line,
                 code=coupon.code if coupon else None,
             )
+        case _:
+            # Deal alerts (`deal_alert_service`) never reach a product alert.
+            raise ValueError(f"not a product alert kind: {kind}")
 
 
 async def evaluate_tracked_product(db: AsyncSession, tracked: TrackedProduct) -> list[AlertEvent]:

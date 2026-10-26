@@ -40,3 +40,9 @@ class EmailOtpVerifyRequest(BaseModel):
     @classmethod
     def _strip_code(cls, value: str) -> str:
         return value.strip()
+
+
+class UnsubscribeRequest(BaseModel):
+    """A signed token from the unsubscribe link in an alert email."""
+
+    token: str = Field(min_length=1, max_length=1024)

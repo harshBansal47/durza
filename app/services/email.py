@@ -58,6 +58,15 @@ def _wrap_line(line: str) -> str:
 
 
 @dataclass(frozen=True)
+class AlertItem:
+    """One line of a digest: what changed, which offer, where to look."""
+
+    label: str
+    title: str
+    url: str
+
+
+@dataclass(frozen=True)
 class AlertContent:
     """Everything a rendered alert needs, so rendering stays a pure function."""
 
@@ -71,6 +80,8 @@ class AlertContent:
     product_name: str | None = None
     price_line: str | None = None
     code: str | None = None
+    # A digest lists several offers. Empty for the single-subject alerts.
+    items: tuple[AlertItem, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -180,10 +191,27 @@ async def send_otp_email(to: str, content: OtpEmailContent) -> bool:
 
 
 def unsubscribe_url(email: str) -> str:
+    """The human-facing page: shows a confirmation, works in any browser."""
     from urllib.parse import quote
 
-    settings = get_settings()
-    return f"{settings.site_url.rstrip('/')}/account/unsubscribe?email={quote(email)}"
+    from app.core.unsubscribe import make_unsubscribe_token
+
+    token = quote(make_unsubscribe_token(email), safe="")
+    return f"{get_settings().site_url.rstrip('/')}/account/unsubscribe?token={token}"
+
+
+def one_click_unsubscribe_url(email: str) -> str:
+    """The RFC 8058 endpoint mailbox providers POST to from their own button.
+
+    Distinct from the page above because the provider never renders it: it
+    sends a POST and expects a 2xx, nothing more.
+    """
+    from urllib.parse import quote
+
+    from app.core.unsubscribe import make_unsubscribe_token
+
+    token = quote(make_unsubscribe_token(email), safe="")
+    return f"{get_settings().site_url.rstrip('/')}/account/unsubscribe/one-click?token={token}"
 
 
 def render_text(alert: AlertContent, recipient: str) -> str:
@@ -192,6 +220,8 @@ def render_text(alert: AlertContent, recipient: str) -> str:
         "",
         alert.detail,
     ]
+    for item in alert.items:
+        lines += ["", f"* {item.label}: {item.title}", f"  {item.url}"]
     if alert.price_line:
         lines += ["", f"Price: {alert.price_line}"]
     if alert.code:
@@ -233,6 +263,17 @@ def render_html(alert: AlertContent, recipient: str) -> str:
         else ""
     )
 
+    items_row = ""
+    if alert.items:
+        rows = "".join(
+            f'<li style="margin:0 0 10px"><span style="font:600 12px ui-sans-serif,system-ui,sans-serif;'
+            f'color:#6b675f;text-transform:uppercase;letter-spacing:.04em">{esc(item.label)}</span><br>'
+            f'<a href="{esc(item.url)}" style="color:#1c1b18;font:15px/1.5 ui-sans-serif,system-ui,sans-serif">'
+            f"{esc(item.title)}</a></li>"
+            for item in alert.items
+        )
+        items_row = f'<ul style="margin:0 0 20px;padding:0 0 0 18px">{rows}</ul>'
+
     return f"""<!doctype html>
 <html lang="en">
 <body style="margin:0;padding:24px;background:#f6f5f2;font-family:Georgia,'Times New Roman',serif;color:#1c1b18">
@@ -246,6 +287,7 @@ def render_html(alert: AlertContent, recipient: str) -> str:
         <tr><td style="padding:8px 28px 24px">
           <h1 style="margin:0 0 12px;font:26px/1.2 Georgia,serif">{esc(alert.headline)}</h1>
           <p style="margin:0 0 12px;font:15px/1.6 ui-sans-serif,system-ui,sans-serif;color:#3d3a34">{esc(alert.detail)}</p>
+          {items_row}
           {price_row}
           {code_row}
           <p style="margin:0 0 24px">
@@ -277,7 +319,7 @@ def build_message(to: str, alert: AlertContent) -> EmailMessage:
         message["Reply-To"] = settings.email_reply_to
     message["Date"] = formatdate(localtime=True)
     message["Message-ID"] = make_msgid(domain=settings.email_from.rpartition("@")[2] or None)
-    message["List-Unsubscribe"] = f"<{unsubscribe_url(to)}>"
+    message["List-Unsubscribe"] = f"<{one_click_unsubscribe_url(to)}>"
     message["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
     message["Auto-Submitted"] = "auto-generated"
 

@@ -20,9 +20,10 @@ from app.schemas.auth import (
     GoogleLoginRequest,
     RefreshRequest,
     Token,
+    UnsubscribeRequest,
 )
 from app.schemas.user import DeleteAccountRequest, UserRead, UserUpdate
-from app.services import email_otp, user_service
+from app.services import email_otp, email_preferences, user_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -35,6 +36,21 @@ def _tokens_for(user: User) -> Token:
         access_token=create_access_token(str(user.id), user.role.value, version),
         refresh_token=create_refresh_token(str(user.id), user.role.value, version),
     )
+
+
+@router.post("/unsubscribe-email", status_code=status.HTTP_204_NO_CONTENT)
+async def unsubscribe_email(
+    payload: UnsubscribeRequest,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Turn off alert email using the signed token from an email. No sign-in needed.
+
+    Not rate limited: the token is the credential, the action is idempotent, and
+    the Next.js server calls this on behalf of every visitor, so a per-IP limit
+    would be shared by all of them.
+    """
+    if not await email_preferences.unsubscribe_by_token(db, payload.token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid unsubscribe link")
 
 
 @router.post("/email/request", status_code=status.HTTP_202_ACCEPTED)
