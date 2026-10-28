@@ -234,7 +234,13 @@ def test_up_to_percent_is_not_mislabelled_by_the_adapter() -> None:
     from app.ingestion.sources.admitad import AdmitadSource
 
     raw = AdmitadSource._map_coupon(
-        {"id": 1, "name": "Sale", "discount": "Up to 40%", "goto_link": "https://ad.admitad.com/g/x/", "campaign": {"name": "Nykaa"}}
+        {
+            "id": 1,
+            "name": "Sale",
+            "discount": "Up to 40%",
+            "goto_link": "https://ad.admitad.com/g/x/",
+            "campaign": {"name": "Nykaa"},
+        }
     )
     assert raw is not None and raw.discount_type is None
 

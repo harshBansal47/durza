@@ -35,7 +35,9 @@ async def seed(website_id: str, *, countries: list[str], dry_run: bool) -> list[
     notes: list[str] = []
 
     async with AsyncSessionLocal() as db:
-        provider = await db.scalar(select(AffiliateProvider).where(AffiliateProvider.slug == "admitad"))
+        provider = await db.scalar(
+            select(AffiliateProvider).where(AffiliateProvider.slug == "admitad")
+        )
         if provider is None:
             db.add(
                 AffiliateProvider(
@@ -44,7 +46,9 @@ async def seed(website_id: str, *, countries: list[str], dry_run: bool) -> list[
                     provider_type=ProviderType.cpa,
                     enabled=True,
                     countries=countries,
-                    api_status=ProviderStatus.active if has_credentials else ProviderStatus.unconfigured,
+                    api_status=ProviderStatus.active
+                    if has_credentials
+                    else ProviderStatus.unconfigured,
                     credentials_reference=CREDENTIAL_REF,
                     subid_supported=True,
                     deeplink_supported=True,
@@ -89,13 +93,21 @@ async def seed(website_id: str, *, countries: list[str], dry_run: bool) -> list[
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--website-id", required=True, help="Admitad ad space id (GET /websites/ shows it)")
-    parser.add_argument("--country", action="append", default=None, help="repeat for several; default IN")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--website-id", required=True, help="Admitad ad space id (GET /websites/ shows it)"
+    )
+    parser.add_argument(
+        "--country", action="append", default=None, help="repeat for several; default IN"
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    for line in asyncio.run(seed(args.website_id, countries=args.country or ["IN"], dry_run=args.dry_run)):
+    for line in asyncio.run(
+        seed(args.website_id, countries=args.country or ["IN"], dry_run=args.dry_run)
+    ):
         print(line)
     return 0
 

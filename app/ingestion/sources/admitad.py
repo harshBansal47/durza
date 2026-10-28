@@ -1,4 +1,5 @@
 import re
+
 """Admitad Publisher API coupon adapter."""
 
 from collections.abc import AsyncIterator
@@ -25,7 +26,7 @@ _COUNTRY_SUFFIX = re.compile(r"\s+IN$")
 
 
 def clean_campaign_name(name: object) -> str | None:
-    """"Acer [CPS] IN" -> "Acer".
+    """ "Acer [CPS] IN" -> "Acer".
 
     Admitad names a programme for the network, not the shopper: a payout-model tag in
     brackets ("[CPS]", "[CPA]") and a trailing market code ("IN"). Left in, they become
@@ -153,7 +154,11 @@ class AdmitadSource:
         discount_type = item.get("discount_type") or item.get("discountType")
         discount_value = item.get("discount_value") or item.get("discount_amount")
         discount = item.get("discount")
-        if discount_value is None and isinstance(discount, (int, float)) and not isinstance(discount, bool):
+        if (
+            discount_value is None
+            and isinstance(discount, (int, float))
+            and not isinstance(discount, bool)
+        ):
             discount_value = discount
         try:
             discount_value = float(discount_value) if discount_value is not None else None

@@ -468,7 +468,9 @@ def test_to_float_tells_decimal_commas_from_thousands_commas() -> None:
 
 
 async def _network_of(db, store_id) -> str:
-    return (await db.execute(select(Store.affiliate_network).where(Store.id == store_id))).scalar_one()
+    return (
+        await db.execute(select(Store.affiliate_network).where(Store.id == store_id))
+    ).scalar_one()
 
 
 async def test_a_new_merchant_claims_the_network_its_offer_came_from(async_session_maker):
@@ -477,7 +479,13 @@ async def test_a_new_merchant_claims_the_network_its_offer_came_from(async_sessi
     async with async_session_maker() as db:
         match = await merchant_resolution.resolve_or_create(
             db,
-            normalize_offer(_offer(destination_url="https://www.acer.com/in-en/deals", store_slug="acer", store_name="Acer")),
+            normalize_offer(
+                _offer(
+                    destination_url="https://www.acer.com/in-en/deals",
+                    store_slug="acer",
+                    store_name="Acer",
+                )
+            ),
             affiliate_network="admitad",
         )
         await db.commit()
@@ -488,11 +496,21 @@ async def test_an_existing_store_with_no_network_takes_it(async_session_maker):
     from app.ingestion import merchant_resolution
 
     async with async_session_maker() as db:
-        db.add(Store(name="Nykaa", slug="nykaa", normalized_name="nykaa", normalized_domain="nykaa.com"))
+        db.add(
+            Store(
+                name="Nykaa", slug="nykaa", normalized_name="nykaa", normalized_domain="nykaa.com"
+            )
+        )
         await db.commit()
         match = await merchant_resolution.resolve_or_create(
             db,
-            normalize_offer(_offer(destination_url="https://www.nykaa.com/offers", store_slug="nykaa", store_name="Nykaa")),
+            normalize_offer(
+                _offer(
+                    destination_url="https://www.nykaa.com/offers",
+                    store_slug="nykaa",
+                    store_name="Nykaa",
+                )
+            ),
             affiliate_network="admitad",
         )
         await db.commit()
@@ -526,7 +544,14 @@ async def test_resolving_without_a_network_changes_nothing(async_session_maker):
 
     async with async_session_maker() as db:
         match = await merchant_resolution.resolve_or_create(
-            db, normalize_offer(_offer(destination_url="https://www.flipkart.com/offers", store_slug="flipkart", store_name="Flipkart"))
+            db,
+            normalize_offer(
+                _offer(
+                    destination_url="https://www.flipkart.com/offers",
+                    store_slug="flipkart",
+                    store_name="Flipkart",
+                )
+            ),
         )
         await db.commit()
         assert await _network_of(db, match.store.id) == "none"
