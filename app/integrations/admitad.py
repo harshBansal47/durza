@@ -7,7 +7,9 @@ import httpx
 from app.ingestion.retry import with_retries
 
 _TOKEN_URL = "https://api.admitad.com/token/"
-_SCOPE = "advcampaigns websites coupons statistics deeplink_generator"
+# `coupons_for_website` is what `/coupons/website/{id}/` actually needs; `coupons` alone is
+# rejected with `insufficient_scope` (found by calling the real API, not from the docs).
+_SCOPE = "advcampaigns websites coupons coupons_for_website statistics deeplink_generator"
 
 
 def page_results(

@@ -1,3 +1,4 @@
+import re
 """Admitad Publisher API coupon adapter."""
 
 from collections.abc import AsyncIterator
@@ -17,6 +18,26 @@ if TYPE_CHECKING:
 _BASE_URL = "https://api.admitad.com"
 _TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 _USER_AGENT = "DurzaBot/1.0 (+https://durza.in/bot)"
+
+
+_NETWORK_TAG = re.compile(r"\[[^\]]*\]")
+_COUNTRY_SUFFIX = re.compile(r"\s+IN$")
+
+
+def clean_campaign_name(name: object) -> str | None:
+    """"Acer [CPS] IN" -> "Acer".
+
+    Admitad names a programme for the network, not the shopper: a payout-model tag in
+    brackets ("[CPS]", "[CPA]") and a trailing market code ("IN"). Left in, they become
+    the store's public name and URL slug for any merchant we have not seen before.
+    (Existing stores match by domain first, so this only matters for new ones.)
+    """
+    if not name:
+        return None
+    cleaned = _NETWORK_TAG.sub(" ", str(name))
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = _COUNTRY_SUFFIX.sub("", cleaned).strip()
+    return cleaned or str(name).strip() or None
 
 
 class AdmitadSource:
@@ -132,20 +153,23 @@ class AdmitadSource:
         discount_type = item.get("discount_type") or item.get("discountType")
         discount_value = item.get("discount_value") or item.get("discount_amount")
         discount = item.get("discount")
-        if discount_value is None and isinstance(discount, (int, float)):
+        if discount_value is None and isinstance(discount, (int, float)) and not isinstance(discount, bool):
             discount_value = discount
-        if not discount_type and isinstance(discount, str) and "%" in discount:
-            discount_type = "percentage"
-            try:
-                discount_value = float(discount.replace("%", "").strip())
-            except ValueError:
-                discount_value = None
         try:
             discount_value = float(discount_value) if discount_value is not None else None
         except (TypeError, ValueError):
             discount_value = None
+        # Admitad's `discount` is free text ("10%", "2 000 ₹", "Up to 40%"). Only an exact
+        # percentage ("20%") is labelled here; anything wordier goes through as text and is
+        # parsed once, in normalisation. (This used to treat any "%" as a percentage, which
+        # mislabelled "Up to 40%" as a percentage with no value.)
+        if not discount_type and isinstance(discount, str):
+            exact = re.fullmatch(r"\s*(\d+(?:[.,]\d+)?)\s*%\s*", discount)
+            if exact:
+                discount_type = "percentage"
+                discount_value = float(exact.group(1).replace(",", "."))
 
-        store_name = (
+        store_name = clean_campaign_name(
             campaign.get("name") or item.get("campaign_name") or item.get("advertiser_name")
         )
         store_url = campaign.get("site_url") or campaign.get("url") or item.get("advertiser_url")
@@ -159,7 +183,9 @@ class AdmitadSource:
             destination_url=str(destination),
             expires_at=item.get("date_end") or item.get("end_date") or item.get("endDate"),
             external_id=str(item.get("id") or item.get("coupon_id") or "") or None,
-            store_slug=str(store_name).lower().replace(" ", "-") if store_name else None,
+            store_slug=re.sub(r"[^a-z0-9]+", "-", store_name.lower()).strip("-") or None
+            if store_name
+            else None,
             store_name=str(store_name) if store_name else None,
             store_website=str(store_url) if store_url else None,
         )

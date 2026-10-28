@@ -77,6 +77,10 @@ _STATUS_MAP = {
     "canceled": ConversionStatus.deleted,
     "deleted": ConversionStatus.deleted,
     "reversed": ConversionStatus.deleted,
+    # Admitad: the advertiser approved it but the money is held up. Not revenue
+    # yet, so it stays pending (it was falling through to the same default,
+    # silently; this makes the choice visible).
+    "approved_but_stalled": ConversionStatus.pending,
 }
 
 
@@ -376,8 +380,9 @@ class AdmitadTransactionsClient:
                     response = await client.get(
                         f"{self._base_url}/statistics/actions/",
                         params={
-                            "date_start": since.date().isoformat(),
-                            "date_end": datetime.now(UTC).date().isoformat(),
+                            # Admitad wants dd.mm.yyyy, not ISO dates.
+                            "date_start": since.strftime("%d.%m.%Y"),
+                            "date_end": datetime.now(UTC).strftime("%d.%m.%Y"),
                             "limit": 100,
                             "offset": offset,
                         },
@@ -408,7 +413,9 @@ class AdmitadTransactionsClient:
         if txn_id is None:
             return None
         sale_amount, sale_currency = _amount_and_currency(
-            row.get("order_sum")
+            # `cart` is Admitad's order total; the rest are tolerated shapes.
+            row.get("cart")
+            or row.get("order_sum")
             or row.get("order_amount")
             or row.get("sale_amount")
             or row.get("amount")
@@ -423,8 +430,10 @@ class AdmitadTransactionsClient:
             network=self.network,
             network_txn_id=str(txn_id),
             clickref=(
-                row.get("subid1")
-                or row.get("subid")
+                # `subid` is the one our redirect sets; `subid1`..`subid4` are extra slots
+                # someone else's links might fill.
+                row.get("subid")
+                or row.get("subid1")
                 or row.get("sub_id")
                 or row.get("clickref")
                 or row.get("click_ref")
@@ -445,7 +454,11 @@ class AdmitadTransactionsClient:
                 or row.get("transaction_date")
             ),
             validated_at=_parse_dt(
-                row.get("approval_date") or row.get("validated_at") or row.get("updated_at")
+                row.get("closing_date")
+                or row.get("status_updated")
+                or row.get("approval_date")
+                or row.get("validated_at")
+                or row.get("updated_at")
             ),
             decline_reason=row.get("decline_reason") or row.get("reason"),
         )

@@ -29,7 +29,7 @@ of which worked.
 from dataclasses import dataclass
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,6 +69,37 @@ class MerchantMatch:
 
 
 async def resolve_or_create(
+    db: AsyncSession,
+    offer: NormalizedOffer,
+    *,
+    program_ids: dict[str, str] | None = None,
+    affiliate_network: str | None = None,
+) -> MerchantMatch:
+    """Find or create the canonical Store, and claim its affiliate network if it has none.
+
+    `affiliate_network` is the network whose tracking links this offer carries. A store with
+    no network yet (`"none"`) takes it, so its outbound clicks get that network's click
+    reference without anyone editing each merchant by hand. A store that already has a
+    network keeps it: one merchant on two networks is a decision for a person, not a feed.
+    """
+    match = await _resolve(db, offer, program_ids=program_ids)
+    await _claim_network(db, match.store, affiliate_network)
+    return match
+
+
+async def _claim_network(db: AsyncSession, store: Store, network: str | None) -> None:
+    if not network or store.affiliate_network not in (None, "none"):
+        return
+    # Guarded in SQL too, so two runs racing cannot overwrite each other's claim.
+    await db.execute(
+        update(Store)
+        .where(Store.id == store.id, Store.affiliate_network == "none")
+        .values(affiliate_network=network)
+    )
+    store.affiliate_network = network
+
+
+async def _resolve(
     db: AsyncSession,
     offer: NormalizedOffer,
     *,

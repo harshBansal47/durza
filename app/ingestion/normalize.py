@@ -240,6 +240,16 @@ def normalize_country(value: str | None) -> str | None:
     return text or None
 
 
+_CURRENCY = r"(?:rs\.?|inr|₹|\$|usd|€|eur|£|gbp|¥|jpy)"
+# An amount, with thousands separators when it has them. Most specific first:
+#   Indian grouping   1,00,000
+#   Western / spaced  2,000   2 000   1,234,567
+#   plain             200   19.90   19,90
+# "19,90" stays a decimal: a separator only groups thousands when exactly three
+# digits follow it.
+_NUMBER = r"(?:\d{1,2}(?:,\d{2})+,\d{3}|\d{1,3}(?:[ ,]\d{3})+(?:\.\d+)?|\d+(?:[.,]\d+)?)"
+
+
 def parse_discount(discount_text: str | None) -> tuple[DiscountType, float | None] | None:
     """Extract a type and value from a human discount phrase.
 
@@ -257,7 +267,8 @@ def parse_discount(discount_text: str | None) -> tuple[DiscountType, float | Non
     """
     if not discount_text:
         return None
-    text = discount_text.strip().lower()
+    # Thin and non-breaking spaces are how feeds group thousands ("2 000 ₹").
+    text = re.sub(r"[\u00a0\u2009\u202f]", " ", discount_text).strip().lower()
 
     if "free shipping" in text or "free delivery" in text:
         return DiscountType.deal, None
@@ -270,16 +281,18 @@ def parse_discount(discount_text: str | None) -> tuple[DiscountType, float | Non
 
     # Currency symbol/code immediately before the amount: "₹200 off",
     # "USD 15 off", "€10 rabais".
-    amount = re.search(
-        r"(?:rs\.?|inr|₹|\$|usd|€|eur|£|gbp|¥|jpy)\s*(\d+(?:[.,]\d+)?)",
-        text,
-    )
+    amount = re.search(rf"{_CURRENCY}\s*({_NUMBER})", text)
     if amount:
         return DiscountType.fixed, _to_float(amount.group(1))
 
+    # The symbol after the amount: "2 000 ₹", "500 INR".
+    trailing = re.search(rf"({_NUMBER})\s*{_CURRENCY}", text)
+    if trailing:
+        return DiscountType.fixed, _to_float(trailing.group(1))
+
     # A bare amount followed by the word that makes it a discount. Anchored on
     # both sides so a year ("2026 sale") or a quantity is not read as money.
-    bare = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:off|discount|rubais|rabais)\b", text)
+    bare = re.search(rf"({_NUMBER})\s*(?:off|discount|rubais|rabais)\b", text)
     if bare:
         return DiscountType.fixed, _to_float(bare.group(1))
 
@@ -292,9 +305,10 @@ def _to_float(value: str | float | Decimal | None) -> float | None:
     """Parse a number that may use a comma as the decimal separator.
 
     Providers disagree: EU feeds send `"19,90"`, US feeds `"19.90"`, and some
-    send `"1.234,56"`. Treating a comma as a decimal separator is safe for the
-    values a discount ever takes; treating a dot as a thousands separator is not
-    guessable, so only the single-separator cases are handled.
+    send `"1.234,56"`. A lone comma is a decimal separator ("19,90") unless
+    exactly three digits follow it ("2,000"), or there is more than one
+    ("1,00,000"), in which case it groups thousands. A dot as a thousands
+    separator is not guessable, so only the cases above are handled.
     """
     if value is None:
         return None
@@ -302,7 +316,7 @@ def _to_float(value: str | float | Decimal | None) -> float | None:
         return float(value)
     if isinstance(value, Decimal):
         return float(value)
-    text = str(value).strip().replace(" ", "")
+    text = re.sub(r"[\s\u00a0\u202f]", "", str(value))
     if not text:
         return None
     if "," in text and "." in text:
@@ -312,6 +326,8 @@ def _to_float(value: str | float | Decimal | None) -> float | None:
             if text.rfind(",") > text.rfind(".")
             else text.replace(",", "")
         )
+    elif text.count(",") > 1 or re.fullmatch(r"\d{1,3},\d{3}", text):
+        text = text.replace(",", "")
     else:
         text = text.replace(",", ".")
     try:

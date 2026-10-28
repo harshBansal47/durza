@@ -442,3 +442,91 @@ async def test_two_merchants_without_a_domain_are_not_collapsed(async_session_ma
         assert second.store.id == first.store.id
         stores = (await db.execute(select(Store))).scalars().all()
         assert [store.id for store in stores] == [first.store.id]
+
+
+def test_parse_discount_handles_thousands_separators_and_trailing_currency() -> None:
+    from app.ingestion.normalize import parse_discount
+    from app.models.coupon import DiscountType
+
+    assert parse_discount("2 000 \u20b9") == (DiscountType.fixed, 2000.0)
+    assert parse_discount("2\u00a0000 \u20b9") == (DiscountType.fixed, 2000.0)
+    assert parse_discount("\u20b92,000 off") == (DiscountType.fixed, 2000.0)  # was 2.0
+    assert parse_discount("Rs. 1,00,000") == (DiscountType.fixed, 100000.0)
+    assert parse_discount("500 INR") == (DiscountType.fixed, 500.0)
+    assert parse_discount("\u20b919,90") == (DiscountType.fixed, 19.9)  # a decimal comma
+    assert parse_discount("Up to 40%") == (DiscountType.percentage, 40.0)
+
+
+def test_to_float_tells_decimal_commas_from_thousands_commas() -> None:
+    from app.ingestion.normalize import _to_float
+
+    assert _to_float("19,90") == 19.9
+    assert _to_float("2,000") == 2000.0
+    assert _to_float("1,00,000") == 100000.0
+    assert _to_float("1.234,56") == 1234.56
+    assert _to_float("1,234.56") == 1234.56
+
+
+async def _network_of(db, store_id) -> str:
+    return (await db.execute(select(Store.affiliate_network).where(Store.id == store_id))).scalar_one()
+
+
+async def test_a_new_merchant_claims_the_network_its_offer_came_from(async_session_maker):
+    from app.ingestion import merchant_resolution
+
+    async with async_session_maker() as db:
+        match = await merchant_resolution.resolve_or_create(
+            db,
+            normalize_offer(_offer(destination_url="https://www.acer.com/in-en/deals", store_slug="acer", store_name="Acer")),
+            affiliate_network="admitad",
+        )
+        await db.commit()
+        assert await _network_of(db, match.store.id) == "admitad"
+
+
+async def test_an_existing_store_with_no_network_takes_it(async_session_maker):
+    from app.ingestion import merchant_resolution
+
+    async with async_session_maker() as db:
+        db.add(Store(name="Nykaa", slug="nykaa", normalized_name="nykaa", normalized_domain="nykaa.com"))
+        await db.commit()
+        match = await merchant_resolution.resolve_or_create(
+            db,
+            normalize_offer(_offer(destination_url="https://www.nykaa.com/offers", store_slug="nykaa", store_name="Nykaa")),
+            affiliate_network="admitad",
+        )
+        await db.commit()
+        assert match.matched_by == "domain"
+        assert await _network_of(db, match.store.id) == "admitad"
+
+
+async def test_a_store_already_on_another_network_keeps_it(async_session_maker):
+    from app.ingestion import merchant_resolution
+
+    async with async_session_maker() as db:
+        db.add(
+            Store(
+                name="Myntra",
+                slug="myntra",
+                normalized_name="myntra",
+                normalized_domain="myntra.com",
+                affiliate_network="awin",
+            )
+        )
+        await db.commit()
+        match = await merchant_resolution.resolve_or_create(
+            db, normalize_offer(_offer(store_domain="myntra.com")), affiliate_network="admitad"
+        )
+        await db.commit()
+        assert await _network_of(db, match.store.id) == "awin"
+
+
+async def test_resolving_without_a_network_changes_nothing(async_session_maker):
+    from app.ingestion import merchant_resolution
+
+    async with async_session_maker() as db:
+        match = await merchant_resolution.resolve_or_create(
+            db, normalize_offer(_offer(destination_url="https://www.flipkart.com/offers", store_slug="flipkart", store_name="Flipkart"))
+        )
+        await db.commit()
+        assert await _network_of(db, match.store.id) == "none"

@@ -177,8 +177,91 @@ async def test_admitad_transaction_client_fetches_actions():
         ).fetch(since=datetime(2026, 9, 1, tzinfo=UTC))
 
     assert len(requests) == 1
-    assert requests[0].url.params["date_start"] == "2026-09-01"
+    # Admitad wants dd.mm.yyyy, not ISO dates.
+    assert requests[0].url.params["date_start"] == "01.09.2026"
     assert len(transactions) == 1
     assert transactions[0].network_txn_id == "action-1"
     assert transactions[0].clickref == "clickref-1"
     assert str(transactions[0].commission_amount) == "40"
+
+
+# ---- found by calling the real API --------------------------------------------
+
+
+def test_scope_includes_what_the_website_coupons_endpoint_needs() -> None:
+    from app.integrations.admitad import _SCOPE
+
+    # `coupons` alone is rejected with `insufficient_scope`.
+    assert "coupons_for_website" in _SCOPE.split()
+
+
+def test_campaign_names_lose_the_network_tags() -> None:
+    from app.ingestion.sources.admitad import clean_campaign_name
+
+    assert clean_campaign_name("Acer [CPS] IN") == "Acer"
+    assert clean_campaign_name("Tata CLiQ [CPA] IN") == "Tata CLiQ"
+    assert clean_campaign_name("Myntra IN") == "Myntra"
+    assert clean_campaign_name("Login") == "Login"  # only a standalone " IN"
+    assert clean_campaign_name(None) is None
+
+
+def test_a_coupon_shaped_like_the_real_response_maps_to_a_clean_offer() -> None:
+    from app.ingestion.sources.admitad import AdmitadSource
+
+    raw = AdmitadSource._map_coupon(
+        {
+            "id": 101,
+            "name": "2000 off on Acer laptops",
+            "promocode": "ad232kl",
+            "discount": "2 000 \u20b9",
+            "goto_link": "https://ad.admitad.com/g/abc123/",
+            "date_end": "2026-12-31",
+            "has_affiliate_link": True,
+            "campaign": {"name": "Acer [CPS] IN", "site_url": "https://store.acer.com/en-in/"},
+        }
+    )
+
+    assert raw is not None
+    assert (raw.store_name, raw.store_slug) == ("Acer", "acer")
+    assert raw.code == "AD232KL"
+    assert raw.destination_url == "https://ad.admitad.com/g/abc123/"
+    # The text goes through unchanged and is parsed once, in normalisation.
+    assert raw.discount_text == "2 000 \u20b9"
+    assert raw.discount_type is None and raw.discount_value is None
+
+
+def test_up_to_percent_is_not_mislabelled_by_the_adapter() -> None:
+    from app.ingestion.sources.admitad import AdmitadSource
+
+    raw = AdmitadSource._map_coupon(
+        {"id": 1, "name": "Sale", "discount": "Up to 40%", "goto_link": "https://ad.admitad.com/g/x/", "campaign": {"name": "Nykaa"}}
+    )
+    assert raw is not None and raw.discount_type is None
+
+
+def test_an_action_shaped_like_the_real_response_maps_cart_payment_and_subid() -> None:
+    from app.models.conversion import ConversionStatus
+    from app.services.conversion_sync import _STATUS_MAP, AdmitadTransactionsClient
+
+    client = AdmitadTransactionsClient(client_id="id", client_secret="secret")
+    txn = client._normalise(
+        {
+            "action_id": 77,
+            "subid": "abcd1234",
+            "subid1": "somebody-else",
+            "status": "approved_but_stalled",
+            "cart": "2000.00",
+            "payment": "80.00",
+            "currency": "INR",
+            "action_date": "2026-10-01 10:00:00",
+            "closing_date": "2026-10-20 09:00:00",
+        }
+    )
+
+    assert txn is not None
+    assert txn.network_txn_id == "77"
+    assert txn.clickref == "abcd1234"  # `subid` is ours; `subid1` is not
+    assert float(txn.sale_amount) == 2000.0 and float(txn.commission_amount) == 80.0
+    assert txn.currency == "INR"
+    assert txn.validated_at is not None and txn.validated_at.day == 20
+    assert _STATUS_MAP["approved_but_stalled"] == ConversionStatus.pending

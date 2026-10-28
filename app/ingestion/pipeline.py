@@ -80,7 +80,7 @@ from app.models.category import Category
 from app.models.coupon import Coupon, CouponStatus
 from app.models.coupon_source import CouponSource, CouponSourceStatus
 from app.models.ingestion_run import IngestionRun, RunStatus, SyncMode
-from app.models.source import Source
+from app.models.source import Source, SourceKind
 
 logger = get_logger("durza.ingestion.pipeline")
 
@@ -890,7 +890,14 @@ async def _resolve_merchant(db: AsyncSession, offer: NormalizedOffer, source: So
         else None
     )
 
-    match = await merchant_resolution.resolve_or_create(db, offer, program_ids=program_ids)
+    match = await merchant_resolution.resolve_or_create(
+        db,
+        offer,
+        program_ids=program_ids,
+        # Admitad offers carry Admitad tracking links, so their store needs Admitad's click
+        # reference (`subid`) on the way out or the conversion cannot be tied back to a page.
+        affiliate_network="admitad" if source.kind == SourceKind.admitad else None,
+    )
     if match.is_new:
         logger.info(
             "merchant created",
