@@ -7,26 +7,32 @@ redirect routes.
 
 ## Environment
 
-Set these backend environment variables:
+Set these on the deploy host's `.env` **before** deploying (a container reads
+`.env` only when it is created):
 
 ```dotenv
 ADMITAD_CLIENT_ID=
 ADMITAD_CLIENT_SECRET=
+ADMITAD_WEBSITE_ID=      # ad space id, from GET /websites/
+SCHEDULER_ENABLED=true
 ```
 
-The API client requests its OAuth access token using these values; do not put
-either value, or a derived Basic authorization header, in a database row. The
-derived `ADMITAD_BASE_64_HEADER` is not needed.
+The API client requests its OAuth access token using the client id and secret; do
+not put either value, or a derived Basic authorization header, in a database row.
+The derived `ADMITAD_BASE_64_HEADER` is not needed.
 
-## One command for both database rows
+## Database rows are created by the deploy
+
+Admitad is declared in `app/ingestion/provider_config.py`. Every deploy runs
+`python -m app.tools.sync_sources`, which creates (or refreshes) the `Source` and
+the `AffiliateProvider` (slug `admitad`) from that file and the environment. There
+is nothing to seed by hand. To preview or re-run it manually:
 
 ```bash
-podman-compose -f docker-compose.prod.yml exec app \
-    python -m app.tools.seed_admitad --website-id <YOUR_WEBSITE_ID> [--dry-run]
+podman-compose run --rm --no-deps -T app python -m app.tools.sync_sources --dry-run
 ```
 
-It creates the `AffiliateProvider` (slug `admitad`) and the `Source` described below,
-or refreshes them if they exist. It reads no secrets and is safe to re-run.
+To switch the provider off, set `enabled=False` in `provider_config.py` and deploy.
 
 ## Coupon source
 

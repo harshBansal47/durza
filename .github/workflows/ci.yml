@@ -255,6 +255,9 @@
         # rollback (see docs/ROLLBACK.md). It is back now: an image that has
         # been tagged for rollback is not dangling, and prune only removes the
         # dangling ones.
+        # After `up -d app`, deliberately: a provider-config problem should show up as a
+        # red step, not stop code from shipping. The scheduler's first sweep runs ~60s
+        # after boot, which is long enough for this to finish first.
         - name: Pull, build, migrate, then start
           if: steps.changes.outputs.deploy == 'yes'
           run: |
@@ -263,6 +266,7 @@
               && podman-compose build app \
               && podman-compose run --rm --no-deps -T -e ALLOW_PROD_MIGRATION=1 app alembic upgrade head \
               && podman-compose up -d app \
+              && podman-compose run --rm --no-deps -T app python -m app.tools.sync_sources \
               && podman image prune -f"
 
         # Record what is now deployed, so the next push can be diffed against
