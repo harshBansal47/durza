@@ -72,12 +72,19 @@ async def get_store_destination(
                 }
             )
         )
+    alternative_items = list(alternative_result)
+    alt_counts = await store_service.live_offer_counts(db, [item.id for item in alternative_items])
     return StoreDestinationRead(
         store=StoreRead.model_validate(store),
         deals=[CouponPublicRead.model_validate(item) for item in deals],
         coupons=[CouponPublicRead.model_validate(item) for item in coupons],
         faqs=[StoreFAQRead.model_validate(item) for item in faq_result],
-        alternatives=[StoreRead.model_validate(item) for item in alternative_result],
+        alternatives=[
+            StoreRead.model_validate(item).model_copy(
+                update={"offer_count": alt_counts.get(item.id, 0)}
+            )
+            for item in alternative_items
+        ],
         related_content=content_reads,
     )
 
