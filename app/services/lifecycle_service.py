@@ -147,7 +147,9 @@ class _Target:
     configured: bool
 
 
-async def refresh_coupon_prices(db: AsyncSession, *, force: bool = False) -> int:
+async def refresh_coupon_prices(
+    db: AsyncSession, *, force: bool = False, source_slugs: list[str] | None = None
+) -> int:
     """Re-ingest every source that is due. Returns the number of successful runs.
 
     Each source is independent, in four separate senses:
@@ -168,14 +170,19 @@ async def refresh_coupon_prices(db: AsyncSession, *, force: bool = False) -> int
       than the sweep's, which is what will make a future "run just this source"
       button safe without any of the above being re-derived.
 
+    `source_slugs` narrows the sweep to those providers: the admin's "Ingest now"
+    button passes the ones the operator selected. It is a filter, not an override;
+    a disabled source is still excluded.
+
     Disabled sources are excluded here rather than in the pipeline: `is_enabled`
     is a human's decision not to use a provider, and sweeping it every tick only
     to have the pipeline refuse it would fill the run ledger with rows saying
     nothing except that the scheduler is running.
     """
-    result = await db.execute(
-        select(Source).where(Source.is_enabled.is_(True)).order_by(Source.slug)
-    )
+    stmt = select(Source).where(Source.is_enabled.is_(True)).order_by(Source.slug)
+    if source_slugs is not None:
+        stmt = stmt.where(Source.slug.in_(source_slugs))
+    result = await db.execute(stmt)
     enabled = list(result.scalars().all())
     now = datetime.now(UTC)
     targets = [

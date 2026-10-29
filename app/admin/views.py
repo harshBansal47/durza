@@ -5,6 +5,8 @@ panel writes to the database directly, so the same rules are re-applied here in
 `on_model_change` to keep both paths producing identical data.
 """
 
+import asyncio
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any, ClassVar, cast
@@ -13,6 +15,7 @@ from fastapi import HTTPException
 from pydantic import EmailStr, TypeAdapter, ValidationError
 from sqladmin import ModelView, action
 from sqladmin.filters import BooleanFilter, StaticValuesFilter
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
@@ -35,8 +38,11 @@ from app.models.store import Store
 from app.models.user import Role, User
 from app.models.verification_attempt import AttemptOutcome, VerificationAttempt
 from app.services import sale_service
+from app.services.scheduler import run_job_now
 
 _email_adapter: TypeAdapter[str] = TypeAdapter(EmailStr)
+
+logger = logging.getLogger(__name__)
 
 
 def ensure_utc(value: Any) -> Any:
@@ -417,6 +423,25 @@ class UserAdmin(StaffModelView, model=User):
             raise ValueError("You cannot delete your own account")
 
 
+# Held so a background run is not garbage-collected mid-flight.
+_manual_ingestions: set[asyncio.Task[None]] = set()
+
+
+async def _ingest_now(slugs: list[str]) -> None:
+    try:
+        detail = await run_job_now("refresh_prices", force=True, source_slugs=slugs)
+    except Exception:  # noqa: BLE001 - run_job already recorded the failure
+        logger.exception("manual ingestion failed", extra={"sources": slugs})
+    else:
+        logger.info("manual ingestion finished", extra={"sources": slugs, "detail": detail})
+
+
+def _start_ingestion_now(slugs: list[str]) -> None:
+    task = asyncio.create_task(_ingest_now(slugs))
+    _manual_ingestions.add(task)
+    task.add_done_callback(_manual_ingestions.discard)
+
+
 class SourceAdmin(StaffModelView, model=Source):
     """A provider, plus how much we trust it and whether its API is answering.
 
@@ -524,6 +549,47 @@ class SourceAdmin(StaffModelView, model=Source):
         Source.timeout_seconds,
     ]
     slug_source = "name"
+
+    @action(
+        "ingest_now",
+        label="Ingest now",
+        confirmation_message="Fetch coupons from the selected providers now?",
+        add_in_detail=True,
+        add_in_list=True,
+    )
+    async def ingest_now(self, request: Request) -> Response:
+        """Run ingestion for the selected providers now, without waiting on the schedule.
+
+        It starts in the background and returns at once, because a provider's
+        pagination can outlast a browser request. The outcome is in Ingestion
+        Runs (per provider) and Job Runs (the sweep), where this redirects.
+
+        It goes through the same job as the scheduler, so it takes the same
+        locks and is recorded the same way. `force` ignores the provider's own
+        interval and any failure backoff; a *disabled* provider is still skipped,
+        because `is_enabled` is the operator's kill switch.
+
+        Admin-only: it makes outbound calls to third-party APIs.
+        """
+        if getattr(request.state, "admin_role", None) != Role.admin:
+            raise HTTPException(status_code=403, detail="Only admins can trigger ingestion")
+        raw = request.query_params.get("pks", "")
+        try:
+            ids = [uuid.UUID(part) for part in raw.split(",") if part]
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid selection") from exc
+        if not ids:
+            raise HTTPException(status_code=400, detail="No provider selected")
+        session_maker = cast(async_sessionmaker[AsyncSession], self.session_maker)
+        async with session_maker() as session:
+            result = await session.execute(select(Source.slug).where(Source.id.in_(ids)))
+            slugs = list(result.scalars().all())
+        if not slugs:
+            raise HTTPException(status_code=404, detail="Provider not found")
+        _start_ingestion_now(slugs)
+        return RedirectResponse(
+            url=str(request.url_for("admin:list", identity="ingestion-run")), status_code=303
+        )
 
 
 class CouponSourceAdmin(StaffModelView, model=CouponSource):
