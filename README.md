@@ -9,7 +9,7 @@ domain API (Phase 3), the admin back office (Phase 4), and now the public-API
 foundation for the frontend (Phase 5): commission disclosure, community
 verification, and a redirect endpoint that finally hides `destination_url`
 from anonymous requests. The actual public website lives in the sibling
-`durza-web` project (Next.js) and calls this API — nothing here renders
+`couponza-web` project (Next.js) and calls this API — nothing here renders
 HTML for visitors.
 
 ## Prerequisites
@@ -166,7 +166,7 @@ An MCP server (`mcp_server/`) exposes the same verified data as the JSON API,
 but as tools any MCP-compatible agent (Claude, or others) can call directly —
 rather than needing to scrape rendered HTML the way a generic web agent
 would. It's a thin layer: `mcp_server/client.py` talks to this API over plain
-HTTP, the same way `durza-web` does; no database access, no duplicated
+HTTP, the same way `couponza-web` does; no database access, no duplicated
 business logic.
 
 **Tools exposed:** `search_coupons`, `get_coupon`, `get_store`,
@@ -203,9 +203,29 @@ surface `commission_disclosure` whenever it recommends a coupon — the same
 trust commitments made to a human visitor apply to whatever an agent tells
 its user, not just to the rendered page.
 
+## Scheduler, cache, and observability
+
+- **Scheduler** (`app/services/scheduler.py`, `scripts/run_alerts.py`,
+  `scripts/run_ingestion.py`, `scripts/refresh_coupons.py`): APScheduler-driven,
+  gated by `SCHEDULER_ENABLED`. Jobs: deal/alert emails, coupon expiry,
+  ingestion refresh, verification, click-hash scrub, conversion sync. Locks in
+  `app/core/locks.py` keep overlapping runs from colliding.
+- **Redis cache** (`REDIS_URL`/`UPSTASH_REDIS_URL`): used for coupon-listing
+  caching and rate-limit storage; in-memory fallback otherwise.
+- **Observability**: structured logging (`LOG_FORMAT`/`LOG_LEVEL`), Sentry
+  (`SENTRY_DSN`), Prometheus-style metrics (`METRICS_ENABLED`), request-id +
+  latency middleware, migration guard refusing `downgrade`/`stamp` in
+  production (`app/core/migration_guard.py`).
+- **Privacy consent**: signed HttpOnly consent cookie scoped to the parent
+  domain; `/analytics/event` and `/analytics/impression` store nothing (still
+  202) without it. `IP_HASH_SALT` (falls back to secret key) salts the hashes.
+- **Affiliate networks**: Cuelinks, Awin, Admitad ingestion + conversion sync
+  (`ADMITAD_*`, `CUELINKS_*`, `AWIN_*` env vars; `docs/ADMITAD_SETUP.md`).
+- **Admin analytics**: `/admin/analytics` overview endpoint + staff UI.
+
 ## Frontend
 
-The public website is a separate project: `../durza-web` (Next.js). It
+The public website is a separate project: `../couponza-web` (Next.js). It
 calls this API's public endpoints directly and never touches the database.
 See its own README for setup.
 
@@ -221,10 +241,10 @@ See its own README for setup.
 | `app/models/base.py` | `TimestampMixin` and `UUIDPKMixin` for every model |
 | `app/core/pagination.py` | `Paginated[T]` envelope + `paginate()` helper |
 | `app/core/slugs.py` | Unique slug generation shared by all sluggable models |
-| `app/models/` | `user`, `category`, `store`, `coupon`, `ad`, `page` |
+| `app/models/` | `user`, `category`, `store`, `coupon`, `ad`, `page`, plus `product`, `price_point`, `click`, `conversion`, `affiliate_*`, `sale`, `editorial`, `analytics_event/session`, `tracking`, `coupon_source/staging`, `ingestion_run`, `source`, `daily_stats`, `coupon_impression`, `attribution`, `revenue_event`, `user_interest/segment`, `verification_attempt` |
 | `app/schemas/` | Pydantic Create/Update/Read schemas per entity |
 | `app/services/` | Business logic per entity, kept out of the routers |
-| `app/routers/api/v1/` | `auth`, `categories`, `stores`, `coupons`, `ads`, `pages` |
+| `app/routers/api/v1/` | `auth`, `categories`, `stores`, `coupons`, `ads`, `pages`, `editorial`, `products`, `account`, `analytics`, `admin_analytics`, `personalization`, `sales`, `earnings`, `system` |
 | `app/admin/auth.py` | Login/session handling + admin-vs-editor authorization rules |
 | `app/admin/views.py` | One `ModelView` per entity — the actual admin forms/lists |
 | `app/admin/setup.py` | Mounts everything at `/admin` (called from `app/main.py`) |
@@ -236,7 +256,7 @@ See its own README for setup.
 | `mcp_server/server.py` | The 5 MCP tools agents can call |
 | `scripts/seed_admin.py` | Creates the first admin user (no public signup path for that role) |
 | `alembic/` | Async-aware migration environment |
-| `tests/` | 80 tests: health, auth/RBAC, CRUD for every entity, the full admin panel, public-safe/verification/redirect behavior, CORS/rate-limiting/security-headers, and the MCP server (SQLite in-memory) |
+| `tests/` | 893 tests: health, auth/RBAC, CRUD for every entity, the full admin panel, public-safe/verification/redirect behavior, CORS/rate-limiting/security-headers, the MCP server, analytics, attribution, earnings, editorial, personalization, sales hubs, ingestion, price intelligence, retention/distribution, click tracking, sponsored placements, discovery orderings, shopper events, privacy consent, migration guard, scheduler, and observability (SQLite in-memory) |
 
 ## What the admin can do (Phase 4)
 
@@ -284,6 +304,14 @@ Everything is browsable and testable at http://localhost:8000/docs.
 | Coupons | same shape under `/coupons` | Filters: `store_id`, `category_id`, `search`, `active_only` (default true) |
 | Ads | `/ads` (no by-slug) | Filters: `position`, `active_only` |
 | Pages | `/pages` | `?published_only=` (default true) |
+| Products | `/products`, `/products/{id}`, `/products/by-slug/{slug}`, `/products/{id}/price-history` | Price intelligence; writing points requires admin/editor |
+| Sales hubs | `/sales/series`, `/sales/series/{slug}`, `/sales/editions/...` | Sale hubs (series + editions resolving coupon rules) |
+| Editorial | `/editorial/...` | Editorial content (guides, collections) |
+| Analytics | `/analytics/event`, `/analytics/impression` | Shopper events and impressions (consent-gated) |
+| Admin analytics | `/admin/analytics/...` | Staff-only analytics overview (admin/editor/analytics_viewer) |
+| Earnings | `/earnings/...` | Affiliate revenue attribution |
+| Personalization | `/personalization/...` | Feature-flagged (off by default) |
+| Account (`/me`) | `/me/saved-stores`, `/me/saved-coupons`, `/me/tracked-products`, `/me/notification-preferences`, `/me/alerts` | Bearer token required |
 
 **Access policy:** reads are public; create/update need `admin` or `editor`;
 delete needs `admin`. Every list endpoint returns
@@ -408,11 +436,22 @@ The retention loop: `User ├── saved stores / saved coupons / tracked produ
 Not built yet (by design, in order): frontend account UI using these endpoints,
 web-push delivery, the browser extension itself.
 
-## Next step
+## Current state / open items
 
-- Frontend product page: price-history chart, effective-price block, "90-day low" badge.
-- A price-source adapter feeding `record_price` automatically (same `Source`/feed
-  machinery as ingestion) — this is also what starts real alert traffic.
+- Personalization is built and shipped behind feature flags, all off by default
+  (`PERSONALIZATION_ENABLED=false`, `RANKING_VERSION=v1`,
+  `EXPLORATION_ENABLED=false`, `INGESTION_QUARANTINE_MODE=shadow`,
+  `SCHEDULER_ENABLED=false`). Turning any of it on is a deliberate decision —
+  see `docs/STATUS.md`.
+- Phases 6–8 of the smart-savings platform are not started yet.
+- Sale hubs have a working back office + resolving API, but the ops refresh skill
+  (`event_hub_refresh`) and a designed hub page are still missing
+  (`docs/SALE_HUBS.md`).
+- Identifier hashes in `analytics_events`, `analytics_sessions`,
+  `coupon_impressions` and `attribution` are not yet scrubbed (click and
+  verification hashes are).
+- Real-browser E2E and CLS checks are still pending before any personalization
+  flag is turned on.
 
 ## Click tracking and affiliate links
 
