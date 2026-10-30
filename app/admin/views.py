@@ -5,8 +5,6 @@ panel writes to the database directly, so the same rules are re-applied here in
 `on_model_change` to keep both paths producing identical data.
 """
 
-import asyncio
-import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any, ClassVar, cast
@@ -38,11 +36,9 @@ from app.models.store import Store
 from app.models.user import Role, User
 from app.models.verification_attempt import AttemptOutcome, VerificationAttempt
 from app.services import sale_service
-from app.services.scheduler import run_job_now
+from app.services.manual_ingestion import start_ingestion_now
 
 _email_adapter: TypeAdapter[str] = TypeAdapter(EmailStr)
-
-logger = logging.getLogger(__name__)
 
 
 def ensure_utc(value: Any) -> Any:
@@ -423,25 +419,6 @@ class UserAdmin(StaffModelView, model=User):
             raise ValueError("You cannot delete your own account")
 
 
-# Held so a background run is not garbage-collected mid-flight.
-_manual_ingestions: set[asyncio.Task[None]] = set()
-
-
-async def _ingest_now(slugs: list[str]) -> None:
-    try:
-        detail = await run_job_now("refresh_prices", force=True, source_slugs=slugs)
-    except Exception:  # noqa: BLE001 - run_job already recorded the failure
-        logger.exception("manual ingestion failed", extra={"sources": slugs})
-    else:
-        logger.info("manual ingestion finished", extra={"sources": slugs, "detail": detail})
-
-
-def _start_ingestion_now(slugs: list[str]) -> None:
-    task = asyncio.create_task(_ingest_now(slugs))
-    _manual_ingestions.add(task)
-    task.add_done_callback(_manual_ingestions.discard)
-
-
 class SourceAdmin(StaffModelView, model=Source):
     """A provider, plus how much we trust it and whether its API is answering.
 
@@ -586,7 +563,7 @@ class SourceAdmin(StaffModelView, model=Source):
             slugs = list(result.scalars().all())
         if not slugs:
             raise HTTPException(status_code=404, detail="Provider not found")
-        _start_ingestion_now(slugs)
+        start_ingestion_now(slugs)
         return RedirectResponse(
             url=str(request.url_for("admin:list", identity="ingestion-run")), status_code=303
         )

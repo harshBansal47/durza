@@ -17,6 +17,7 @@ from app.core.security_headers import SecurityHeadersMiddleware
 from app.core.sentry import init_sentry
 from app.routers.api.v1.account import router as account_router
 from app.routers.api.v1.admin_analytics import router as admin_analytics_router
+from app.routers.api.v1.admin_ingestion import router as admin_ingestion_router
 from app.routers.api.v1.ads import router as ads_router
 from app.routers.api.v1.analytics import router as analytics_router
 from app.routers.api.v1.auth import router as auth_router
@@ -109,6 +110,7 @@ for _router in (
     account_router,
     analytics_router,
     admin_analytics_router,
+    admin_ingestion_router,
     personalization_router,
     sales_router,
     earnings_router,
