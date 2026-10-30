@@ -20,7 +20,7 @@ _running: set[asyncio.Task[None]] = set()
 async def _run(slugs: list[str]) -> None:
     try:
         detail = await run_job_now("refresh_prices", force=True, source_slugs=slugs)
-    except Exception:  # noqa: BLE001 - run_job already recorded the failure
+    except Exception:
         logger.exception("manual ingestion failed", extra={"sources": slugs})
     else:
         logger.info("manual ingestion finished", extra={"sources": slugs, "detail": detail})
