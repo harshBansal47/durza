@@ -10,6 +10,7 @@ rather than being interpolated into the message, which keeps a message greppable
 and a field queryable — the two things you actually want from logs.
 """
 
+import hashlib
 import json
 import logging
 import sys
@@ -55,6 +56,18 @@ _STANDARD_ATTRS = frozenset(
 
 def _extra_fields(record: logging.LogRecord) -> dict[str, Any]:
     return {k: v for k, v in record.__dict__.items() if k not in _STANDARD_ATTRS}
+
+
+def extra_fields(record: logging.LogRecord) -> dict[str, Any]:
+    """Caller-supplied context on a record, for handlers other than the JSON one."""
+    return _extra_fields(record)
+
+
+def email_fingerprint(email: str) -> str:
+    """A short, stable stand-in for an address, so a log can show "the same person"
+    without recording who. It is a hash of a guessable value, so treat it as
+    pseudonymous rather than anonymous."""
+    return hashlib.sha256(email.strip().lower().encode()).hexdigest()[:12]
 
 
 class JsonFormatter(logging.Formatter):

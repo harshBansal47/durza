@@ -13,9 +13,12 @@ from sqladmin.authorization import Action, AuthorizationBackend
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.requests import Request
 
+from app.core.observability import email_fingerprint, get_logger
 from app.core.security import hash_password, verify_password
 from app.models.user import Role, User
 from app.services import user_service
+
+logger = get_logger("durza.admin")
 
 STAFF_ROLES = frozenset({Role.admin, Role.editor})
 SESSION_MAX_AGE = 8 * 60 * 60  # an 8-hour working day
@@ -23,6 +26,17 @@ SESSION_MAX_AGE = 8 * 60 * 60  # an 8-hour working day
 # Verified when the email is unknown, so "no such user" and "wrong password"
 # take the same time and can't be told apart by timing.
 _DUMMY_HASH = hash_password("not-a-real-password")
+
+
+def _rejected(email: str, reason: str) -> bool:
+    """Log why a back-office sign-in failed, then report failure.
+
+    The reason is for the log only: the form shows the same message either way.
+    """
+    logger.warning(
+        "admin sign-in failed", extra={"reason": reason, "email_fp": email_fingerprint(email)}
+    )
+    return False
 
 
 class AdminAuth(AuthenticationBackend):
@@ -51,22 +65,24 @@ class AdminAuth(AuthenticationBackend):
 
         if user is None:
             verify_password(password, _DUMMY_HASH)
-            return False
+            return _rejected(email, "unknown_user")
         if user.hashed_password is None:
             # Passwordless accounts (Google or email-code) cannot sign in to
             # the back office, even if someone has elevated their role.
             verify_password(password, _DUMMY_HASH)
-            return False
+            return _rejected(email, "passwordless_account")
         if not verify_password(password, user.hashed_password):
-            return False
+            return _rejected(email, "wrong_password")
         if not user.is_active or user.role not in STAFF_ROLES:
-            return False
+            return _rejected(email, "inactive_or_not_staff")
 
         request.session.clear()
         request.session["user_id"] = str(user.id)
+        logger.info("admin sign-in", extra={"user_id": str(user.id), "role": user.role.value})
         return True
 
     async def logout(self, request: Request) -> bool:
+        logger.info("admin sign-out", extra={"user_id": request.session.get("user_id")})
         request.session.clear()
         return True
 

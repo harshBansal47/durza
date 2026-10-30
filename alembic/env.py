@@ -26,6 +26,7 @@ from app.models import affiliate_provider as _affiliate_provider  # noqa: F401
 from app.models import affiliate_revenue as _affiliate_revenue  # noqa: F401
 from app.models import analytics_event as _analytics_event  # noqa: F401
 from app.models import analytics_session as _analytics_session  # noqa: F401
+from app.models import app_log as _app_log  # noqa: F401
 from app.models import attribution as _attribution  # noqa: F401
 from app.models import base as _base  # noqa: F401
 from app.models import category as _category  # noqa: F401

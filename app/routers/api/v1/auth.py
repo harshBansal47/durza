@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user, require_role
 from app.core.email_address import normalize_email
 from app.core.limiter import limiter
+from app.core.observability import email_fingerprint, get_logger
 from app.core.request_meta import client_ip, hash_ip
 from app.core.security import create_access_token, create_refresh_token, decode_token
 from app.models.user import Role, User
@@ -26,6 +27,7 @@ from app.schemas.user import DeleteAccountRequest, UserRead, UserUpdate
 from app.services import email_otp, email_preferences, user_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = get_logger("durza.auth")
 
 _GENERIC_OTP_MESSAGE = "If that address can sign in, a sign-in code is on its way."
 
@@ -68,10 +70,12 @@ async def request_email_code(
     and delivery failures all produce this same response, so this endpoint
     cannot be used to enumerate customers.
     """
-    await email_otp.request_code(
-        db,
-        email=payload.email,
-        request_ip_hash=hash_ip(client_ip(request)),
+    ip_hash = hash_ip(client_ip(request))
+    await email_otp.request_code(db, email=payload.email, request_ip_hash=ip_hash)
+    # Same line whether or not the address has an account, like the response.
+    logger.info(
+        "sign-in code requested",
+        extra={"email_fp": email_fingerprint(payload.email), "ip_hash": ip_hash},
     )
     return {"message": _GENERIC_OTP_MESSAGE}
 
@@ -87,16 +91,31 @@ async def verify_email_code(
     try:
         user = await email_otp.verify_code(db, email=payload.email, code=payload.code)
     except email_otp.InvalidOtpError as exc:
+        logger.warning(
+            "sign-in code rejected",
+            extra={
+                "email_fp": email_fingerprint(payload.email),
+                "ip_hash": hash_ip(client_ip(request)),
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="That code is invalid or has expired. Request a new one.",
         ) from exc
     except email_otp.InactiveAccountError as exc:
+        logger.warning(
+            "sign-in blocked: inactive account",
+            extra={"email_fp": email_fingerprint(payload.email)},
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This account is inactive.",
         ) from exc
 
+    logger.info(
+        "sign-in succeeded",
+        extra={"method": "email_code", "user_id": str(user.id), "role": user.role.value},
+    )
     return _tokens_for(user)
 
 
@@ -108,23 +127,30 @@ async def refresh(
     try:
         data = decode_token(payload.refresh_token)
     except JWTError as exc:
+        logger.info("refresh rejected", extra={"reason": "undecodable_token"})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
         ) from exc
 
     if data.get("type") != "refresh":
+        logger.info("refresh rejected", extra={"reason": "wrong_token_type"})
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
 
     try:
         user_id = uuid.UUID(data["sub"])
         token_version = int(data.get("ver", 0))
     except (KeyError, TypeError, ValueError) as exc:
+        logger.info("refresh rejected", extra={"reason": "bad_claims"})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
         ) from exc
 
     user = await db.get(User, user_id)
     if user is None or not user.is_active or user.token_version != token_version:
+        logger.info(
+            "refresh rejected",
+            extra={"reason": "user_no_longer_valid", "user_id": str(user_id)},
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User no longer valid")
 
     return _tokens_for(user)
@@ -206,6 +232,7 @@ async def google_login(
     settings = get_settings()
     client_id = settings.google_client_id
     if not client_id:
+        logger.error("google sign-in attempted but GOOGLE_CLIENT_ID is not set")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Google login not configured"
         )
@@ -216,15 +243,21 @@ async def google_login(
             params={"id_token": payload.id_token},
         )
     if resp.status_code != 200:
+        logger.warning(
+            "google sign-in rejected",
+            extra={"reason": "token_not_accepted", "google_status": resp.status_code},
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google token")
 
     info = resp.json()
     if info.get("aud") != client_id:
+        logger.warning("google sign-in rejected", extra={"reason": "audience_mismatch"})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Google token audience mismatch"
         )
     issuer = info.get("iss")
     if issuer not in {"accounts.google.com", "https://accounts.google.com"}:
+        logger.warning("google sign-in rejected", extra={"reason": "issuer_mismatch"})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Google token issuer mismatch"
         )
@@ -234,6 +267,7 @@ async def google_login(
     # "true"/"false" over the years. `bool("false")` is True, so a plain
     # truthiness test would treat an unverified address as verified.
     if not email or not (verified is True or str(verified).lower() == "true"):
+        logger.warning("google sign-in rejected", extra={"reason": "email_not_verified"})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Google email not verified"
         )
@@ -243,6 +277,7 @@ async def google_login(
     picture = info.get("picture")
 
     user = await user_service.get_user_by_email(db, normalized)
+    created = user is None
     if user is None:
         user = User(
             email=normalized,
@@ -268,8 +303,21 @@ async def google_login(
         await db.commit()
 
     if not user.is_active:
+        logger.warning(
+            "sign-in blocked: inactive account",
+            extra={"method": "google", "user_id": str(user.id)},
+        )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive account")
 
+    logger.info(
+        "sign-in succeeded",
+        extra={
+            "method": "google",
+            "user_id": str(user.id),
+            "role": user.role.value,
+            "new_user": created,
+        },
+    )
     return _tokens_for(user)
 
 

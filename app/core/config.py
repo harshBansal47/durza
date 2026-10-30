@@ -230,6 +230,16 @@ class Settings(BaseSettings):
     sentry_traces_sample_rate: float = 0.1
     log_format: str = "text"  # "text" locally, "json" anywhere it gets shipped
     log_level: str = "INFO"
+    # Stored application log (app/core/log_store.py). Off until switched on, so a
+    # deploy never starts writing rows nobody asked for.
+    log_store_enabled: bool = False
+    # Floor for the app's own loggers. Third-party loggers are stored from WARNING.
+    log_store_min_level: str = "INFO"
+    # Rows older than this are deleted by the `scrub_logs` job.
+    log_retention_days: int = 14
+    log_scrub_interval_hours: int = 6
+    # A request slower than this is logged at WARNING, which also stores it.
+    slow_request_seconds: float = 2.0
     # Expose /metrics. Left off locally so a stray scrape isn't talking to a
     # developer's laptop.
     metrics_enabled: bool = False

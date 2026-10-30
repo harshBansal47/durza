@@ -5,6 +5,7 @@ panel writes to the database directly, so the same rules are re-applied here in
 `on_model_change` to keep both paths producing identical data.
 """
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any, ClassVar, cast
@@ -22,6 +23,7 @@ from wtforms import PasswordField
 from app.core.security import hash_password
 from app.core.slugs import generate_unique_slug
 from app.models.ad import Ad
+from app.models.app_log import AppLog
 from app.models.category import Category
 from app.models.click import ClickEvent
 from app.models.coupon import Coupon
@@ -39,6 +41,13 @@ from app.services import sale_service
 from app.services.manual_ingestion import start_ingestion_now
 
 _email_adapter: TypeAdapter[str] = TypeAdapter(EmailStr)
+
+logger = logging.getLogger("durza.admin")
+
+
+def _actor(request: Request) -> str:
+    """Who is acting, for the audit trail. The session holds just the user id."""
+    return str(request.session.get("user_id", "unknown"))
 
 
 def ensure_utc(value: Any) -> Any:
@@ -71,6 +80,31 @@ class StaffModelView(ModelView):
                 data[field] = ensure_utc(data[field])
         if self.slug_source is not None:
             await self._apply_slug(data, model, is_created)
+
+    async def after_model_change(
+        self, data: dict, model: Any, is_created: bool, request: Request
+    ) -> None:
+        # Audit trail for every create and edit in the back office. Field *names*
+        # only: values can hold credentials, and the row itself has the new state.
+        logger.info(
+            "admin created record" if is_created else "admin updated record",
+            extra={
+                "actor": _actor(request),
+                "model": type(model).__name__,
+                "record_id": str(getattr(model, "id", "")),
+                "changed_fields": sorted(data),
+            },
+        )
+
+    async def after_model_delete(self, model: Any, request: Request) -> None:
+        logger.warning(
+            "admin deleted record",
+            extra={
+                "actor": _actor(request),
+                "model": type(model).__name__,
+                "record_id": str(getattr(model, "id", "")),
+            },
+        )
 
     async def _apply_slug(self, data: dict, model: Any, is_created: bool) -> None:
         source_value = data.get(cast(str, self.slug_source))
@@ -563,7 +597,7 @@ class SourceAdmin(StaffModelView, model=Source):
             slugs = list(result.scalars().all())
         if not slugs:
             raise HTTPException(status_code=404, detail="Provider not found")
-        start_ingestion_now(slugs)
+        start_ingestion_now(slugs, triggered_by=f"admin-ui:{_actor(request)}")
         return RedirectResponse(
             url=str(request.url_for("admin:list", identity="ingestion-run")), status_code=303
         )
@@ -823,6 +857,53 @@ class JobRunAdmin(StaffModelView, model=JobRun):
     page_size = 50
 
 
+class AppLogAdmin(StaffModelView, model=AppLog):
+    """The stored application log. Admin-only and read-only.
+
+    Rows expire on their own (`LOG_RETENTION_DAYS`), so this answers "what just
+    happened?", not "what happened last quarter?". The permanent record of jobs
+    and ingestion is Job Runs and Ingestion Runs.
+    """
+
+    name = "App Log"
+    name_plural = "App Logs"
+    icon = "fa-solid fa-scroll"
+
+    column_list = [
+        AppLog.created_at,
+        AppLog.level,
+        AppLog.logger,
+        AppLog.message,
+        AppLog.request_id,
+    ]
+    column_details_list = column_list + [AppLog.fields, AppLog.exception]
+    column_searchable_list = [AppLog.message, AppLog.logger, AppLog.request_id]
+    column_filters = [
+        StaticValuesFilter(
+            AppLog.level,
+            values=[
+                ("WARNING", "Warning"),
+                ("ERROR", "Error"),
+                ("CRITICAL", "Critical"),
+                ("INFO", "Info"),
+            ],
+            title="Level",
+        ),
+    ]
+    column_sortable_list = [AppLog.created_at, AppLog.level, AppLog.logger]
+    column_default_sort = [(AppLog.created_at, True)]
+    can_create = False
+    can_edit = False
+    can_delete = False
+    page_size = 50
+
+    def is_visible(self, request: Request) -> bool:
+        return getattr(request.state, "admin_role", None) == Role.admin
+
+    def is_accessible(self, request: Request) -> bool:
+        return getattr(request.state, "admin_role", None) == Role.admin
+
+
 class VerificationAttemptAdmin(StaffModelView, model=VerificationAttempt):
     """Automated checker results, kept apart from human reports.
 
@@ -1035,6 +1116,7 @@ ALL_VIEWS = (
     ProductAdmin,
     PricePointAdmin,
     JobRunAdmin,
+    AppLogAdmin,
     VerificationAttemptAdmin,
     ClickEventAdmin,
     SaleSeriesAdmin,

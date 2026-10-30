@@ -137,5 +137,5 @@ async def run_ingestion_now(
     if not runnable:
         raise HTTPException(status_code=409, detail="No enabled provider to run")
 
-    start_ingestion_now(runnable)
+    start_ingestion_now(runnable, triggered_by=f"api:{current_user.id}")
     return RunResponse(started=runnable, skipped=skipped)

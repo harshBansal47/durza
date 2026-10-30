@@ -11,6 +11,7 @@ from app.admin import setup_admin
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal, engine
 from app.core.limiter import limiter
+from app.core.log_store import start_log_store, stop_log_store
 from app.core.middleware import RequestContextMiddleware
 from app.core.observability import configure_logging, get_logger
 from app.core.security_headers import SecurityHeadersMiddleware
@@ -18,6 +19,7 @@ from app.core.sentry import init_sentry
 from app.routers.api.v1.account import router as account_router
 from app.routers.api.v1.admin_analytics import router as admin_analytics_router
 from app.routers.api.v1.admin_ingestion import router as admin_ingestion_router
+from app.routers.api.v1.admin_logs import router as admin_logs_router
 from app.routers.api.v1.ads import router as ads_router
 from app.routers.api.v1.analytics import router as analytics_router
 from app.routers.api.v1.auth import router as auth_router
@@ -51,6 +53,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     because a job firing during startup would contend with migrations that are
     still running on another replica.
     """
+    # First, so the startup line and anything that fails after it are stored too.
+    start_log_store()
     logger.info(
         "starting Durza api",
         extra={"environment": settings.environment, "version": app.version},
@@ -63,6 +67,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         # Stopping the scheduler before disposing the engine means an in-flight
         # job is not still holding a session when the pool closes underneath it.
         await stop_scheduler()
+        # After the scheduler (its last lines are worth keeping) and before the
+        # engine goes, because flushing the buffer needs a connection.
+        await stop_log_store()
         await engine.dispose()
         logger.info("Durza api stopped")
 
@@ -111,6 +118,7 @@ for _router in (
     analytics_router,
     admin_analytics_router,
     admin_ingestion_router,
+    admin_logs_router,
     personalization_router,
     sales_router,
     earnings_router,

@@ -26,6 +26,7 @@ from app.models.analytics_session import (
     DeviceType,
     TrafficSource,
 )
+from app.models.app_log import AppLog
 from app.models.attribution import Attribution, AttributionModel
 from app.models.category import Category
 from app.models.click import ClickEvent
@@ -97,6 +98,7 @@ __all__ = [
     "AlertEvent",
     "AnalyticsEvent",
     "AnalyticsSession",
+    "AppLog",
     "AttemptOutcome",
     "Attribution",
     "AttributionModel",

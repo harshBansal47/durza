@@ -1,3 +1,4 @@
+import logging
 import re
 
 """Admitad Publisher API coupon adapter."""
@@ -17,6 +18,8 @@ if TYPE_CHECKING:
     from app.models.ingestion_run import SyncMode
 
 _BASE_URL = "https://api.admitad.com"
+logger = logging.getLogger("durza.ingestion.admitad")
+
 _TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 _USER_AGENT = "DurzaBot/1.0 (+https://durza.in/bot)"
 
@@ -102,11 +105,26 @@ class AdmitadSource:
                     )
                 except (httpx.HTTPError, TypeError) as exc:
                     failure = exc
+                    logger.warning(
+                        "admitad page request failed",
+                        extra={
+                            "page": pages + 1,
+                            "offset": offset,
+                            "error": type(exc).__name__,
+                            "http_status": getattr(
+                                getattr(exc, "response", None), "status_code", None
+                            ),
+                        },
+                    )
                     break
 
                 if not rows:
                     break
                 pages += 1
+                logger.info(
+                    "admitad page fetched",
+                    extra={"page": pages, "rows": len(rows), "offset": offset},
+                )
                 for row in rows:
                     offer = self._map_coupon(row)
                     if offer is not None:
