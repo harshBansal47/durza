@@ -8,16 +8,28 @@ import argparse
 import asyncio
 
 from app.core.database import AsyncSessionLocal
+from app.core.security import hash_password
 from app.models.user import Role
 from app.schemas.user import UserCreate
 from app.services import user_service
 
 
-async def seed(email: str, password: str, full_name: str | None) -> None:
+async def seed(email: str, password: str, full_name: str | None, promote: bool) -> None:
     async with AsyncSessionLocal() as db:
         existing = await user_service.get_user_by_email(db, email)
         if existing is not None:
-            print(f"User {email} already exists (role={existing.role.value}); skipping.")
+            if not promote:
+                print(f"User {email} already exists (role={existing.role.value}); skipping.")
+                print("Re-run with --promote to make this account an admin.")
+                return
+            existing.role = Role.admin
+            if password:
+                existing.hashed_password = hash_password(password)
+            if full_name is not None:
+                existing.full_name = full_name
+            await db.commit()
+            await db.refresh(existing)
+            print(f"Promoted existing user {existing.email} to admin (id={existing.id}).")
             return
         user = await user_service.create_user(
             db,
@@ -32,6 +44,11 @@ if __name__ == "__main__":
     parser.add_argument("--email", required=True)
     parser.add_argument("--password", required=True)
     parser.add_argument("--full-name", default=None)
+    parser.add_argument(
+        "--promote",
+        action="store_true",
+        help="If the account already exists, promote it to admin (and reset its password).",
+    )
     args = parser.parse_args()
 
-    asyncio.run(seed(args.email, args.password, args.full_name))
+    asyncio.run(seed(args.email, args.password, args.full_name, args.promote))
