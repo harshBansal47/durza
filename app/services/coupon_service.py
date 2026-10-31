@@ -24,7 +24,19 @@ VERIFICATION_COOLDOWN = timedelta(hours=24)
 # to rank it: "100% (1 report)" must not beat "94% (48 reports)".
 MIN_REPORTS_TO_RANK = 5
 TRENDING_WINDOW = timedelta(days=7)
-_SEARCH_INTENT_WORDS = {"coupon", "coupons", "code", "codes", "deal", "deals", "offer", "offers", "promo", "promocode", "promocodes"}
+_SEARCH_INTENT_WORDS = {
+    "coupon",
+    "coupons",
+    "code",
+    "codes",
+    "deal",
+    "deals",
+    "offer",
+    "offers",
+    "promo",
+    "promocode",
+    "promocodes",
+}
 
 
 def _search_terms(value: str) -> list[str]:

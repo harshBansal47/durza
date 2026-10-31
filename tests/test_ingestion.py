@@ -43,7 +43,10 @@ async def test_provider_category_alias_resolves_to_existing_site_category(async_
 
         assert resolved is not None
         assert resolved.id == category.id
-        assert await db.scalar(select(Category).where(Category.slug == "computers-electronics")) is None
+        assert (
+            await db.scalar(select(Category).where(Category.slug == "computers-electronics"))
+            is None
+        )
 
 
 async def test_rejected_offer_marks_run_partial_and_preserves_existing_source_link(

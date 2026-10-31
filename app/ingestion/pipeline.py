@@ -143,9 +143,7 @@ async def _resolve_category(
 
         # Keep support for custom category names whose slug is not derived from
         # the name by the application's normal slug generator.
-        result = await db.execute(
-            select(Category).where(Category.name.ilike(candidate.strip()))
-        )
+        result = await db.execute(select(Category).where(Category.name.ilike(candidate.strip())))
         category = result.scalar_one_or_none()
         if category is not None:
             return category

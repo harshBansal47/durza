@@ -135,8 +135,7 @@ async def go_to_coupon(
     # apply it when the coupon router selected a different network's source URL.
     link_template = (
         store.link_template
-        if store
-        and (routed.network is None or routed.network == store.affiliate_network)
+        if store and (routed.network is None or routed.network == store.affiliate_network)
         else None
     )
     click, _ = await click_service.record_click(

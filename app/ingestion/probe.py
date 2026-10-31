@@ -31,7 +31,8 @@ async def probe_destination(url: str) -> tuple[bool, str | None]:
         except ValueError:
             try:
                 records = await asyncio.get_running_loop().getaddrinfo(
-                    parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80),
+                    parsed.hostname,
+                    parsed.port or (443 if parsed.scheme == "https" else 80),
                     type=socket.SOCK_STREAM,
                 )
             except OSError:
