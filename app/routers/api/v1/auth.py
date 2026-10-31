@@ -57,7 +57,7 @@ async def unsubscribe_email(
         )
 
 
-@router.post("/email/request", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/email/request", status_code=status.HTTP_200_OK)
 @limiter.limit("5/minute")
 async def request_email_code(
     request: Request,
@@ -71,12 +71,20 @@ async def request_email_code(
     cannot be used to enumerate customers.
     """
     ip_hash = hash_ip(client_ip(request))
-    await email_otp.request_code(db, email=payload.email, request_ip_hash=ip_hash)
+    sent = await email_otp.request_code(db, email=payload.email, request_ip_hash=ip_hash)
     # Same line whether or not the address has an account, like the response.
     logger.info(
         "sign-in code requested",
         extra={"email_fp": email_fingerprint(payload.email), "ip_hash": ip_hash},
     )
+    if not sent:
+        # Do not tell callers whether this was a cooldown, an address cap, or
+        # a mail-provider failure. A successful response means delivery was
+        # accepted by the configured email sender.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="We could not send a sign-in code right now. Please try again later.",
+        )
     return {"message": _GENERIC_OTP_MESSAGE}
 
 

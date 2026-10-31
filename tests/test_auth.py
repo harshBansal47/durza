@@ -27,10 +27,11 @@ class OtpOutbox:
 
     def __init__(self) -> None:
         self.sent: list[tuple[str, object]] = []
+        self.delivered = True
 
     async def __call__(self, to: str, content: object) -> bool:
         self.sent.append((to, content))
-        return True
+        return self.delivered
 
     @property
     def last_code(self) -> str:
@@ -46,7 +47,7 @@ def otp_outbox(monkeypatch) -> OtpOutbox:
 
 async def _request_code(client: AsyncClient, email: str) -> None:
     response = await client.post("/api/v1/auth/email/request", json={"email": email})
-    assert response.status_code == 202
+    assert response.status_code == 200
 
 
 async def _otp_tokens(client: AsyncClient, outbox: OtpOutbox, email: str) -> dict:
@@ -96,9 +97,21 @@ async def test_request_is_generic_for_known_and_unknown_addresses(
     unknown = await client.post("/api/v1/auth/email/request", json={"email": "nobody@example.com"})
     known = await client.post("/api/v1/auth/email/request", json={"email": "known@example.com"})
 
-    assert unknown.status_code == known.status_code == 202
+    assert unknown.status_code == known.status_code == 200
     assert unknown.json() == known.json()
     assert [to for to, _ in otp_outbox.sent] == ["nobody@example.com", "known@example.com"]
+
+
+@pytest.mark.asyncio
+async def test_request_reports_failure_when_email_is_not_sent(client, otp_outbox):
+    otp_outbox.delivered = False
+
+    response = await client.post(
+        "/api/v1/auth/email/request", json={"email": "delivery-failed@example.com"}
+    )
+
+    assert response.status_code == 503
+    assert "sign-in code" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
