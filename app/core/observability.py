@@ -13,6 +13,7 @@ and a field queryable — the two things you actually want from logs.
 import hashlib
 import json
 import logging
+import re
 import sys
 import uuid
 from contextvars import ContextVar
@@ -68,6 +69,37 @@ def email_fingerprint(email: str) -> str:
     without recording who. It is a hash of a guessable value, so treat it as
     pseudonymous rather than anonymous."""
     return hashlib.sha256(email.strip().lower().encode()).hexdigest()[:12]
+
+
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+
+
+def scrub_emails(text: str) -> str:
+    """Replace every address in `text` with a fingerprint.
+
+    For free text that may contain one without anyone meaning it to: SMTP errors
+    routinely echo the recipient back, and a third-party library's message is not
+    ours to control. The fingerprint keeps "the same address again" visible.
+    """
+    return _EMAIL_RE.sub(lambda m: f"[email:{email_fingerprint(m.group(0))}]", text)
+
+
+# Field names whose values must never be written to a log or a table.
+_SECRET_KEY_PARTS = (
+    "password",
+    "secret",
+    "token",
+    "authorization",
+    "api_key",
+    "apikey",
+    "cookie",
+    "credential",
+)
+
+
+def is_secret_key(key: str) -> bool:
+    lowered = key.lower()
+    return any(part in lowered for part in _SECRET_KEY_PARTS)
 
 
 class JsonFormatter(logging.Formatter):

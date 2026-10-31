@@ -84,8 +84,11 @@ async def health_deep(response: Response, db: AsyncSession = Depends(get_db)) ->
         # stay answerable precisely when things are broken.
         try:
             report = await _job_health(db, job, limit)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             report = {"status": "unknown"}
+            logger.warning(
+                "job health check failed", extra={"job": job, "error": type(exc).__name__}
+            )
 
         # The in-process backoff is reported alongside the durable history, and
         # not merged into it. The history says the last attempt failed; only this

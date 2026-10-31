@@ -28,6 +28,7 @@ export that table. The key now lives in an environment variable named by
 `Source.credential_ref` ("AWIN_API_KEY"), and nothing in the database holds it.
 """
 
+import logging
 from collections.abc import AsyncIterator
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -42,6 +43,8 @@ if TYPE_CHECKING:
     from app.models.ingestion_run import SyncMode
 
 _AWIN_BASE = "https://api.awin.com"
+logger = logging.getLogger("durza.ingestion.awin")
+
 _TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 _USER_AGENT = "DurzaBot/1.0 (+https://durza.in/bot)"
 
@@ -159,10 +162,29 @@ class AwinSource:
                             )
                         except (httpx.HTTPError, TypeError) as exc:
                             failure = exc
+                            logger.warning(
+                                "awin page request failed",
+                                extra={
+                                    "advertiser_id": advertiser_id,
+                                    "page": page,
+                                    "error": type(exc).__name__,
+                                    "http_status": getattr(
+                                        getattr(exc, "response", None), "status_code", None
+                                    ),
+                                },
+                            )
                             break
                         if not results:
                             break
                         pages += 1
+                        logger.info(
+                            "awin page fetched",
+                            extra={
+                                "advertiser_id": advertiser_id,
+                                "page": page,
+                                "rows": len(results),
+                            },
+                        )
                         for item in results:
                             mapped = resource["map"](item)
                             if mapped is not None:

@@ -23,7 +23,7 @@ from email.utils import formataddr, formatdate, make_msgid
 from typing import Any
 
 from app.core.config import get_settings
-from app.core.observability import get_logger
+from app.core.observability import email_fingerprint, get_logger, scrub_emails
 
 logger = get_logger("durza.email")
 
@@ -175,7 +175,10 @@ async def send_otp_email(to: str, content: OtpEmailContent) -> bool:
     """Deliver a sign-in code. Never logs the code itself."""
     settings = get_settings()
     if not settings.email_configured:
-        logger.info("sign-in email queued (no SMTP_HOST configured)", extra={"to": to})
+        logger.info(
+            "sign-in email queued (no SMTP_HOST configured)",
+            extra={"email_fp": email_fingerprint(to)},
+        )
         return True
 
     try:
@@ -183,10 +186,13 @@ async def send_otp_email(to: str, content: OtpEmailContent) -> bool:
 
         await aiosmtplib.send(build_otp_message(to, content), **_send_kwargs())
     except Exception as exc:  # noqa: BLE001 — any SMTP failure is a send failure
-        logger.warning("sign-in email send failed", extra={"to": to, "error": str(exc)})
+        logger.warning(
+            "sign-in email send failed",
+            extra={"email_fp": email_fingerprint(to), "error": scrub_emails(str(exc))},
+        )
         return False
 
-    logger.info("sign-in email sent", extra={"to": to})
+    logger.info("sign-in email sent", extra={"email_fp": email_fingerprint(to)})
     return True
 
 
@@ -359,7 +365,7 @@ async def send_email(to: str, alert: AlertContent) -> bool:
     if not settings.email_configured:
         logger.info(
             "email queued (no SMTP_HOST configured)",
-            extra={"to": to, "subject": alert.subject},
+            extra={"email_fp": email_fingerprint(to), "subject": alert.subject},
         )
         return True
 
@@ -372,9 +378,13 @@ async def send_email(to: str, alert: AlertContent) -> bool:
     except Exception as exc:  # noqa: BLE001 — any SMTP failure is a send failure
         logger.warning(
             "email send failed",
-            extra={"to": to, "subject": alert.subject, "error": str(exc)},
+            extra={
+                "email_fp": email_fingerprint(to),
+                "subject": alert.subject,
+                "error": scrub_emails(str(exc)),
+            },
         )
         return False
 
-    logger.info("email sent", extra={"to": to, "subject": alert.subject})
+    logger.info("email sent", extra={"email_fp": email_fingerprint(to), "subject": alert.subject})
     return True

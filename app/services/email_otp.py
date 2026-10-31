@@ -23,10 +23,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.email_address import digests_equal, normalize_email, otp_digest
+from app.core.observability import email_fingerprint, get_logger
 from app.core.timezones import ensure_utc
 from app.models.user import EmailOtpChallenge, Role, User
 from app.services import user_service
 from app.services.email import OtpEmailContent, send_otp_email
+
+logger = get_logger("durza.auth")
 
 
 class InvalidOtpError(Exception):
@@ -72,6 +75,11 @@ async def request_code(
         )
     )
     if (recent or 0) >= settings.otp_requests_per_email_per_hour:
+        # An address asking for this many codes an hour is worth a stored row.
+        logger.warning(
+            "sign-in code not sent: address hourly cap reached",
+            extra={"email_fp": email_fingerprint(normalized), "sent_last_hour": recent},
+        )
         return False
 
     latest = await db.scalar(
@@ -83,6 +91,11 @@ async def request_code(
     if latest is not None:
         elapsed = now - ensure_utc(latest)
         if elapsed < timedelta(seconds=settings.otp_resend_cooldown_seconds):
+            # Usually a double click, so INFO: stored, but not an alarm.
+            logger.info(
+                "sign-in code not sent: resend cooldown",
+                extra={"email_fp": email_fingerprint(normalized)},
+            )
             return False
 
     # One live code per address. This is both a user-experience rule (the most
@@ -121,6 +134,10 @@ async def request_code(
         OtpEmailContent(code=code, expires_minutes=settings.otp_ttl_minutes),
     )
     if not sent:
+        logger.error(
+            "sign-in code not sent: delivery failed",
+            extra={"email_fp": email_fingerprint(normalized)},
+        )
         # A code nobody received must not stay usable. Marking it consumed is
         # quieter than deleting it and keeps the attempt history for logs.
         await db.execute(

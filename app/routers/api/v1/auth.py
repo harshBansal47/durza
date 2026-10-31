@@ -72,12 +72,9 @@ async def request_email_code(
     """
     ip_hash = hash_ip(client_ip(request))
     sent = await email_otp.request_code(db, email=payload.email, request_ip_hash=ip_hash)
-    # Same line whether or not the address has an account, like the response.
-    logger.info(
-        "sign-in code requested",
-        extra={"email_fp": email_fingerprint(payload.email), "ip_hash": ip_hash},
-    )
     if not sent:
+        # The reason (cooldown, address cap, delivery failure) is logged where it is
+        # known, in `email_otp.request_code`; the caller is deliberately not told.
         # Do not tell callers whether this was a cooldown, an address cap, or
         # a mail-provider failure. A successful response means delivery was
         # accepted by the configured email sender.
@@ -85,6 +82,11 @@ async def request_email_code(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="We could not send a sign-in code right now. Please try again later.",
         )
+    # Same line whether or not the address has an account, like the response.
+    logger.info(
+        "sign-in code requested",
+        extra={"email_fp": email_fingerprint(payload.email), "ip_hash": ip_hash},
+    )
     return {"message": _GENERIC_OTP_MESSAGE}
 
 

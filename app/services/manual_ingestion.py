@@ -17,17 +17,24 @@ logger = logging.getLogger(__name__)
 _running: set[asyncio.Task[None]] = set()
 
 
-async def _run(slugs: list[str]) -> None:
+async def _run(slugs: list[str], triggered_by: str) -> None:
     try:
-        detail = await run_job_now("refresh_prices", force=True, source_slugs=slugs)
+        detail = await run_job_now(
+            "refresh_prices", force=True, source_slugs=slugs, triggered_by=triggered_by
+        )
     except Exception:
         logger.exception("manual ingestion failed", extra={"sources": slugs})
     else:
         logger.info("manual ingestion finished", extra={"sources": slugs, "detail": detail})
 
 
-def start_ingestion_now(slugs: list[str]) -> None:
-    """Fire-and-forget: returns at once, the outcome lands in Ingestion Runs."""
-    task = asyncio.create_task(_run(slugs))
+def start_ingestion_now(slugs: list[str], *, triggered_by: str) -> None:
+    """Fire-and-forget: returns at once, the outcome lands in Ingestion Runs.
+
+    `triggered_by` (e.g. "api:<user id>") is logged and stamped on each run row, so
+    the dashboard's Trigger column says who asked instead of "scheduler".
+    """
+    logger.info("manual ingestion started", extra={"sources": slugs, "triggered_by": triggered_by})
+    task = asyncio.create_task(_run(slugs, triggered_by))
     _running.add(task)
     task.add_done_callback(_running.discard)

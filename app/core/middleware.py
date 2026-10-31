@@ -21,7 +21,12 @@ from starlette.responses import Response
 
 from app.core import metrics
 from app.core.config import get_settings
-from app.core.observability import bind_request_id, new_request_id, request_id_var
+from app.core.observability import (
+    bind_request_id,
+    is_secret_key,
+    new_request_id,
+    request_id_var,
+)
 
 REQUEST_ID_HEADER = "X-Request-Id"
 
@@ -32,6 +37,14 @@ access_logger = logging.getLogger("durza.access")
 
 # Probes and scrapes fire constantly and say nothing worth keeping.
 _QUIET_ROUTES = frozenset({"/health", "/metrics"})
+
+# Reads are not an audit concern and their ids are in the route anyway. For anything
+# that changes state, the concrete ids are the point: the template says
+# `PATCH /coupons/{coupon_id}`, only the value says which one.
+_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+# Worth a WARNING (and so a stored row) whatever the latency: someone was refused.
+_REFUSED_STATUSES = frozenset({401, 403, 429})
 
 
 # A raw path is only ever used when no route matched at all. Using the concrete
@@ -60,7 +73,7 @@ def _log_request(request: Request, route: str, status_code: int, elapsed: float)
         return
     if status_code >= 500:
         level = logging.ERROR
-    elif elapsed >= get_settings().slow_request_seconds:
+    elif status_code in _REFUSED_STATUSES or elapsed >= get_settings().slow_request_seconds:
         level = logging.WARNING
     else:
         level = logging.INFO
@@ -70,6 +83,16 @@ def _log_request(request: Request, route: str, status_code: int, elapsed: float)
         "http_status": status_code,
         "duration_ms": round(elapsed * 1000),
     }
+    user_id = getattr(request.state, "user_id", None)
+    if user_id:
+        fields["user_id"] = user_id
+        fields["user_role"] = getattr(request.state, "user_role", None)
+    if request.method not in _READ_METHODS and request.path_params:
+        fields["path_params"] = {
+            key: str(value)[:100]
+            for key, value in request.path_params.items()
+            if not is_secret_key(key)
+        }
     if route == _UNMATCHED:
         # No template to group by, so keep a clipped path: 404 probes are
         # exactly what someone reading these logs wants to see.

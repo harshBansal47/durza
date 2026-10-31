@@ -148,7 +148,11 @@ class _Target:
 
 
 async def refresh_coupon_prices(
-    db: AsyncSession, *, force: bool = False, source_slugs: list[str] | None = None
+    db: AsyncSession,
+    *,
+    force: bool = False,
+    source_slugs: list[str] | None = None,
+    triggered_by: str = "scheduler",
 ) -> int:
     """Re-ingest every source that is due. Returns the number of successful runs.
 
@@ -217,22 +221,22 @@ async def refresh_coupon_prices(
     results: list[IngestionRun | BaseException | None]
     if _supports_concurrent_sessions(db):
         results = await asyncio.gather(
-            *(_run_target(target) for target in targets),
+            *(_run_target(target, triggered_by) for target in targets),
             return_exceptions=True,
         )
     else:
         results = []
         for target in targets:
             try:
-                results.append(await _run_target(target))
+                results.append(await _run_target(target, triggered_by))
             except Exception as exc:  # noqa: BLE001 - reported by _summarise
                 results.append(exc)
 
     return _summarise(targets, results)
 
 
-async def _run_target(target: _Target) -> IngestionRun | None:
-    return await refresh_source(target.source_id, triggered_by="scheduler")
+async def _run_target(target: _Target, triggered_by: str) -> IngestionRun | None:
+    return await refresh_source(target.source_id, triggered_by=triggered_by)
 
 
 def _summarise(targets: list[_Target], results: list[IngestionRun | None | BaseException]) -> int:
@@ -266,7 +270,19 @@ def _summarise(targets: list[_Target], results: list[IngestionRun | None | BaseE
             )
             continue
         succeeded += result.status is RunStatus.success
-        logger.info("source ingested", extra={**_counters(result), "source": target.slug})
+        if result.status is RunStatus.success:
+            logger.info("source ingested", extra={**_counters(result), "source": target.slug})
+            continue
+        # A failed or partial run used to log as "source ingested" with no reason;
+        # the reason lived only on the run row. Say it here, where people look.
+        logger.warning(
+            "source ingestion did not succeed",
+            extra={
+                **_counters(result),
+                "source": target.slug,
+                "error": (result.error or "")[:300],
+            },
+        )
     return succeeded
 
 

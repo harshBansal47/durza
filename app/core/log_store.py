@@ -7,17 +7,24 @@ destination that can be filtered and counted from the admin, and that the
 A log handler is the one component that must not make the thing it observes
 worse, which sets the design:
 
-* `emit` does no I/O. It builds a row and appends it to an in-memory deque, which
-  is safe from any thread. One background task drains the deque in batches, so a
-  slow database costs latency in the log and never in a request.
+* `emit` does no I/O. It builds a row and appends it to an in-memory deque. One
+  background task drains the deque in batches, so a slow database costs latency
+  in the log and never in a request.
 * The buffer is bounded. If the database is down long enough the oldest rows are
   discarded, not the process's memory.
 * A failed write drops that batch and carries on. The handler never raises into
   application code and never retries forever.
+* A burst of identical lines is throttled. A bot hammering one endpoint, or a
+  provider failing in a loop, would otherwise write thousands of identical rows a
+  minute. After `_BURST_LIMIT` of the same line in a window the rest are counted,
+  and one summary row says how many were dropped.
 * Not everything is stored. A line per page view is what metrics are for, so the
-  access log is stored only at WARNING and above (slow or failing requests). The
-  app's own loggers are stored from `LOG_STORE_MIN_LEVEL`; third-party loggers
-  only from WARNING.
+  access log is stored only at WARNING and above (slow, refused or failing
+  requests). The app's own loggers are stored from `LOG_STORE_MIN_LEVEL`;
+  third-party loggers only from WARNING.
+* Nothing personal goes in. Email addresses are replaced with a fingerprint in the
+  message, the fields and the traceback, whoever logged them, and fields named
+  like secrets are redacted outright.
 """
 
 import asyncio
@@ -33,7 +40,7 @@ from sqlalchemy import insert
 
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
-from app.core.observability import extra_fields, request_id_var
+from app.core.observability import extra_fields, is_secret_key, request_id_var, scrub_emails
 from app.models.app_log import AppLog
 
 # This module's own logger is never stored: a failing write that logged itself
@@ -47,26 +54,26 @@ _MAX_EXCEPTION = 6_000
 _MAX_FIELD_VALUE = 500
 _MAX_FIELDS_JSON = 4_000
 
-# Field names whose values must never reach a table, whatever a caller passes.
-_SECRET_KEY_PARTS = (
-    "password",
-    "secret",
-    "token",
-    "authorization",
-    "api_key",
-    "apikey",
-    "cookie",
-    "credential",
-)
+# At most this many rows per distinct line per window; the rest are counted.
+_BURST_LIMIT = 30
+_BURST_WINDOW_SECONDS = 60.0
+# Distinct lines remembered at once. Past this the table is cleared rather than
+# grown, which only costs the pending summaries.
+_MAX_TRACKED_LINES = 2_000
 
 
 def _is_own(name: str) -> bool:
     return name == "durza" or name.startswith(("durza.", "app."))
 
 
-def _is_secret_key(key: str) -> bool:
-    lowered = key.lower()
-    return any(part in lowered for part in _SECRET_KEY_PARTS)
+def _scrub(value: Any) -> Any:
+    if isinstance(value, str):
+        return scrub_emails(value)
+    if isinstance(value, list):
+        return [_scrub(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _scrub(item) for key, item in value.items()}
+    return value
 
 
 def _jsonable(value: Any) -> Any:
@@ -74,6 +81,7 @@ def _jsonable(value: Any) -> Any:
         cleaned = json.loads(json.dumps(value, default=str))
     except (TypeError, ValueError):
         cleaned = str(value)
+    cleaned = _scrub(cleaned)
     if isinstance(cleaned, str):
         return cleaned[:_MAX_FIELD_VALUE]
     return cleaned
@@ -81,7 +89,7 @@ def _jsonable(value: Any) -> Any:
 
 def _safe_fields(record: logging.LogRecord) -> dict[str, Any] | None:
     fields = {
-        key: "[redacted]" if _is_secret_key(key) else _jsonable(value)
+        key: "[redacted]" if is_secret_key(key) else _jsonable(value)
         for key, value in extra_fields(record).items()
     }
     if not fields:
@@ -95,16 +103,29 @@ def _row(record: logging.LogRecord) -> dict[str, Any]:
     request_id = request_id_var.get()
     exception = None
     if record.exc_info:
-        exception = logging.Formatter().formatException(record.exc_info)[:_MAX_EXCEPTION]
+        trace = logging.Formatter().formatException(record.exc_info)
+        exception = scrub_emails(trace)[:_MAX_EXCEPTION]
     return {
         "created_at": datetime.fromtimestamp(record.created, UTC),
         "level": record.levelname[:10],
         "logger": record.name[:100],
-        "message": record.getMessage()[:_MAX_MESSAGE],
+        "message": scrub_emails(record.getMessage())[:_MAX_MESSAGE],
         # Inbound X-Request-Id is caller-controlled, so it is clipped to the column.
         "request_id": request_id[:64] if request_id else None,
         "fields": _safe_fields(record),
         "exception": exception,
+    }
+
+
+def _summary_row(name: str, message: str, suppressed: int) -> dict[str, Any]:
+    return {
+        "created_at": datetime.now(UTC),
+        "level": "WARNING",
+        "logger": logger.name,
+        "message": f"suppressed {suppressed} repeats of: {message}"[:_MAX_MESSAGE],
+        "request_id": None,
+        "fields": {"source_logger": name, "suppressed": suppressed},
+        "exception": None,
     }
 
 
@@ -114,6 +135,8 @@ class DbLogHandler(logging.Handler):
         self._min_level = min_level
         self.buffer: deque[dict[str, Any]] = deque(maxlen=max_buffer)
         self.dropped = 0
+        # line -> [window start, rows seen, rows suppressed]
+        self._bursts: dict[tuple[str, int, str], list[float]] = {}
 
     def _wanted(self, record: logging.LogRecord) -> bool:
         name = record.name
@@ -125,13 +148,58 @@ class DbLogHandler(logging.Handler):
             return record.levelno >= self._min_level
         return record.levelno >= logging.WARNING
 
+    def _throttled(self, record: logging.LogRecord, row: dict[str, Any]) -> bool:
+        """True if this line has already been written enough times this window.
+
+        Called with the handler lock held (`Handler.handle` takes it), so the
+        bookkeeping needs no lock of its own.
+        """
+        key = (record.name, record.levelno, row["message"][:200])
+        now = time.monotonic()
+        entry = self._bursts.get(key)
+        if entry is None or now - entry[0] >= _BURST_WINDOW_SECONDS:
+            if entry is not None and entry[2]:
+                self._append(_summary_row(key[0], key[2], int(entry[2])))
+            if len(self._bursts) >= _MAX_TRACKED_LINES:
+                self._bursts.clear()
+            self._bursts[key] = [now, 1.0, 0.0]
+            return False
+        entry[1] += 1
+        if entry[1] <= _BURST_LIMIT:
+            return False
+        entry[2] += 1
+        return True
+
+    def collect_summaries(self) -> None:
+        """Report what finished windows swallowed, even if the line never came back.
+
+        Without this a flood that simply stops would leave its suppressed count
+        unreported, which is the one case where the number matters most.
+        """
+        now = time.monotonic()
+        self.acquire()
+        try:
+            for key, entry in list(self._bursts.items()):
+                if now - entry[0] >= _BURST_WINDOW_SECONDS:
+                    if entry[2]:
+                        self._append(_summary_row(key[0], key[2], int(entry[2])))
+                    del self._bursts[key]
+        finally:
+            self.release()
+
+    def _append(self, row: dict[str, Any]) -> None:
+        if len(self.buffer) == self.buffer.maxlen:
+            self.dropped += 1
+        self.buffer.append(row)
+
     def emit(self, record: logging.LogRecord) -> None:
         try:
             if not self._wanted(record):
                 return
-            if len(self.buffer) == self.buffer.maxlen:
-                self.dropped += 1
-            self.buffer.append(_row(record))
+            row = _row(record)
+            if self._throttled(record, row):
+                return
+            self._append(row)
         except Exception:  # noqa: BLE001 - a log handler must never raise into the app
             self.handleError(record)
 
@@ -147,6 +215,7 @@ class LogStore:
 
     async def flush(self) -> int:
         """Write everything buffered. Returns the number of rows written."""
+        self.handler.collect_summaries()
         written = 0
         while self.handler.buffer:
             batch: list[dict[str, Any]] = []

@@ -126,7 +126,7 @@ def send_push(raw_subscription: str | None, payload: PushPayload) -> bool:
             raise PushSubscriptionGone from exc
         logger.warning(
             "push send failed",
-            extra={"error": str(exc), "status": status},
+            extra={"error": type(exc).__name__, "status": status},
         )
         return False
 

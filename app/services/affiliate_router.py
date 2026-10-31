@@ -36,6 +36,7 @@ publish, and the `/go` endpoint returns a redirect with no body at all.
 """
 
 import enum
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -44,6 +45,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.coupon import Coupon
 from app.models.coupon_source import CouponSource, CouponSourceStatus
 from app.models.source import Source
+
+logger = logging.getLogger("durza.routing")
 
 #: Source statuses that still mean "this provider currently asserts the coupon
 #: exists", so its link is a legitimate place to send a shopper.
@@ -146,6 +149,26 @@ async def eligible_sources(db: AsyncSession, coupon: Coupon) -> list[tuple[Coupo
 
 
 async def route_coupon(db: AsyncSession, coupon: Coupon) -> RoutedDestination:
+    """Pick the URL for one click on one coupon. The rules are on `_route`.
+
+    Logged at DEBUG: one line per click is far too many for INFO, but when a
+    coupon sends people somewhere unexpected this is the line that says why.
+    """
+    routed = await _route(db, coupon)
+    logger.debug(
+        "click routed",
+        extra={
+            "coupon_id": str(coupon.id),
+            "decision": routed.decision.value,
+            "source": routed.source_slug,
+            "candidates": routed.candidates,
+            "reason": routed.reason,
+        },
+    )
+    return routed
+
+
+async def _route(db: AsyncSession, coupon: Coupon) -> RoutedDestination:
     """Pick the URL for one click on one coupon.
 
     Always returns something: the denormalized `Coupon.destination_url` is the

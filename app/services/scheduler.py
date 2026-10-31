@@ -70,12 +70,18 @@ async def _expire_job(db: AsyncSession) -> str:
 
 
 async def _refresh_job(
-    db: AsyncSession, *, force: bool = False, source_slugs: list[str] | None = None
+    db: AsyncSession,
+    *,
+    force: bool = False,
+    source_slugs: list[str] | None = None,
+    triggered_by: str = "scheduler",
 ) -> str:
     # `force` comes from the manual "run it again" path. The sweep normally syncs
     # only sources whose own interval has elapsed, which after a provider
     # incident is exactly the wrong set to wait on.
-    refreshed = await refresh_coupon_prices(db, force=force, source_slugs=source_slugs)
+    refreshed = await refresh_coupon_prices(
+        db, force=force, source_slugs=source_slugs, triggered_by=triggered_by
+    )
     return f"refreshed {refreshed} source(s)"
 
 

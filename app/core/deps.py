@@ -2,7 +2,7 @@ import uuid
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,7 @@ _credentials_exception = HTTPException(
 
 
 async def get_current_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
@@ -50,6 +51,10 @@ async def get_current_user(
     # are treated as version 0, so deploying it does not sign everyone out.
     if user.token_version != token_version:
         raise _credentials_exception
+    # For the access log: it runs outside the dependency graph, so this is how
+    # a request line learns who made it. Set only once the user is fully valid.
+    request.state.user_id = str(user.id)
+    request.state.user_role = user.role.value
     return user
 
 
