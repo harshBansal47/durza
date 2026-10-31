@@ -125,31 +125,34 @@ async def go_to_coupon(
     if coupon is None or not coupon.is_active:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Coupon not found")
     store = await click_service.get_store(db, coupon.store_id)
+    routed = await affiliate_router.route_coupon(db, coupon)
+    if not routed.url:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Coupon has no destination"
+        )
+    network = routed.network or (store.affiliate_network if store else None)
+    # A store-level template belongs to the store's configured program. Do not
+    # apply it when the coupon router selected a different network's source URL.
+    link_template = (
+        store.link_template
+        if store
+        and (routed.network is None or routed.network == store.affiliate_network)
+        else None
+    )
     click, _ = await click_service.record_click(
         db,
         store=store,
         coupon=coupon,
         src=src,
         content_ref=content_ref,
+        network=network,
         visitor_hash=hash_ip(client_ip(request)),
         user_agent=request.headers.get("user-agent"),
     )
-    routed = await affiliate_router.route_coupon(db, coupon)
-    if not routed.url:
-        # Redirecting to an empty Location resolves against the current path and
-        # sends the shopper back into this endpoint, forever. A coupon with
-        # nowhere to send them is a broken record, not a redirect.
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Coupon has no destination"
-        )
-    # The clickref parameter name comes from the store, not from the winning
-    # source: which sub-ID field a network wants is a per-programme detail an
-    # operator configures, and guessing it from a provider's name is how a
-    # clickref ends up silently dropped.
     target = affiliate.build_outbound_url(
         routed.url,
-        network=store.affiliate_network if store else None,
-        link_template=store.link_template if store else None,
+        network=network,
+        link_template=link_template,
         clickref=click.clickref,
     )
     return RedirectResponse(target, status_code=status.HTTP_302_FOUND)

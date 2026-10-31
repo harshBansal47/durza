@@ -13,6 +13,7 @@ and a field queryable — the two things you actually want from logs.
 import hashlib
 import json
 import logging
+import os
 import re
 import sys
 import uuid
@@ -127,11 +128,29 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str, ensure_ascii=False)
 
 
+_LEVEL_COLORS = {
+    logging.DEBUG: "\x1b[36m",  # cyan
+    logging.INFO: "\x1b[32m",  # green
+    logging.WARNING: "\x1b[33m",  # yellow
+    logging.ERROR: "\x1b[31m",  # red
+    logging.CRITICAL: "\x1b[1;31m",  # bold red
+}
+_COLOR_RESET = "\x1b[0m"
+
+
 class TextFormatter(logging.Formatter):
+    def __init__(self, fmt: str | None = None, datefmt: str | None = None, *, color: bool = False):
+        super().__init__(fmt, datefmt)
+        self.color = color
+
     def format(self, record: logging.LogRecord) -> str:
         request_id = request_id_var.get()
         prefix = f"[{request_id}] " if request_id else ""
         base = super().format(record)
+        if self.color:
+            color = _LEVEL_COLORS.get(record.levelno)
+            if color:
+                base = f"{color}{base}{_COLOR_RESET}"
         fields = _extra_fields(record)
         if fields:
             rendered = " ".join(f"{k}={v}" for k, v in fields.items())
@@ -146,7 +165,11 @@ def configure_logging(level: str = "INFO", fmt: str = "text") -> None:
         handler.setFormatter(JsonFormatter())
     else:
         handler.setFormatter(
-            TextFormatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s", "%H:%M:%S")
+            TextFormatter(
+                "%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+                "%H:%M:%S",
+                color=sys.stdout.isatty() and "NO_COLOR" not in os.environ,
+            )
         )
 
     root = logging.getLogger()

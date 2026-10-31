@@ -13,6 +13,8 @@ from sqlalchemy import func, select
 
 from app.models.click import ClickEvent
 from app.models.coupon import Coupon
+from app.models.coupon_source import CouponSource
+from app.models.source import Source, SourceKind
 from app.services import affiliate, click_service
 
 COUPONS = "/api/v1/coupons"
@@ -169,6 +171,44 @@ async def test_go_records_click_and_sends_reference_to_awin(
     assert parse_qs(urlparse(resp.headers["location"]).query)["clickref"] == [click.clickref]
 
     assert (await client.get(f"{COUPONS}/{coupon['id']}")).json()["clicks_count"] == 1
+
+
+async def test_go_uses_the_network_of_the_selected_coupon_source(
+    client, admin_headers, async_session_maker
+):
+    # The merchant is configured for Awin, but this coupon's winning source
+    # supplies an Admitad tracking URL. Click metadata and sub-ID must match the
+    # URL's network so Admitad can report the later sale against this clickref.
+    store = await _make_store(client, admin_headers, affiliate_network="awin")
+    coupon, _ = await _make_coupon(client, admin_headers, store["id"])
+    async with async_session_maker() as db:
+        source = Source(
+            name="Admitad route",
+            slug="admitad-route",
+            kind=SourceKind.admitad,
+            config={},
+        )
+        db.add(source)
+        await db.flush()
+        db.add(
+            CouponSource(
+                coupon_id=coupon["id"],
+                source_id=source.id,
+                affiliate_url="https://admitad.example/click?campaign=42",
+            )
+        )
+        await db.commit()
+
+    response = await client.get(
+        f"{COUPONS}/{coupon['id']}/go", headers=HUMAN, follow_redirects=False
+    )
+
+    assert response.status_code == 302
+    query = parse_qs(urlparse(response.headers["location"]).query)
+    (click,) = await _clicks(async_session_maker)
+    assert click.network == "admitad"
+    assert query["subid"] == [click.clickref]
+    assert "clickref" not in query
 
 
 async def test_go_without_affiliate_network_redirects_unchanged(client, admin_headers):

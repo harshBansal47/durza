@@ -21,15 +21,21 @@ The API client requests its OAuth access token using the client id and secret; d
 not put either value, or a derived Basic authorization header, in a database row.
 The derived `ADMITAD_BASE_64_HEADER` is not needed.
 
-## Database rows are created by the deploy
+## Create the database rows manually
 
-Admitad is declared in `app/ingestion/provider_config.py`. Every deploy runs
-`python -m app.tools.sync_sources`, which creates (or refreshes) the `Source` and
-the `AffiliateProvider` (slug `admitad`) from that file and the environment. There
-is nothing to seed by hand. To preview or re-run it manually:
+Admitad is declared in `app/ingestion/provider_config.py`. Deploys do not sync
+provider configuration. After adding or changing the provider spec, preview the
+database changes with:
 
 ```bash
 podman-compose run --rm --no-deps -T app python -m app.tools.sync_sources --dry-run
+```
+
+When the preview is correct, run the same command without `--dry-run` to create
+or update its `Source` and `AffiliateProvider` rows:
+
+```bash
+podman-compose run --rm --no-deps -T app python -m app.tools.sync_sources
 ```
 
 To switch the provider off, set `enabled=False` in `provider_config.py` and deploy.

@@ -27,12 +27,12 @@ their coupon came from. If real per-network performance data ever exists, the
 honest place for it is a new, lower-precedence term here that only breaks ties
 *between equal-priority sources*, never outranks an operator's stated trust.
 
-## Provider identity never leaves this module
+## Provider identity stays in the routing layer
 
-The result deliberately exposes `source_slug` for logging and the admin health
-view, and nothing else. Callers must not serialise it: a shopper's browser can
-see which network sent them, which is a commercial detail we have no reason to
-publish, and the `/go` endpoint returns a redirect with no body at all.
+The result exposes `source_slug` for logs and the selected network internally
+so the redirect can use the matching click-reference parameter. Callers must
+not serialise either: a shopper's browser can see which network sent them,
+which is a commercial detail we have no reason to publish.
 """
 
 import enum
@@ -45,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.coupon import Coupon
 from app.models.coupon_source import CouponSource, CouponSourceStatus
 from app.models.source import Source
+from app.services.affiliate import network_for_source_kind
 
 logger = logging.getLogger("durza.routing")
 
@@ -79,15 +80,15 @@ class RoutedDestination:
     """Where to send one click, and why.
 
     `url` is a bare affiliate URL. Attaching the click reference is the caller's
-    job (`app.services.affiliate.build_outbound_url`), because the sub-ID
-    parameter name is a per-programme detail an operator configures on the
-    store — not something this module should infer from a provider's name.
+    job (`app.services.affiliate.build_outbound_url`), using the selected
+    source's network when it is known and the store configuration otherwise.
     """
 
     url: str
     decision: RoutingDecision
     source_slug: str | None = None
     source_status: CouponSourceStatus | None = None
+    network: str | None = None
     reason: str = ""
     #: How many source rows were eligible. Non-zero with a `fallback` decision
     #: is impossible by construction; it is here so a log line can distinguish
@@ -206,6 +207,7 @@ async def _route(db: AsyncSession, coupon: Coupon) -> RoutedDestination:
         decision=RoutingDecision.source,
         source_slug=source.slug,
         source_status=row.status,
+        network=network_for_source_kind(source.kind.value),
         reason=reason,
         candidates=len(candidates),
     )

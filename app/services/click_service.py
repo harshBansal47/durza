@@ -71,6 +71,7 @@ async def record_click(
     ad: Ad | None = None,
     src: str | None,
     content_ref: str | None = None,
+    network: str | None = None,
     visitor_hash: str,
     user_agent: str | None,
 ) -> tuple[ClickEvent, bool]:
@@ -80,6 +81,9 @@ async def record_click(
     click (bots included, as before); `ClickEvent.is_bot` is what analytics use
     to separate them.
     """
+    event_network = affiliate.normalize_network(
+        network if network is not None else (store.affiliate_network if store else None)
+    )
     cutoff = datetime.now(UTC) - DEDUPE_WINDOW
     stmt = select(ClickEvent).where(
         ClickEvent.visitor_hash == visitor_hash,
@@ -87,6 +91,7 @@ async def record_click(
         ClickEvent.coupon_id == (coupon.id if coupon else None),
         ClickEvent.product_id == (product.id if product else None),
         ClickEvent.ad_id == (ad.id if ad else None),
+        ClickEvent.network == event_network,
     )
     existing = (await db.execute(stmt.limit(1))).scalar_one_or_none()
     if existing is not None:
@@ -101,7 +106,7 @@ async def record_click(
         store_id=store.id if store else None,
         src=normalize_src(src),
         content_ref=normalize_content_ref(content_ref),
-        network=affiliate.normalize_network(store.affiliate_network if store else None),
+        network=event_network,
         visitor_hash=visitor_hash,
         is_bot=is_bot,
         fraud_score=1.0 if is_bot else 0.0,

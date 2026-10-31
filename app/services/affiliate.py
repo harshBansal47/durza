@@ -38,6 +38,15 @@ CLICKREF_PARAM: dict[str, str] = {
 }
 
 
+def network_for_source_kind(kind: str | None) -> str | None:
+    """Return the known tracking network represented by a coupon source kind.
+
+    Generic feeds do not identify the affiliate network reliably, so callers
+    can fall back to the store's configured network for those sources.
+    """
+    return kind if kind in CLICKREF_PARAM else None
+
+
 def normalize_network(value: str | None) -> str:
     """Unknown or empty values fall back to `none` rather than failing a redirect."""
     if value and value in {n.value for n in AffiliateNetwork}:

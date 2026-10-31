@@ -24,6 +24,14 @@ VERIFICATION_COOLDOWN = timedelta(hours=24)
 # to rank it: "100% (1 report)" must not beat "94% (48 reports)".
 MIN_REPORTS_TO_RANK = 5
 TRENDING_WINDOW = timedelta(days=7)
+_SEARCH_INTENT_WORDS = {"coupon", "coupons", "code", "codes", "deal", "deals", "offer", "offers", "promo", "promocode", "promocodes"}
+
+
+def _search_terms(value: str) -> list[str]:
+    """Drop generic shopping intent words while retaining searchable terms."""
+    terms = [term.strip() for term in value.split() if term.strip()]
+    specific = [term for term in terms if term.casefold() not in _SEARCH_INTENT_WORDS]
+    return specific or ([] if terms else [])
 
 
 class CouponSort(str, enum.Enum):
@@ -155,7 +163,21 @@ async def list_coupons(
     if category_id is not None:
         stmt = stmt.where(Coupon.category_id == category_id)
     if search:
-        stmt = stmt.where(Coupon.title.ilike(f"%{search}%"))
+        # Search what a shopper actually knows: the merchant, promo code,
+        # offer text, or category. Treat words like "promo code" and "offer"
+        # as intent so queries such as "Acer promo code" still find Acer's
+        # coupons even though those generic words are not in the provider title.
+        for term in _search_terms(search)[:8]:
+            pattern = f"%{term}%"
+            stmt = stmt.where(
+                or_(
+                    Coupon.title.ilike(pattern),
+                    Coupon.code.ilike(pattern),
+                    Coupon.description.ilike(pattern),
+                    Coupon.store.has(Store.name.ilike(pattern)),
+                    Coupon.category.has(Category.name.ilike(pattern)),
+                )
+            )
     if discount_type is not None:
         stmt = stmt.where(Coupon.discount_type == discount_type)
     if has_code is not None:

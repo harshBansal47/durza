@@ -45,6 +45,7 @@ async def test_admitad_source_authenticates_and_maps_coupon():
                         "discount": "20%",
                         "goto_link": "https://tracked.example/click",
                         "date_end": "2026-12-31",
+                        "categories": [{"id": 8, "name": "Computers & Electronics"}],
                         "campaign": {
                             "name": "Example Shop",
                             "site_url": "https://shop.example",
@@ -70,6 +71,7 @@ async def test_admitad_source_authenticates_and_maps_coupon():
     assert offer.destination_url == "https://tracked.example/click"
     assert offer.store_name == "Example Shop"
     assert offer.external_id == "41"
+    assert offer.category_name == "Computers & Electronics"
 
 
 async def test_admitad_source_uses_offset_pagination():

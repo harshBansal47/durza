@@ -76,6 +76,7 @@ from app.ingestion.base import PartialFetchError
 from app.ingestion.normalize import NormalizedOffer, NormalizeError
 from app.ingestion.registry import get_adapter
 from app.ingestion.source_health import MAX_ERROR, record_outcome
+from app.ingestion.taxonomy import canonical_category_slug
 from app.models.category import Category
 from app.models.coupon import Coupon, CouponStatus
 from app.models.coupon_source import CouponSource, CouponSourceStatus
@@ -126,17 +127,28 @@ async def _resolve_category(
     guessing. A coupon filed under the wrong category is discoverable in search
     and wrong; one that is not filed is invisible and honest.
     """
-    for slug in (offer.category_slug, source.config.get("default_category_slug")):
-        if not slug:
+    for candidate in (
+        offer.category_slug,
+        source.config.get("default_category_slug"),
+        offer.category_name,
+    ):
+        if not isinstance(candidate, str) or not candidate.strip():
             continue
-        result = await db.execute(select(Category).where(Category.slug == slug))
+        result = await db.execute(
+            select(Category).where(Category.slug == canonical_category_slug(candidate))
+        )
         category = result.scalar_one_or_none()
         if category is not None:
             return category
 
-    if offer.category_name:
-        result = await db.execute(select(Category).where(Category.name.ilike(offer.category_name)))
-        return result.scalar_one_or_none()
+        # Keep support for custom category names whose slug is not derived from
+        # the name by the application's normal slug generator.
+        result = await db.execute(
+            select(Category).where(Category.name.ilike(candidate.strip()))
+        )
+        category = result.scalar_one_or_none()
+        if category is not None:
+            return category
     return None
 
 
@@ -441,7 +453,9 @@ async def run_ingestion(
         run.error = partial.reason[:2000]
         run.finished_at = datetime.now(UTC)
         run.duration_ms = _elapsed_ms(monotonic)
-        await record_outcome(db, await _managed_source(db, source_id), RunStatus.partial)
+        source = await _managed_source(db, source_id)
+        await record_outcome(db, source, RunStatus.partial)
+        source.last_error = run.error
         await db.commit()
         await db.refresh(run)
         # Labelled by source slug, not name: the slug is the stable identifier,
@@ -683,6 +697,18 @@ async def _execute(
         await recompute_totals(db, touched)
         await db.commit()
         raise _PartialRun(partial.reason) from partial
+
+    rejected = run.failed + run.malformed + run.quarantined
+    if rejected:
+        # A syntactically complete API response is not a complete ingestion if
+        # records were dropped. Keep existing source links intact: otherwise a
+        # category/validation regression can make every old coupon look deleted.
+        await recompute_totals(db, touched)
+        await db.commit()
+        raise _PartialRun(
+            f"{rejected} of {run.fetched} fetched offers were rejected, malformed, "
+            f"or quarantined; existing source links were preserved"
+        )
 
     # Downgrade this source's stale rows only now, and only for a run that
     # reached the end of the provider's list. On the partial path we raise before

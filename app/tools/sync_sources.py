@@ -2,9 +2,9 @@
 
     podman-compose run --rm --no-deps -T app python -m app.tools.sync_sources [--dry-run]
 
-Runs on every deploy (see .github/workflows/ci.yml) and is safe to re-run. It
-creates a missing `Source` (and `AffiliateProvider`, where the spec has one), and
-on an existing row updates only the fields the config owns:
+Run manually after changing `app/ingestion/provider_config.py`. It is safe to
+re-run. It creates a missing `Source` (and `AffiliateProvider`, where the spec
+has one), and on an existing row updates only the fields the config owns:
 
 * `Source`: kind, is_enabled, credential_ref, and the keys of `config` that the
   spec supplies.

@@ -8,13 +8,94 @@ from sqlalchemy import select
 from app.ingestion import merchants, pipeline, probe
 from app.ingestion.lifecycle import expire_stale_coupons
 from app.ingestion.normalize import NormalizeError, normalize_offer, offer_from_dict, parse_discount
+from app.ingestion.base import RawOffer
 from app.models.category import Category
 from app.models.coupon import Coupon, CouponStatus
+from app.models.coupon_source import CouponSource, CouponSourceStatus
 from app.models.ingestion_run import IngestionRun, RunStatus
 from app.models.source import Source, SourceKind
 from app.models.store import Store
 
 pytestmark = pytest.mark.asyncio
+
+
+async def test_provider_category_alias_resolves_to_existing_site_category(async_session_maker):
+    async with async_session_maker() as db:
+        category = Category(name="Electronics", slug="electronics")
+        source = Source(
+            name="Admitad taxonomy",
+            slug="admitad-taxonomy",
+            kind=SourceKind.admitad,
+            config={},
+        )
+        db.add_all([category, source])
+        await db.commit()
+
+        offer = normalize_offer(
+            RawOffer(
+                title="A laptop coupon",
+                store_name="Laptop shop",
+                category_name="Computers & Electronics",
+                destination_url="https://shop.example/laptop",
+            )
+        )
+        resolved = await pipeline._resolve_category(db, offer, source)
+
+        assert resolved is not None
+        assert resolved.id == category.id
+        assert await db.scalar(select(Category).where(Category.slug == "computers-electronics")) is None
+
+
+async def test_rejected_offer_marks_run_partial_and_preserves_existing_source_link(
+    async_session_maker, category
+):
+    async with async_session_maker() as db:
+        source = Source(
+            name="Changing taxonomy",
+            slug="changing-taxonomy",
+            kind=SourceKind.static,
+            config={
+                "offers": [
+                    {
+                        "title": "Valid deal",
+                        "store_slug": "sample-shop",
+                        "category_slug": "fashion",
+                        "destination_url": "https://sample-shop.example/deal",
+                        "external_id": "valid-1",
+                    }
+                ]
+            },
+        )
+        db.add(source)
+        await db.commit()
+        await db.refresh(source)
+
+        initial = await pipeline.run_ingestion(db, source)
+        assert initial.status is RunStatus.success
+        coupon_source = (
+            await db.execute(select(CouponSource).where(CouponSource.source_id == source.id))
+        ).scalar_one()
+
+        source.config = {
+            "offers": [
+                {
+                    "title": "Provider category drift",
+                    "store_slug": "sample-shop",
+                    "category_slug": "not-in-our-taxonomy",
+                    "destination_url": "https://sample-shop.example/other",
+                    "external_id": "new-2",
+                }
+            ]
+        }
+        await db.commit()
+
+        run = await pipeline.run_ingestion(db, source)
+        await db.refresh(coupon_source)
+
+        assert run.status is RunStatus.partial
+        assert run.failed == 1
+        assert "existing source links were preserved" in (run.error or "")
+        assert coupon_source.status is CouponSourceStatus.active
 
 
 @pytest.fixture

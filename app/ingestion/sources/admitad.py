@@ -74,6 +74,7 @@ class AdmitadSource:
         owns_client = self._client is None
         client = self._client or httpx.AsyncClient(timeout=_TIMEOUT)
         pages = 0
+        unmapped = 0
         failure: Exception | None = None
         try:
             token = await get_access_token(client, client_id=client_id, client_secret=client_secret)
@@ -129,6 +130,8 @@ class AdmitadSource:
                     offer = self._map_coupon(row)
                     if offer is not None:
                         yield offer, pages
+                    else:
+                        unmapped += 1
                 offset += len(rows)
                 if not has_next:
                     break
@@ -141,6 +144,11 @@ class AdmitadSource:
                 f"admitad pagination stopped after page {pages}: {type(failure).__name__}",
                 pages_completed=pages,
             ) from failure
+        if unmapped:
+            raise PartialFetchError(
+                f"Admitad returned {unmapped} coupon row(s) without a usable title or tracking URL",
+                pages_completed=pages,
+            )
 
     async def fetch(
         self,
@@ -196,6 +204,17 @@ class AdmitadSource:
             campaign.get("name") or item.get("campaign_name") or item.get("advertiser_name")
         )
         store_url = campaign.get("site_url") or campaign.get("url") or item.get("advertiser_url")
+        categories = item.get("categories")
+        category_name = None
+        if isinstance(categories, list):
+            category_name = next(
+                (
+                    entry.get("name")
+                    for entry in categories
+                    if isinstance(entry, dict) and isinstance(entry.get("name"), str)
+                ),
+                None,
+            )
         return RawOffer(
             title=str(title),
             code=str(code).strip().upper() if code else None,
@@ -211,4 +230,5 @@ class AdmitadSource:
             else None,
             store_name=str(store_name) if store_name else None,
             store_website=str(store_url) if store_url else None,
+            category_name=category_name,
         )

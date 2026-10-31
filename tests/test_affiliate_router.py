@@ -133,6 +133,16 @@ async def test_the_highest_precedence_source_wins(async_session_maker, world):
 
     assert routed.url == "https://rakuten.example/deep"
     assert routed.source_slug == high.slug
+
+
+async def test_routed_admitad_source_carries_its_tracking_network(async_session_maker, world):
+    coupon = await _coupon(async_session_maker, world["store"], world["category"])
+    admitad = await _source(async_session_maker, "admitad", kind=SourceKind.admitad)
+    await _claim(async_session_maker, coupon, admitad, "https://admitad.example/click")
+
+    routed = await _route(async_session_maker, coupon)
+
+    assert routed.network == "admitad"
     assert routed.decision is RoutingDecision.source
     assert routed.candidates == 2
 
