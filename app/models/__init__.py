@@ -29,6 +29,7 @@ from app.models.analytics_session import (
 from app.models.app_log import AppLog
 from app.models.attribution import Attribution, AttributionModel
 from app.models.category import Category
+from app.models.category_alias import CategoryAlias, CategoryAliasMethod
 from app.models.click import ClickEvent
 from app.models.conversion import Conversion, ConversionStatus
 from app.models.coupon import (
@@ -106,6 +107,8 @@ __all__ = [
     "CampaignModel",
     "CampaignStatus",
     "Category",
+    "CategoryAlias",
+    "CategoryAliasMethod",
     "ClickEvent",
     "CommissionType",
     "Conversion",

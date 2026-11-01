@@ -73,11 +73,10 @@ from app.ingestion import (
 )
 from app.ingestion import normalize as normalize_mod
 from app.ingestion.base import PartialFetchError
+from app.ingestion.categories import CategoryResolver, Resolution
 from app.ingestion.normalize import NormalizedOffer, NormalizeError
 from app.ingestion.registry import get_adapter
 from app.ingestion.source_health import MAX_ERROR, record_outcome
-from app.ingestion.taxonomy import canonical_category_slug
-from app.models.category import Category
 from app.models.coupon import Coupon, CouponStatus
 from app.models.coupon_source import CouponSource, CouponSourceStatus
 from app.models.ingestion_run import IngestionRun, RunStatus, SyncMode
@@ -106,48 +105,6 @@ class Cancelled(Exception):
     Carries no message: cancellation is not an error condition and the run row
     should say `cancelled`, not record a diagnostic that reads like a failure.
     """
-
-
-# ---------------------------------------------------------------------------
-# Category
-# ---------------------------------------------------------------------------
-
-
-async def _resolve_category(
-    db: AsyncSession, offer: NormalizedOffer, source: Source
-) -> Category | None:
-    """Map an offer onto our taxonomy, or `None` if we genuinely cannot.
-
-    Three candidates, strongest first: the offer's own slug, the source's
-    configured default, then the offer's category *name*. The default is second
-    rather than first so an offer that names a real category is not filed under a
-    generic bucket just because the source has a fallback configured.
-
-    Returning `None` makes the pipeline count the record as `failed` rather than
-    guessing. A coupon filed under the wrong category is discoverable in search
-    and wrong; one that is not filed is invisible and honest.
-    """
-    for candidate in (
-        offer.category_slug,
-        source.config.get("default_category_slug"),
-        offer.category_name,
-    ):
-        if not isinstance(candidate, str) or not candidate.strip():
-            continue
-        result = await db.execute(
-            select(Category).where(Category.slug == canonical_category_slug(candidate))
-        )
-        category = result.scalar_one_or_none()
-        if category is not None:
-            return category
-
-        # Keep support for custom category names whose slug is not derived from
-        # the name by the application's normal slug generator.
-        result = await db.execute(select(Category).where(Category.name.ilike(candidate.strip())))
-        category = result.scalar_one_or_none()
-        if category is not None:
-            return category
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -671,18 +628,21 @@ async def _execute(
     # a full sync touches tens of thousands of coupons and the run row has no
     # column large enough to hold them.
     touched: list = []
+    categories = CategoryResolver()
 
     try:
         async for batch in _batched(
             _iter_offers(source, adapter, mode, creds), BATCH_SIZE, cancel=cancel
         ):
             for raw, pages in batch:
-                await _ingest_one(db, source, run, raw, touched)
+                await _ingest_one(db, source, run, raw, touched, categories=categories)
                 run.pages_fetched = pages
             # Flush per batch so a crash keeps the work and the transaction does
             # not stay open across the whole fetch.
+            await categories.flush(db)
             await db.commit()
     except _Cancelled:
+        await categories.flush(db)
         await db.commit()
         await recompute_totals(db, touched)
         await db.commit()
@@ -692,6 +652,7 @@ async def _execute(
         # Everything it did deliver is committed above and stays; what is withheld
         # is only the conclusion "this source no longer lists X", which is
         # handled by never reaching the `mark_stale_for_source` call below.
+        await categories.flush(db)
         await recompute_totals(db, touched)
         await db.commit()
         raise _PartialRun(partial.reason) from partial
@@ -727,6 +688,7 @@ async def _execute(
     # still back each coupon, and `source_count` has to reflect the final state.
     await recompute_totals(db, touched)
 
+    categories.log_summary(source=source.slug)
     run.pages_fetched = max(run.pages_fetched, 1)
     return RunStatus.success
 
@@ -780,6 +742,7 @@ async def _ingest_one(
     run: IngestionRun,
     raw: Any,
     touched: list | None = None,
+    categories: CategoryResolver | None = None,
 ) -> None:
     """Normalize, validate, dedupe and write one raw offer.
 
@@ -805,14 +768,10 @@ async def _ingest_one(
         logger.debug("offer failed validation", extra={"errors": errors})
         return
 
-    category = await _resolve_category(db, offer, source)
-    if category is None:
-        run.failed += 1
-        logger.debug(
-            "offer matched no category",
-            extra={"category_slug": offer.category_slug, "source": source.slug},
-        )
-        return
+    resolver = categories or CategoryResolver()
+    category = await resolver.resolve(db, offer, source)
+    if categories is None:
+        await resolver.flush(db)
 
     match = await _resolve_merchant(db, offer, source)
     store = match.store
@@ -937,7 +896,7 @@ async def _apply_offer(
     source: Source,
     offer: NormalizedOffer,
     content_hash: str,
-    category: Category,
+    category: Resolution,
     store: Any,
     now: datetime,
     is_new: bool = False,

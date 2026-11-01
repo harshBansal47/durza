@@ -30,6 +30,7 @@ from app.models import app_log as _app_log  # noqa: F401
 from app.models import attribution as _attribution  # noqa: F401
 from app.models import base as _base  # noqa: F401
 from app.models import category as _category  # noqa: F401
+from app.models import category_alias as _category_alias  # noqa: F401
 from app.models import click as _click  # noqa: F401
 from app.models import conversion as _conversion  # noqa: F401
 from app.models import coupon as _coupon  # noqa: F401

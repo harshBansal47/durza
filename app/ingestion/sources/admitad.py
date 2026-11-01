@@ -21,6 +21,23 @@ _BASE_URL = "https://api.admitad.com"
 logger = logging.getLogger("durza.ingestion.admitad")
 
 _TIMEOUT = httpx.Timeout(30.0, connect=10.0)
+
+
+def _category_names(item: dict, campaign: dict) -> list[str]:
+    """Collect coupon and programme category names, including one parent level."""
+    names: list[str] = []
+    for entries in (item.get("categories"), campaign.get("categories")):
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            candidates = [entry]
+            if isinstance(entry, dict):
+                parent = entry.get("parent")
+                candidates = [entry.get("name"), parent.get("name") if isinstance(parent, dict) else None]
+            names.extend(value.strip() for value in candidates if isinstance(value, str) and value.strip())
+    return names
+
+
 _USER_AGENT = "DurzaBot/1.0 (+https://durza.in/bot)"
 
 
@@ -231,4 +248,5 @@ class AdmitadSource:
             store_name=str(store_name) if store_name else None,
             store_website=str(store_url) if store_url else None,
             category_name=category_name,
+            extra={"categories": _category_names(item, campaign)},
         )

@@ -22,9 +22,11 @@ from wtforms import PasswordField
 
 from app.core.security import hash_password
 from app.core.slugs import generate_unique_slug
+from app.ingestion.categories import normalize_label, refile_coupons
 from app.models.ad import Ad
 from app.models.app_log import AppLog
 from app.models.category import Category
+from app.models.category_alias import CategoryAlias
 from app.models.click import ClickEvent
 from app.models.coupon import Coupon
 from app.models.coupon_source import CouponSource
@@ -142,6 +144,89 @@ class CategoryAdmin(StaffModelView, model=Category):
         if not is_created and data.get("parent") and str(data["parent"]) == str(model.id):
             raise ValueError("A category cannot be its own parent")
         await super().on_model_change(data, model, is_created, request)
+
+
+class CategoryAliasAdmin(StaffModelView, model=CategoryAlias):
+    """How provider category wording is filed, and the queue of what still needs a person.
+
+    Providers describe categories in their own words. Anything the pipeline could not
+    place lands here as *Needs a category* and its offers wait in the fallback
+    category. Pick a category and every later offer with that wording follows, and the
+    ones already waiting are moved. *Guessed by a rule* rows are the system's own
+    answers, listed so a wrong one can be overridden: your choice beats every rule.
+
+    You can also add a wording before any provider sends it.
+    """
+
+    name = "Category Alias"
+    name_plural = "Category Aliases"
+    icon = "fa-solid fa-tags"
+
+    column_list = [
+        CategoryAlias.label,
+        "category",
+        CategoryAlias.method,
+        CategoryAlias.seen_count,
+        CategoryAlias.last_seen_at,
+        CategoryAlias.last_source,
+    ]
+    column_searchable_list = [CategoryAlias.label]
+    column_filters = [
+        StaticValuesFilter(
+            CategoryAlias.method,
+            values=[
+                ("pending", "Needs a category"),
+                ("rule", "Guessed by a rule"),
+                ("manual", "Set by a person"),
+            ],
+            title="Status",
+        ),
+    ]
+    column_sortable_list = [
+        CategoryAlias.label,
+        CategoryAlias.method,
+        CategoryAlias.seen_count,
+        CategoryAlias.last_seen_at,
+    ]
+    column_default_sort = [(CategoryAlias.seen_count, True)]
+    form_columns = [CategoryAlias.label, "category"]
+
+    async def on_model_change(
+        self, data: dict, model: Any, is_created: bool, request: Request
+    ) -> None:
+        key = normalize_label(str(data.get("label") or ""))
+        if not key:
+            raise ValueError("The wording must contain letters or digits")
+        data["alias"] = key
+        # A person choosing a category is what makes a row `manual`, which beats rules.
+        data["method"] = "manual" if data.get("category") else "pending"
+        await super().on_model_change(data, model, is_created, request)
+
+    async def after_model_change(
+        self, data: dict, model: Any, is_created: bool, request: Request
+    ) -> None:
+        await super().after_model_change(data, model, is_created, request)
+        chosen = data.get("category")
+        if not chosen:
+            return
+        # Offers filed before this decision should not stay behind in the fallback.
+        try:
+            category_id = chosen if isinstance(chosen, uuid.UUID) else uuid.UUID(str(chosen))
+            session_maker = cast(async_sessionmaker[AsyncSession], self.session_maker)
+            async with session_maker() as session:
+                moved = await refile_coupons(
+                    session,
+                    alias_key=normalize_label(str(data.get("label") or model.label)),
+                    category_id=category_id,
+                )
+            logger.info(
+                "coupons re-filed after a category mapping",
+                extra={"actor": _actor(request), "moved": moved},
+            )
+        except Exception:
+            # The mapping itself is saved; the offers can be moved with
+            # `python -m app.tools.recategorize`.
+            logger.exception("could not re-file coupons after a category mapping")
 
 
 class StoreAdmin(StaffModelView, model=Store):
@@ -1161,6 +1246,7 @@ class SaleEditionCouponRuleAdmin(StaffModelView, model=SaleEditionCouponRule):
 
 ALL_VIEWS = (
     CategoryAdmin,
+    CategoryAliasAdmin,
     StoreAdmin,
     CouponAdmin,
     CouponSourceAdmin,

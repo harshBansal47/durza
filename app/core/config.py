@@ -149,6 +149,9 @@ class Settings(BaseSettings):
     deal_alert_max_items: int = 6
     # Hours between ingestion sweeps. Each run re-fetches every enabled source.
     ingestion_interval_hours: int = 6
+    # Where an offer is filed when nothing about its category wording matches. It is
+    # created on first need. An offer is never dropped for want of a category.
+    ingestion_fallback_category_slug: str = "other"
     # Hours between expiry sweeps — just a status flip, so this can be frequent.
     expire_interval_hours: int = 1
     # How many times a failed scheduled job is retried before it is parked in

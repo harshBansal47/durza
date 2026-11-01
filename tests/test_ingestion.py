@@ -304,7 +304,10 @@ async def test_pipeline_failed_probe_marks_offer_failed(async_session_maker, cat
         assert coupon.last_checked_at is not None
 
 
-async def test_pipeline_skips_unknown_category(async_session_maker, static_source):
+async def test_pipeline_files_an_unknown_category_in_the_fallback_instead_of_dropping_it(
+    async_session_maker, static_source
+):
+    """An offer is real whatever its category wording; only its filing is unsettled."""
     async with async_session_maker() as db:
         static_source.config = {
             "offers": [
@@ -317,8 +320,13 @@ async def test_pipeline_skips_unknown_category(async_session_maker, static_sourc
             ]
         }
         run = await pipeline.run_ingestion(db, static_source)
-        assert run.failed == 1
-        assert run.created == 0
+        assert run.failed == 0
+        assert run.created == 1
+        coupon = (await db.execute(select(Coupon).where(Coupon.title == "Voucher"))).scalar_one()
+        filed_under = await db.scalar(
+            select(Category.slug).where(Category.id == coupon.category_id)
+        )
+        assert filed_under == "other"
 
 
 async def test_expire_stale_coupons(async_session_maker, static_source):
