@@ -54,7 +54,8 @@ def test_every_scheduled_job_has_a_distinct_lock() -> None:
 
 def test_all_known_jobs_are_registered_with_the_scheduler() -> None:
     scheduled = {job.id for job in scheduler.build_scheduler().get_jobs()}
-    assert scheduled == set(scheduler.JOBS)
+    assert scheduled == set(scheduler.JOBS) - {"post_telegram"}
+    assert "post_telegram" not in scheduled
 
 
 def test_scheduler_uses_the_configured_intervals() -> None:
@@ -262,7 +263,7 @@ async def test_start_is_idempotent(monkeypatch) -> None:
         first = await scheduler.start_scheduler()
         second = await scheduler.start_scheduler()
         assert first is second
-        assert len(first.get_jobs()) == len(scheduler.JOBS)
+        assert len(first.get_jobs()) == len(scheduler.JOBS) - 1
     finally:
         await scheduler.stop_scheduler()
 

@@ -417,6 +417,7 @@ async def run_ingestion(
         # and a source renamed in the admin panel should not fork this series and
         # orphan the history of every alert that fired on it.
         metrics.ingestion_runs.labels(slug, RunStatus.partial.value).inc()
+        await _publish_new_offers(db, slug)
         return run
     except _Cancelled:
         await db.commit()
@@ -428,12 +429,13 @@ async def run_ingestion(
         await db.commit()
         await db.refresh(run)
         metrics.ingestion_runs.labels(slug, RunStatus.cancelled.value).inc()
+        await _publish_new_offers(db, slug)
         return run
     except Exception as exc:  # noqa: BLE001 - the run row must capture any failure
         # No rollback here on purpose: `_record_failure` starts with one, and it
         # has to be the one that happens — rolling back first would expire
         # `source` twice and lose the counters the caller wants carried over.
-        return await _record_failure(
+        failed_run = await _record_failure(
             db,
             source_id,
             slug,
@@ -443,6 +445,8 @@ async def run_ingestion(
             duration_ms=_elapsed_ms(monotonic),
             keep_counts=True,
         )
+        await _publish_new_offers(db, slug)
+        return failed_run
 
     run.status = outcome
     run.error = None
@@ -452,7 +456,25 @@ async def run_ingestion(
     await db.commit()
     await db.refresh(run)
     metrics.ingestion_runs.labels(slug, outcome.value).inc()
+    await _publish_new_offers(db, slug)
     return run
+
+
+async def _publish_new_offers(db: AsyncSession, source_slug: str) -> None:
+    """Trigger the channel publisher after ingestion commits its coupon changes."""
+    try:
+        from app.services.telegram_service import post_new_offers
+
+        result = await post_new_offers(db)
+    except Exception:
+        # Telegram delivery is a side effect; it must not rewrite a completed
+        # ingestion result. The publisher logs offer-level delivery outcomes.
+        logger.exception("telegram publishing failed after ingestion", extra={"source": source_slug})
+        return
+    logger.info(
+        "telegram publishing triggered by ingestion",
+        extra={"source": source_slug, "result": result},
+    )
 
 
 class _IngestionAbort(Exception):

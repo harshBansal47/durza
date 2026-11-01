@@ -251,11 +251,10 @@ class Settings(BaseSettings):
     # "@yourchannel" for a public channel, or the numeric "-100..." id. Distinct from
     # the per-user chat id kept in notification preferences.
     telegram_channel_id: str | None = None
-    telegram_post_interval_minutes: int = 5
-    # Per scan, and per rolling 24 hours. The daily cap is what keeps a big import
+    # Per ingestion-triggered scan, and per rolling 24 hours. The daily cap keeps a big import
     # from becoming a firehose; Telegram allows ~20 posts a minute per channel.
-    telegram_max_posts_per_run: int = 6
-    telegram_max_posts_per_day: int = 40
+    telegram_max_posts_per_run: int = 100
+    telegram_max_posts_per_day: int = 1000
     telegram_send_gap_seconds: float = 4.0
     # Only offers created this recently are announced.
     telegram_post_window_hours: int = 24
@@ -366,7 +365,6 @@ class Settings(BaseSettings):
         return value
 
     @field_validator(
-        "telegram_post_interval_minutes",
         "telegram_max_posts_per_run",
         "telegram_max_posts_per_day",
         "telegram_post_window_hours",

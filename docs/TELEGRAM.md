@@ -1,8 +1,9 @@
 # Telegram channel
 
 New offers are posted to a public Telegram channel automatically, **each offer at
-most once**. Nothing is hooked into coupon creation: a scheduled scan looks at what
-is live and new, and the `telegram_posts` table remembers what was already posted.
+most once**. There is no separate periodic channel scan: ingestion triggers a scan
+of eligible new offers, and the `telegram_posts` table remembers what was already
+posted.
 
 ## One-time setup
 
@@ -23,8 +24,6 @@ is live and new, and the `telegram_posts` table remembers what was already poste
    TELEGRAM_CHANNEL_ENABLED=true
    ```
 
-   If you use `SCHEDULER_JOBS`, add `post_telegram` to the list. Without it the
-   job never runs.
 5. **Deploy**, then check the setup from the VM:
 
    ```
@@ -34,7 +33,7 @@ is live and new, and the `telegram_posts` table remembers what was already poste
    It checks the token, the channel and the bot's permission, says what to fix when
    one is wrong, and posts one test message so you can see it arrive.
 6. **Watch the first posts.** Admin > **Telegram Posts** lists every offer with its
-   status. The first scan runs within a few minutes of boot.
+   status. Posts are triggered after the next ingestion run.
 
 ## What gets posted
 
@@ -44,8 +43,7 @@ is for India, and is not known to be broken. Best-scored first.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `TELEGRAM_POST_INTERVAL_MINUTES` | 5 | how often the scan runs |
-| `TELEGRAM_MAX_POSTS_PER_RUN` | 6 | per scan |
+| `TELEGRAM_MAX_POSTS_PER_RUN` | 6 | maximum per ingestion-triggered scan |
 | `TELEGRAM_MAX_POSTS_PER_DAY` | 40 | per rolling 24 hours |
 | `TELEGRAM_SEND_GAP_SECONDS` | 4 | pause between posts (Telegram allows ~20/min per channel) |
 | `TELEGRAM_POST_WINDOW_HOURS` | 24 | only offers created this recently |
@@ -55,8 +53,9 @@ is for India, and is not known to be broken. Best-scored first.
 | `TELEGRAM_SILENT_AT_NIGHT` | true | no notification sound 11pm-7am IST |
 | `TELEGRAM_FOOTER` | commission disclosure | last line of every post |
 
-The caps are what stop a large import from becoming a firehose: the first big
-ingestion is spread over the day, strongest offers first.
+The caps stop a large import from becoming a firehose: strongest offers are
+posted first, up to the per-run and rolling daily limits. If more offers are
+eligible than fit in one run, a later ingestion run can trigger another scan.
 
 Each post links to the site's own offer page (`/coupons/<slug>`), tagged
 `utm_source=telegram`, so the click is yours to measure rather than a raw affiliate

@@ -150,6 +150,8 @@ JOBS: dict[str, tuple[Callable[..., Awaitable[str]], int]] = {
     "scrub_clicks": (_scrub_clicks_job, _LOCK_SCRUB_CLICKS),
     "scrub_verifications": (_scrub_verifications_job, _LOCK_SCRUB_VERIFICATIONS),
     "scrub_logs": (_scrub_logs_job, _LOCK_SCRUB_LOGS),
+    # Kept available for an explicit run-now action and existing
+    # SCHEDULER_JOBS allowlists, but intentionally has no interval trigger.
     "post_telegram": (_post_telegram_job, _LOCK_POST_TELEGRAM),
     "sync_conversions": (_conversions_job, _LOCK_CONVERSIONS),
 }
@@ -200,10 +202,9 @@ def job_interval_seconds(name: str) -> float:
         "scrub_logs": settings.log_scrub_interval_hours,
         "sync_conversions": settings.conversion_sync_interval_hours,
     }
+
     if name in hourly:
         return hourly[name] * 3600
-    if name == "post_telegram":
-        return settings.telegram_post_interval_minutes * 60
     return settings.alert_scan_interval_minutes * 60
 
 
@@ -496,16 +497,6 @@ def build_scheduler() -> AsyncIOScheduler:
         max_instances=1,
         coalesce=True,
         next_run_time=datetime.now(UTC) + timedelta(seconds=offset + 180),
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        _fire,
-        IntervalTrigger(minutes=settings.telegram_post_interval_minutes),
-        args=["post_telegram"],
-        id="post_telegram",
-        max_instances=1,
-        coalesce=True,
-        next_run_time=datetime.now(UTC) + timedelta(seconds=offset + 210),
         replace_existing=True,
     )
     scheduler.add_job(

@@ -6,9 +6,9 @@ import pytest
 from sqlalchemy import select
 
 from app.ingestion import merchants, pipeline, probe
+from app.ingestion.base import RawOffer
 from app.ingestion.lifecycle import expire_stale_coupons
 from app.ingestion.normalize import NormalizeError, normalize_offer, offer_from_dict, parse_discount
-from app.ingestion.base import RawOffer
 from app.models.category import Category
 from app.models.coupon import Coupon, CouponStatus
 from app.models.coupon_source import CouponSource, CouponSourceStatus
@@ -47,6 +47,43 @@ async def test_provider_category_alias_resolves_to_existing_site_category(async_
             await db.scalar(select(Category).where(Category.slug == "computers-electronics"))
             is None
         )
+
+
+async def test_ingestion_triggers_telegram_publishing(async_session_maker, monkeypatch):
+    from app.services import telegram_service
+
+    calls = []
+
+    async def publish(db):
+        calls.append(db)
+        return "posted 1"
+
+    monkeypatch.setattr(telegram_service, "post_new_offers", publish)
+    async with async_session_maker() as db:
+        category = Category(name="Style", slug="style")
+        source = Source(
+            name="Telegram trigger",
+            slug="telegram-trigger",
+            kind=SourceKind.static,
+            config={
+                "offers": [
+                    {
+                        "title": "New fashion deal",
+                        "store_slug": "telegram-shop",
+                        "store_name": "Telegram Shop",
+                        "category_slug": "style",
+                        "destination_url": "https://telegram-shop.example/deal",
+                    }
+                ]
+            },
+        )
+        db.add_all([category, source])
+        await db.commit()
+
+        run = await pipeline.run_ingestion(db, source)
+
+    assert run.status is RunStatus.success
+    assert len(calls) == 1
 
 
 async def test_rejected_offer_marks_run_partial_and_preserves_existing_source_link(
