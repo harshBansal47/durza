@@ -85,6 +85,19 @@ def scrub_emails(text: str) -> str:
     return _EMAIL_RE.sub(lambda m: f"[email:{email_fingerprint(m.group(0))}]", text)
 
 
+_TELEGRAM_TOKEN_RE = re.compile(r"\d{6,}:[A-Za-z0-9_-]{30,}")
+
+
+def scrub_sensitive(text: str) -> str:
+    """`scrub_emails`, plus Telegram bot tokens.
+
+    A bot token is `<digits>:<35 chars>` and sits in the URL path, so an error message
+    or a traceback that quotes a URL quotes the credential too. Redacting by shape
+    catches it whoever logged it.
+    """
+    return _TELEGRAM_TOKEN_RE.sub("[redacted-token]", scrub_emails(text))
+
+
 # Field names whose values must never be written to a log or a table.
 _SECRET_KEY_PARTS = (
     "password",
@@ -181,6 +194,11 @@ def configure_logging(level: str = "INFO", fmt: str = "text") -> None:
     # Uvicorn's access log is redundant with the request middleware, which
     # carries request ids. Keep its error log, which is not.
     logging.getLogger("uvicorn.access").disabled = True
+
+    # httpx logs every request URL at INFO. Telegram carries the bot token in the
+    # URL path, so at INFO the token would be written to the log on every post.
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 def new_request_id() -> str:

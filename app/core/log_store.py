@@ -40,7 +40,7 @@ from sqlalchemy import insert
 
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
-from app.core.observability import extra_fields, is_secret_key, request_id_var, scrub_emails
+from app.core.observability import extra_fields, is_secret_key, request_id_var, scrub_sensitive
 from app.models.app_log import AppLog
 
 # This module's own logger is never stored: a failing write that logged itself
@@ -68,7 +68,7 @@ def _is_own(name: str) -> bool:
 
 def _scrub(value: Any) -> Any:
     if isinstance(value, str):
-        return scrub_emails(value)
+        return scrub_sensitive(value)
     if isinstance(value, list):
         return [_scrub(item) for item in value]
     if isinstance(value, dict):
@@ -104,12 +104,12 @@ def _row(record: logging.LogRecord) -> dict[str, Any]:
     exception = None
     if record.exc_info:
         trace = logging.Formatter().formatException(record.exc_info)
-        exception = scrub_emails(trace)[:_MAX_EXCEPTION]
+        exception = scrub_sensitive(trace)[:_MAX_EXCEPTION]
     return {
         "created_at": datetime.fromtimestamp(record.created, UTC),
         "level": record.levelname[:10],
         "logger": record.name[:100],
-        "message": scrub_emails(record.getMessage())[:_MAX_MESSAGE],
+        "message": scrub_sensitive(record.getMessage())[:_MAX_MESSAGE],
         # Inbound X-Request-Id is caller-controlled, so it is clipped to the column.
         "request_id": request_id[:64] if request_id else None,
         "fields": _safe_fields(record),

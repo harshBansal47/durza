@@ -59,6 +59,7 @@ _LOCK_SCRUB_VERIFICATIONS = 0x0C0FFEE7
 _LOCK_CONVERSIONS = 0x0C0FFEE5
 _LOCK_DEAL_ALERTS = 0x0C0FFEE8
 _LOCK_SCRUB_LOGS = 0x0C0FFEE9
+_LOCK_POST_TELEGRAM = 0x0C0FFEEA
 
 
 # A job that fails is recorded and re-raised so the caller can distinguish "ran
@@ -128,6 +129,12 @@ async def _scrub_logs_job(db: AsyncSession) -> str:
     return f"deleted {deleted} log row(s)"
 
 
+async def _post_telegram_job(db: AsyncSession) -> str:
+    from app.services.telegram_service import post_new_offers
+
+    return await post_new_offers(db)
+
+
 async def _conversions_job(db: AsyncSession) -> str:
     from app.services.conversion_sync import sync_conversions
 
@@ -143,6 +150,7 @@ JOBS: dict[str, tuple[Callable[..., Awaitable[str]], int]] = {
     "scrub_clicks": (_scrub_clicks_job, _LOCK_SCRUB_CLICKS),
     "scrub_verifications": (_scrub_verifications_job, _LOCK_SCRUB_VERIFICATIONS),
     "scrub_logs": (_scrub_logs_job, _LOCK_SCRUB_LOGS),
+    "post_telegram": (_post_telegram_job, _LOCK_POST_TELEGRAM),
     "sync_conversions": (_conversions_job, _LOCK_CONVERSIONS),
 }
 
@@ -194,6 +202,8 @@ def job_interval_seconds(name: str) -> float:
     }
     if name in hourly:
         return hourly[name] * 3600
+    if name == "post_telegram":
+        return settings.telegram_post_interval_minutes * 60
     return settings.alert_scan_interval_minutes * 60
 
 
@@ -486,6 +496,16 @@ def build_scheduler() -> AsyncIOScheduler:
         max_instances=1,
         coalesce=True,
         next_run_time=datetime.now(UTC) + timedelta(seconds=offset + 180),
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _fire,
+        IntervalTrigger(minutes=settings.telegram_post_interval_minutes),
+        args=["post_telegram"],
+        id="post_telegram",
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(UTC) + timedelta(seconds=offset + 210),
         replace_existing=True,
     )
     scheduler.add_job(

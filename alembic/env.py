@@ -48,6 +48,7 @@ from app.models import sale as _sale  # noqa: F401
 from app.models import source as _source  # noqa: F401
 from app.models import sponsored as _sponsored  # noqa: F401
 from app.models import store as _store  # noqa: F401
+from app.models import telegram_post as _telegram_post  # noqa: F401
 from app.models import tracking as _tracking  # noqa: F401
 from app.models import user as _user  # noqa: F401
 from app.models import user_interest as _user_interest  # noqa: F401

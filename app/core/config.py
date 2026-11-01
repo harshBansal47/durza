@@ -240,6 +240,32 @@ class Settings(BaseSettings):
     log_scrub_interval_hours: int = 6
     # A request slower than this is logged at WARNING, which also stores it.
     slow_request_seconds: float = 2.0
+
+    # --- Telegram channel (app/services/telegram_service.py) ---
+    # Posting new offers to a public channel. Off until switched on. It reuses the
+    # bot token above (the same bot can also send people their own alerts).
+    telegram_channel_enabled: bool = False
+    # "@yourchannel" for a public channel, or the numeric "-100..." id. Distinct from
+    # the per-user chat id kept in notification preferences.
+    telegram_channel_id: str | None = None
+    telegram_post_interval_minutes: int = 5
+    # Per scan, and per rolling 24 hours. The daily cap is what keeps a big import
+    # from becoming a firehose; Telegram allows ~20 posts a minute per channel.
+    telegram_max_posts_per_run: int = 6
+    telegram_max_posts_per_day: int = 40
+    telegram_send_gap_seconds: float = 4.0
+    # Only offers created this recently are announced.
+    telegram_post_window_hours: int = 24
+    # Do not announce an offer that is about to expire.
+    telegram_min_hours_to_expiry: int = 3
+    # Audience country. Offers for another country are skipped; empty means any.
+    telegram_country: str = "IN"
+    # Post only offers that have been verified. Off by default because with the
+    # verification job disabled almost nothing is.
+    telegram_only_verified: bool = False
+    # Posts between 11pm and 7am IST are delivered without a notification sound.
+    telegram_silent_at_night: bool = True
+    telegram_footer: str = "Terms apply. We may earn a commission at no extra cost to you."
     # Expose /metrics. Left off locally so a stray scrape isn't talking to a
     # developer's laptop.
     metrics_enabled: bool = False
@@ -288,7 +314,15 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("smtp_user", "smtp_password", "email_reply_to", "otp_hash_key", mode="before")
+    @field_validator(
+        "smtp_user",
+        "smtp_password",
+        "email_reply_to",
+        "otp_hash_key",
+        "telegram_bot_token",
+        "telegram_channel_id",
+        mode="before",
+    )
     @classmethod
     def _blank_optional_value_is_unset(cls, value: object) -> object:
         """An empty env var means "not configured", not an empty credential.
@@ -326,6 +360,18 @@ class Settings(BaseSettings):
     def _otp_limits_are_positive(cls, value: int) -> int:
         if value < 1:
             raise ValueError("OTP limits must be at least 1")
+        return value
+
+    @field_validator(
+        "telegram_post_interval_minutes",
+        "telegram_max_posts_per_run",
+        "telegram_max_posts_per_day",
+        "telegram_post_window_hours",
+    )
+    @classmethod
+    def _telegram_limits_are_positive(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("Telegram limits must be at least 1")
         return value
 
     @model_validator(mode="after")

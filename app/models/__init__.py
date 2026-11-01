@@ -73,6 +73,7 @@ from app.models.sponsored import (
     SponsoredPlacement,
 )
 from app.models.store import Store, StoreStatus
+from app.models.telegram_post import TelegramPost, TelegramPostStatus
 from app.models.tracking import (
     AlertEvent,
     DealAlertMark,
@@ -162,6 +163,8 @@ __all__ = [
     "StoreRelationship",
     "StoreStatus",
     "SyncMode",
+    "TelegramPost",
+    "TelegramPostStatus",
     "TrackAlertState",
     "TrackedProduct",
     "TrafficSource",

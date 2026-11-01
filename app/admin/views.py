@@ -35,6 +35,7 @@ from app.models.product import PricePoint, Product
 from app.models.sale import SaleEdition, SaleEditionCouponRule, SaleSeries
 from app.models.source import Source
 from app.models.store import Store
+from app.models.telegram_post import TelegramPost
 from app.models.user import Role, User
 from app.models.verification_attempt import AttemptOutcome, VerificationAttempt
 from app.services import sale_service
@@ -904,6 +905,61 @@ class AppLogAdmin(StaffModelView, model=AppLog):
         return getattr(request.state, "admin_role", None) == Role.admin
 
 
+class TelegramPostAdmin(StaffModelView, model=TelegramPost):
+    """What the Telegram poster has done, one row per offer. Admin-only, read-only.
+
+    Not editable on purpose: the ledger is what stops an offer being posted twice,
+    so a hand edit is a way to cause exactly that. A row stuck at `pending` or
+    `uncertain` means a send whose outcome is unknown; look in the channel before
+    deleting it.
+    """
+
+    name = "Telegram Post"
+    name_plural = "Telegram Posts"
+    icon = "fa-brands fa-telegram"
+
+    column_list = [
+        TelegramPost.created_at,
+        TelegramPost.status,
+        TelegramPost.store_name,
+        TelegramPost.title,
+        TelegramPost.message_id,
+        TelegramPost.error,
+    ]
+    column_details_list = column_list + [
+        TelegramPost.coupon_id,
+        TelegramPost.chat_id,
+        TelegramPost.dedupe_key,
+        TelegramPost.sent_at,
+    ]
+    column_searchable_list = [TelegramPost.store_name, TelegramPost.title]
+    column_filters = [
+        StaticValuesFilter(
+            TelegramPost.status,
+            values=[
+                ("sent", "Sent"),
+                ("pending", "Pending"),
+                ("rejected", "Rejected"),
+                ("uncertain", "Uncertain"),
+                ("duplicate", "Duplicate"),
+            ],
+            title="Status",
+        ),
+    ]
+    column_sortable_list = [TelegramPost.created_at, TelegramPost.status, TelegramPost.store_name]
+    column_default_sort = [(TelegramPost.created_at, True)]
+    can_create = False
+    can_edit = False
+    can_delete = False
+    page_size = 50
+
+    def is_visible(self, request: Request) -> bool:
+        return getattr(request.state, "admin_role", None) == Role.admin
+
+    def is_accessible(self, request: Request) -> bool:
+        return getattr(request.state, "admin_role", None) == Role.admin
+
+
 class VerificationAttemptAdmin(StaffModelView, model=VerificationAttempt):
     """Automated checker results, kept apart from human reports.
 
@@ -1117,6 +1173,7 @@ ALL_VIEWS = (
     PricePointAdmin,
     JobRunAdmin,
     AppLogAdmin,
+    TelegramPostAdmin,
     VerificationAttemptAdmin,
     ClickEventAdmin,
     SaleSeriesAdmin,
