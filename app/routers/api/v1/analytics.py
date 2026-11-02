@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -44,28 +45,10 @@ class ImpressionRequest(BaseModel):
     sponsored: bool = False
 
 
-@router.post("/impression", status_code=status.HTTP_202_ACCEPTED)
-@limiter.limit("60/minute")
-async def record_impression(
-    payload: ImpressionRequest,
-    request: Request,
-    response: Response,
-    db: AsyncSession = Depends(get_db),
-) -> None:
-    """Record a coupon impression. Idempotent by design: no dedup needed
-    because each render is a unique event from the user's perspective."""
-    settings = get_settings()
-    if not _has_consent(request, settings):
-        return
-
-    session_id = request.headers.get("x-session-id") or request.cookies.get("cz_sid")
-    if not session_id:
-        session = await get_or_create_session(request, response, db)
-        session_id = str(session.id)
-
-    country = payload.country or request.headers.get("x-vercel-ip-country")
-
-    impression = CouponImpression(
+def _impression_row(
+    payload: ImpressionRequest, request: Request, session_id: str
+) -> CouponImpression:
+    return CouponImpression(
         coupon_id=payload.coupon_id,
         merchant_id=payload.merchant_id,
         session_id=session_id,
@@ -79,12 +62,75 @@ async def record_impression(
         source=payload.source,
         referrer=payload.referrer,
         device_type=payload.device_type,
-        country=country,
+        country=payload.country or request.headers.get("x-vercel-ip-country"),
         sponsored=payload.sponsored,
         created_at=datetime.now(UTC),
     )
-    db.add(impression)
+
+
+async def _resolve_session_id(request: Request, response: Response, db: AsyncSession) -> str:
+    return (
+        request.headers.get("x-session-id")
+        or request.cookies.get("cz_sid")
+        or str((await get_or_create_session(request, response, db)).id)
+    )
+
+
+@router.post("/impression", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("60/minute")
+async def record_impression(
+    payload: ImpressionRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Record a coupon impression. Idempotent by design: no dedup needed
+    because each render is a unique event from the user's perspective."""
+    if not _has_consent(request, get_settings()):
+        return
+    session_id = await _resolve_session_id(request, response, db)
+    db.add(_impression_row(payload, request, session_id))
     await db.commit()
+
+
+# A list page shows at most a page of cards; this is generous headroom, not a target.
+MAX_IMPRESSION_BATCH = 50
+
+
+class ImpressionBatchRequest(BaseModel):
+    impressions: list[ImpressionRequest] = Field(min_length=1, max_length=MAX_IMPRESSION_BATCH)
+
+
+@router.post("/impressions", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("30/minute")
+async def record_impressions(
+    payload: ImpressionBatchRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Record many impressions in one request.
+
+    Same semantics as `/impression` per item (consent-gated, 202, fire-and-forget), but
+    one rate-limit hit, one session lookup and one commit for the whole batch. If a row
+    references a coupon or store that no longer exists, only that row is dropped.
+    """
+    if not _has_consent(request, get_settings()):
+        return
+    session_id = await _resolve_session_id(request, response, db)
+    rows = [_impression_row(item, request, session_id) for item in payload.impressions]
+    db.add_all(rows)
+    try:
+        await db.commit()
+    except IntegrityError:
+        # A dangling coupon/store id must not cost the rest of the batch.
+        await db.rollback()
+        for item in payload.impressions:
+            db.add(_impression_row(item, request, session_id))
+            try:
+                await db.commit()
+            except IntegrityError:
+                await db.rollback()
 
 
 class EventName(str, enum.Enum):
@@ -193,9 +239,7 @@ async def record_event(
     db.add(
         AnalyticsEvent(
             name=payload.event.value,
-            session_id=request.headers.get("x-session-id")
-            or request.cookies.get("cz_sid")
-            or str((await get_or_create_session(request, response, db)).id),
+            session_id=await _resolve_session_id(request, response, db),
             visitor_id=request.cookies.get("cz_vid"),
             coupon_id=_uuid_or_none(payload.coupon_id),
             store_id=_uuid_or_none(payload.merchant_id or payload.store_id),
@@ -237,6 +281,7 @@ async def record_consent(
     payload: ConsentRequest,
     request: Request,
     response: Response,
+    db: AsyncSession = Depends(get_db),
 ) -> None:
     """Record a consent choice.
 
@@ -267,6 +312,10 @@ async def record_consent(
         samesite="lax",
         secure=settings.is_production,
     )
+    # Issue the session cookie now. Otherwise the page_view beacon and the first
+    # impressions all fire before any response has set it, and each mints its own session.
+    if not request.cookies.get("cz_sid"):
+        await get_or_create_session(request, response, db)
 
 
 from datetime import date as _date

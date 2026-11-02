@@ -43,8 +43,7 @@ is for India, and is not known to be broken. Best-scored first.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `TELEGRAM_MAX_POSTS_PER_RUN` | 6 | maximum per ingestion-triggered scan |
-| `TELEGRAM_MAX_POSTS_PER_DAY` | 40 | per rolling 24 hours |
+| `TELEGRAM_MAX_POSTS_PER_DAY` | 1000 | maximum per rolling 24 hours and ingestion-triggered scan |
 | `TELEGRAM_SEND_GAP_SECONDS` | 4 | pause between posts (Telegram allows ~20/min per channel) |
 | `TELEGRAM_POST_WINDOW_HOURS` | 24 | only offers created this recently |
 | `TELEGRAM_MIN_HOURS_TO_EXPIRY` | 3 | skip offers about to lapse |
@@ -53,9 +52,9 @@ is for India, and is not known to be broken. Best-scored first.
 | `TELEGRAM_SILENT_AT_NIGHT` | true | no notification sound 11pm-7am IST |
 | `TELEGRAM_FOOTER` | commission disclosure | last line of every post |
 
-The caps stop a large import from becoming a firehose: strongest offers are
-posted first, up to the per-run and rolling daily limits. If more offers are
-eligible than fit in one run, a later ingestion run can trigger another scan.
+The daily cap and send spacing keep a large import within the channel's posting
+limits. A single daily ingestion run can use the remaining daily allowance,
+posting the strongest eligible offers first.
 
 Each post links to the site's own offer page (`/coupons/<slug>`), tagged
 `utm_source=telegram`, so the click is yours to measure rather than a raw affiliate

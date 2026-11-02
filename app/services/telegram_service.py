@@ -18,10 +18,9 @@ Rules that keep the channel worth following:
 * **Once.** A claim row is written before the send and the database's unique
   constraints refuse a second one. The same offer reappearing as a new coupon row
   is recognised by `dedupe_key` and skipped.
-* **Not a firehose.** At most `TELEGRAM_MAX_POSTS_PER_RUN` per scan and
-  `TELEGRAM_MAX_POSTS_PER_DAY` per rolling day, best-scored first, so a large
-  import is spread out instead of dumped. Posts are spaced out to stay under
-  Telegram's per-channel rate limit, and sent silently overnight.
+* **Not a firehose.** At most `TELEGRAM_MAX_POSTS_PER_DAY` per rolling day,
+  best-scored first. Posts are spaced out to stay under Telegram's per-channel
+  rate limit, and sent silently overnight.
 * **Honest.** "Verified" appears only on an offer that was actually verified in
   the last three days. Every post carries the affiliate disclosure.
 """
@@ -418,9 +417,7 @@ async def post_new_offers(
         )
         or 0
     )
-    budget = min(
-        settings.telegram_max_posts_per_run, settings.telegram_max_posts_per_day - sent_today
-    )
+    budget = settings.telegram_max_posts_per_day - sent_today
     if budget <= 0:
         return "daily cap reached"
 

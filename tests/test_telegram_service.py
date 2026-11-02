@@ -65,7 +65,6 @@ def cfg(monkeypatch):
         "telegram_send_gap_seconds": 0.0,
         "telegram_country": "IN",
         "telegram_only_verified": False,
-        "telegram_max_posts_per_run": 6,
         "telegram_max_posts_per_day": 40,
         "telegram_post_window_hours": 24,
         "telegram_min_hours_to_expiry": 3,
@@ -326,10 +325,10 @@ async def test_only_verified_mode_skips_the_rest(async_session_maker, cfg, monke
         assert (await svc.post_new_offers(db, client=fake, sleep=Naps())).startswith("posted 1")
 
 
-async def test_a_big_import_is_trimmed_to_the_best_offers_and_spread_out(
+async def test_a_big_import_uses_daily_budget_best_offers_and_send_spacing(
     async_session_maker, cfg, monkeypatch
 ):
-    monkeypatch.setattr(cfg, "telegram_max_posts_per_run", 2)
+    monkeypatch.setattr(cfg, "telegram_max_posts_per_day", 2)
     monkeypatch.setattr(cfg, "telegram_send_gap_seconds", 4.0)
     fake, naps = FakeTelegram(), Naps()
     async with async_session_maker() as db:
@@ -346,15 +345,13 @@ async def test_a_big_import_is_trimmed_to_the_best_offers_and_spread_out(
 
 
 async def test_the_daily_cap_holds_across_scans(async_session_maker, cfg, monkeypatch):
-    monkeypatch.setattr(cfg, "telegram_max_posts_per_run", 2)
     monkeypatch.setattr(cfg, "telegram_max_posts_per_day", 3)
     fake = FakeTelegram()
     async with async_session_maker() as db:
         store, cat = await _world(db)
         for i in range(6):
             await _coupon(db, store, cat, title=f"Distinct offer {i}")
-        await svc.post_new_offers(db, client=fake, sleep=Naps())
-        await svc.post_new_offers(db, client=fake, sleep=Naps())
+        assert (await svc.post_new_offers(db, client=fake, sleep=Naps())).startswith("posted 3")
         assert await svc.post_new_offers(db, client=fake, sleep=Naps()) == "daily cap reached"
         assert len(fake.sent) == 3
 

@@ -31,6 +31,7 @@ from app.routers.api.v1.pages import router as pages_router
 from app.routers.api.v1.personalization import router as personalization_router
 from app.routers.api.v1.products import router as products_router
 from app.routers.api.v1.sales import router as sales_router
+from app.routers.api.v1.search import router as search_router
 from app.routers.api.v1.stores import router as stores_router
 from app.routers.api.v1.system import router as system_router
 from app.services.scheduler import start_scheduler, stop_scheduler
@@ -122,6 +123,7 @@ for _router in (
     personalization_router,
     sales_router,
     earnings_router,
+    search_router,
 ):
     app.include_router(_router, prefix="/api/v1")
 

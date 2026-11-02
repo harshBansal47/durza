@@ -132,6 +132,27 @@ async def related_data(
     return list(relations), list(entity_links), list(faqs)
 
 
+async def related_data_many(
+    db: AsyncSession, content_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, tuple[list[EditorialRelation], list[EditorialEntityLink], list[EditorialFAQ]]]:
+    """`related_data` for many items in three statements instead of three per item.
+
+    Each item's rows keep the ordering `related_data` gives them (sort_order, then id).
+    Every requested id is present in the result, with empty lists when it has none.
+    """
+    grouped: dict[uuid.UUID, tuple[list, list, list]] = {cid: ([], [], []) for cid in content_ids}
+    if not grouped:
+        return grouped
+    ids = list(grouped)
+    for slot, model in enumerate((EditorialRelation, EditorialEntityLink, EditorialFAQ)):
+        rows = await db.scalars(
+            select(model).where(model.content_id.in_(ids)).order_by(model.sort_order, model.id)
+        )
+        for row in rows:
+            grouped[row.content_id][slot].append(row)
+    return {cid: (rel, links, faqs) for cid, (rel, links, faqs) in grouped.items()}
+
+
 async def _replace_related_data(
     db: AsyncSession,
     content_id: uuid.UUID,

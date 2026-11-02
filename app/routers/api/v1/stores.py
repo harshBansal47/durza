@@ -56,8 +56,9 @@ async def get_store_destination(
     )
     content_items = list(content_result)
     content_reads = []
+    related = await editorial_service.related_data_many(db, [item.id for item in content_items])
     for item in content_items:
-        relations, links, faqs = await editorial_service.related_data(db, item.id)
+        relations, links, faqs = related[item.id]
         content_reads.append(
             EditorialRead.model_validate(
                 {

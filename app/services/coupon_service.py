@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 
 from app.core.config import get_settings
 from app.core.exceptions import EntityNotFoundError
@@ -169,7 +170,9 @@ async def list_coupons(
     is recency.
     """
     now = datetime.now(UTC)
-    stmt = select(Coupon)
+    # `sources` is eager-loaded by default (a second statement per call) but no public
+    # response exposes it; skip it on the read path so a listing is count + page only.
+    stmt = select(Coupon).options(noload(Coupon.sources))
     if store_id is not None:
         stmt = stmt.where(Coupon.store_id == store_id)
     if category_id is not None:
@@ -272,11 +275,13 @@ async def list_coupons(
 
 
 async def get_coupon(db: AsyncSession, coupon_id: uuid.UUID) -> Coupon | None:
-    return await db.get(Coupon, coupon_id)
+    return await db.get(Coupon, coupon_id, options=[noload(Coupon.sources)])
 
 
 async def get_coupon_by_slug(db: AsyncSession, slug: str) -> Coupon | None:
-    result = await db.execute(select(Coupon).where(Coupon.slug == slug))
+    result = await db.execute(
+        select(Coupon).options(noload(Coupon.sources)).where(Coupon.slug == slug)
+    )
     return result.scalar_one_or_none()
 
 

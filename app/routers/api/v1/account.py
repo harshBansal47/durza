@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -101,7 +102,8 @@ async def save_coupon(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
-    if await db.get(Coupon, coupon_id) is None:
+    # Existence check only: skip the eager `sources` load nothing here reads.
+    if await db.get(Coupon, coupon_id, options=[noload(Coupon.sources)]) is None:
         raise HTTPException(status_code=404, detail="Coupon not found")
     exists = await db.execute(
         select(SavedCoupon).where(

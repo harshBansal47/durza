@@ -19,7 +19,8 @@ class Paginated[T](BaseModel):
 async def paginate(
     db: AsyncSession, stmt: Select, skip: int = 0, limit: int = 20
 ) -> tuple[Sequence[Any], int]:
-    total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
+    # Ordering cannot change a row count, so don't make the database sort just to count.
+    total = await db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery()))
     result = await db.execute(stmt.offset(skip).limit(limit))
     items: Sequence[Any] = result.scalars().all()
     return items, total or 0
