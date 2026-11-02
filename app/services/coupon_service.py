@@ -44,7 +44,7 @@ def _search_terms(value: str) -> list[str]:
     """Drop generic shopping intent words while retaining searchable terms."""
     terms = [term.strip() for term in value.split() if term.strip()]
     specific = [term for term in terms if term.casefold() not in _SEARCH_INTENT_WORDS]
-    return specific or ([] if terms else [])
+    return specific
 
 
 class CouponSort(str, enum.Enum):
