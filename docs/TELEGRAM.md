@@ -8,11 +8,11 @@ posted.
 ## One-time setup
 
 1. **Create the channel** in Telegram (New Channel, **Public**) and pick the
-   username, e.g. `@durzadeals`. Add the logo, description and a pinned message
+   username, `@durzacoupons`. Add the logo, description and a pinned message
    (see "Presenting it" below).
-2. **Use your bot.** `TELEGRAM_BOT_TOKEN` is already used for per-user alerts; the
-   same bot posts to the channel. If you have no bot, message **@BotFather**,
-   send `/newbot`, and copy the token.
+2. **Use your bot for channel posts.** If you have no bot, message **@BotFather**,
+   send `/newbot`, and copy the token. The public channel is open to anyone and
+   does not require a Durza account.
 3. **Add the bot as an administrator of the channel**: channel > Administrators >
    Add Administrator > the bot, with **Post messages** enabled. A bot that is only
    a member cannot post.
@@ -20,7 +20,7 @@ posted.
 
    ```
    TELEGRAM_BOT_TOKEN=<from BotFather>
-   TELEGRAM_CHANNEL_ID=@durzadeals
+   TELEGRAM_CHANNEL_ID=@durzacoupons
    TELEGRAM_CHANNEL_ENABLED=true
    ```
 
@@ -86,9 +86,8 @@ If it is not, delete the row (SQL) and it will be posted on the next scan.
 
 ## Presenting it
 
-- **Name:** keep it the same as the site. `Durza Deals` with the username
-  `@durzadeals` (check availability in Telegram; if taken, `@durza_deals` or
-  `@durzadeals_in`). Add "India" or "Coupons" in the description, not the name.
+- **Name:** keep it the same as the site. `Durza Coupons` with the username
+  `@durzacoupons`.
 - **Photo:** the site logo, so a post and the website look like one thing.
 - **Description:** what the channel is, who runs it, and the disclosure. For example:
   *"Verified coupons and offers for Indian shoppers, from Durza. Posts may contain

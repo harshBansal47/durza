@@ -52,8 +52,8 @@ async def delete_user(db: AsyncSession, user: User) -> None:
 
     Verification reports are preserved (FK set to NULL) because they are
     public attestations — removing them would make success rates less honest.
-    Everything else (saved stores/coupons, tracked products, alerts,
-    notification preferences, push subscriptions) is deleted via cascade.
+    Everything else (saved stores/coupons, tracked products, alerts, and
+    notification preferences) is deleted via cascade.
     """
     # The cascading deletes handle most related objects.
     # VerificationAttempt has ON DELETE SET NULL on coupon_id and user_id.

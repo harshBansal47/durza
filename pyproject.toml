@@ -22,11 +22,9 @@ dependencies = [
     "slowapi>=0.1.10",
     "redis>=5.0",
     "jinja2>=3.1",
-    # Real delivery: aiosmtplib sends alert emails, pywebpush sends browser
-    # push. Both are optional at runtime — a channel with no credentials logs
-    # and reports "queued" rather than failing the job that triggered it.
+    # Email alerts are optional at runtime — without credentials the service
+    # logs and reports "queued" rather than failing the job that triggered it.
     "aiosmtplib>=3.0",
-    "pywebpush>=2.0",
     # In-process scheduler so the API refreshes prices and fires alerts itself,
     # rather than depending on a host-level cron that nobody remembers to set up.
     "apscheduler>=3.10,<4",

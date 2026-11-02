@@ -414,27 +414,24 @@ Frontend pages/charts for products are the next step (no product UI exists yet).
 ## User retention + distribution (Phase 1)
 
 The retention loop: `User ├── saved stores / saved coupons / tracked products
-(target price) / notification preferences` → `AlertEvent` history → channels
-(email / telegram / push).
+(target price) / email notification preferences` → `AlertEvent` history.
 
 - **Endpoints** (all under `/api/v1/me`, bearer token required):
   - `GET|POST|DELETE /me/saved-stores[/{id}]`, same for `/me/saved-coupons`
   - `GET|POST /me/tracked-products`, `PATCH|DELETE /me/tracked-products/{id}`
-  - `GET|PATCH /me/notification-preferences` (email on/off, telegram chat id, push subscription)
+  - `GET|PATCH /me/notification-preferences` (email on/off)
   - `GET /me/alerts` — what was sent and when
 - **Alert engine** (`app/services/alert_service.py`, run via
   `scripts/run_alerts.py` on cron): per tracked product, on new observation:
   `target_met` (effective price incl. coupon ≤ target) beats `price_drop`
   beats `coupon_appeared`. One alert per (tracked product, price point) —
   `TrackAlertState` prevents re-alerting about the same data.
-- **Channels** (`app/services/notifications.py`): Telegram is real when
-  `TELEGRAM_BOT_TOKEN` + chat id are set; email logs/queues until an SMTP
-  client is wired; browser push queues until the extension + VAPID land.
-  WhatsApp deliberately not built.
+- **Private account alerts** (`app/services/notifications.py`) are email only.
+  Public Telegram offer posts are a separate channel and do not depend on a
+  user's account or notification preferences.
 - Idempotent by design: duplicate saves/tracking upsert instead of erroring.
 
-Not built yet (by design, in order): frontend account UI using these endpoints,
-web-push delivery, the browser extension itself.
+The account settings UI uses these endpoints to manage email alerts.
 
 ## Current state / open items
 

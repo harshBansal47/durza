@@ -108,10 +108,6 @@ async def health_deep(response: Response, db: AsyncSession = Depends(get_db)) ->
     checks["email"] = {
         "status": "configured" if get_settings().email_configured else "not configured"
     }
-    checks["push"] = {
-        "status": "configured" if get_settings().push_configured else "not configured"
-    }
-
     if not healthy:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return {"status": "ok" if healthy else "degraded", "checks": checks}

@@ -10,8 +10,8 @@ Two reliability properties this module is responsible for:
 * **One alert per observation.** `TrackAlertState` remembers the last price
   point we told the user about, so a re-scan over unchanged data sends nothing.
   Without it, every scheduler tick would re-email everyone.
-* **A dead push subscription is forgotten.** A browser that unsubscribed gets a
-  410 on every send; those rows are cleared rather than retried forever.
+* **Only opted-in email alerts are sent.** Channel selection is centralized in
+  `notifications.senders_for`.
 """
 
 import uuid
@@ -35,16 +35,14 @@ from app.models.user import User
 from app.services import notifications
 from app.services.email import AlertContent
 from app.services.price_service import effective_price
-from app.services.push import PushSubscriptionGone
 
 logger = get_logger("durza.alerts")
 
 
 def _money(amount: float, currency: str) -> str:
-    """Format for an email subject / push body, where Intl is unavailable.
+    """Format for an email subject, where Intl is unavailable.
 
-    Deliberately crude: `1,299.00` reads correctly in every locale, whereas a
-    locale-formatted string in a push notification can arrive mangled.
+    Deliberately crude: `1,299.00` reads correctly in every locale.
     """
     return f"{amount:,.2f} {currency}"
 
@@ -210,21 +208,8 @@ async def evaluate_tracked_product(db: AsyncSession, tracked: TrackedProduct) ->
     alert = _build_alert(kind, product, latest, previous, coupon, tracked.target_price)
 
     events: list[AlertEvent] = []
-    dead_subscriptions = 0
     for sender in notifications.senders_for(prefs):
-        try:
-            delivered = await sender.send(user, prefs, alert)
-        except PushSubscriptionGone:
-            # The browser unsubscribed. Forget it now rather than on every
-            # future alert — this is the only place with a session to do it in.
-            prefs.push_subscription = None
-            prefs.push_enabled = False
-            dead_subscriptions += 1
-            delivered = False
-            logger.info(
-                "cleared dead push subscription",
-                extra={"user_id": str(user.id), "tracked_product_id": str(tracked.id)},
-            )
+        delivered = await sender.send(user, prefs, alert)
 
         # Every attempt is recorded, delivered or not. The alert history is the
         # audit trail; if we only logged successes, a user reporting "I never got
@@ -242,7 +227,7 @@ async def evaluate_tracked_product(db: AsyncSession, tracked: TrackedProduct) ->
         events.append(event)
         metrics.alerts_sent.labels(sender.channel, "delivered" if delivered else "failed").inc()
 
-        if not delivered and sender.channel != "push":
+        if not delivered:
             logger.warning(
                 "alert channel failed",
                 extra={
@@ -263,7 +248,6 @@ async def evaluate_tracked_product(db: AsyncSession, tracked: TrackedProduct) ->
             "kind": kind.value,
             "channels": [e.channel for e in events],
             "tracked_product_id": str(tracked.id),
-            "dead_subscriptions_cleared": dead_subscriptions,
         },
     )
     return events

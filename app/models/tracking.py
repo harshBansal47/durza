@@ -66,11 +66,6 @@ class NotificationPreference(Base, UUIDPKMixin, TimestampMixin):
         ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
     )
     email_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    telegram_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    telegram_chat_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    push_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # JSON-encoded push subscription (endpoint + keys), as the browser Push API returns it.
-    push_subscription: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Category IDs the user has muted — alerts for products in these categories
     # are skipped. Stored as a JSON list of UUID strings for easy PATCH updates.
     muted_categories: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)

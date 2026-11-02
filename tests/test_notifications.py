@@ -26,10 +26,6 @@ from app.services.email import AlertContent
 def _prefs(**kwargs) -> NotificationPreference:
     defaults = {
         "email_enabled": False,
-        "telegram_enabled": False,
-        "telegram_chat_id": None,
-        "push_enabled": False,
-        "push_subscription": None,
     }
     return NotificationPreference(**{**defaults, **kwargs})
 
@@ -44,35 +40,6 @@ def test_no_channels_when_everything_is_off() -> None:
 def test_email_channel_requires_only_the_email_toggle() -> None:
     senders = notifications.senders_for(_prefs(email_enabled=True))
     assert [s.channel for s in senders] == ["email"]
-
-
-def test_telegram_requires_both_the_toggle_and_a_chat_id() -> None:
-    # A toggle with no chat id has nowhere to send. Registering the channel
-    # anyway produces a daily warning log and no message.
-    assert notifications.senders_for(_prefs(telegram_enabled=True)) == []
-    senders = notifications.senders_for(_prefs(telegram_enabled=True, telegram_chat_id="123"))
-    assert [s.channel for s in senders] == ["telegram"]
-
-
-def test_push_requires_both_the_toggle_and_a_subscription() -> None:
-    assert notifications.senders_for(_prefs(push_enabled=True)) == []
-    senders = notifications.senders_for(
-        _prefs(push_enabled=True, push_subscription='{"endpoint":"x","keys":{}}')
-    )
-    assert [s.channel for s in senders] == ["push"]
-
-
-def test_all_enabled_channels_fire() -> None:
-    senders = notifications.senders_for(
-        _prefs(
-            email_enabled=True,
-            telegram_enabled=True,
-            telegram_chat_id="123",
-            push_enabled=True,
-            push_subscription='{"endpoint":"x","keys":{}}',
-        )
-    )
-    assert sorted(s.channel for s in senders) == ["email", "push", "telegram"]
 
 
 # ---- Alert scanning ----
@@ -211,37 +178,6 @@ async def test_a_broken_product_does_not_abort_the_sweep(async_session_maker, mo
         monkeypatch.setattr(alert_service, "evaluate_tracked_product", _explode)
 
         assert await alert_service.run_alert_scan(db) == 2
-
-
-@pytest.mark.asyncio
-async def test_dead_push_subscription_is_cleared_and_counted_as_failed(
-    async_session_maker, monkeypatch
-) -> None:
-    async with async_session_maker() as db:
-        await _seed(db)
-        # Also disable email so this test observes the push event alone rather
-        # than whichever channel happens to sort first.
-        prefs = (await db.execute(select(NotificationPreference))).scalar_one()
-        prefs.email_enabled = False
-        prefs.push_enabled = True
-        prefs.push_subscription = '{"endpoint":"https://x/gone","keys":{"p256dh":"a","auth":"b"}}'
-
-        async def _gone(self, user, prefs, alert):
-            raise notifications.push_service.PushSubscriptionGone
-
-        monkeypatch.setattr(notifications.PushSender, "send", _gone)
-        await db.commit()
-
-        await alert_service.run_alert_scan(db)
-        await db.refresh(prefs)
-
-        # The row is cleared so it is never retried, and the attempt is still
-        # recorded — a user asking "did you try to notify me?" gets a true answer.
-        assert prefs.push_subscription is None
-        assert prefs.push_enabled is False
-        event = (await db.execute(select(AlertEvent))).scalar_one()
-        assert event.channel == "push"
-        assert event.delivered is False
 
 
 # ---- Alert composition ----

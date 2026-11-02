@@ -32,7 +32,7 @@ def test_development_allows_placeholder_secret():
 # ---- Production-only validation ----
 #
 # Each of these is a misconfiguration that boots fine locally and produces a
-# failure nobody sees until an email lands in spam, or a push never arrives.
+# failure nobody sees until an email lands in spam.
 # Failing at startup is the only point where it is cheap to notice.
 
 
@@ -59,31 +59,15 @@ def test_production_accepts_smtp_user_with_a_password():
     Settings(**PROD, smtp_host="smtp.example.com", smtp_user="mailer", smtp_password="secret")
 
 
-def test_production_rejects_a_half_configured_vapid_key_pair():
-    # VAPID signing with a public key and no private key cannot work, and the
-    # failure is a cryptic crypto error on the first push of the day.
-    with pytest.raises(ValidationError, match="VAPID"):
-        Settings(**PROD, vapid_public_key="pub")
-
-
-def test_production_accepts_a_complete_vapid_key_pair():
-    Settings(**PROD, vapid_public_key="pub", vapid_private_key="priv")
-
-
-def test_production_needs_neither_smtp_nor_vapid_to_boot():
-    # Optional channels must stay optional: a deployment that only does
-    # on-demand coupons should not be forced to configure mail it never sends.
+def test_production_needs_no_smtp_configuration_to_boot():
+    # Email delivery is optional in local and one-off environments.
     settings = Settings(**PROD)
     assert settings.email_configured is False
-    assert settings.push_configured is False
 
 
-def test_delivery_reports_configuration_state():
-    settings = Settings(
-        **PROD, smtp_host="smtp.example.com", vapid_public_key="pub", vapid_private_key="priv"
-    )
+def test_delivery_reports_email_configuration_state():
+    settings = Settings(**PROD, smtp_host="smtp.example.com")
     assert settings.email_configured is True
-    assert settings.push_configured is True
 
 
 def test_scheduler_and_metrics_are_off_by_default():

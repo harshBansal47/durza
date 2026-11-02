@@ -177,11 +177,12 @@ async def test_notification_preferences_roundtrip(client: AsyncClient, async_ses
 
     resp = await client.patch(
         "/api/v1/me/notification-preferences",
-        json={"telegram_enabled": True, "telegram_chat_id": "12345"},
+        json={"email_enabled": False},
         headers=headers,
     )
-    assert resp.json()["telegram_enabled"] is True
-    assert resp.json()["telegram_chat_id"] == "12345"
+    assert resp.json()["email_enabled"] is False
+    assert "telegram_enabled" not in resp.json()
+    assert "telegram_chat_id" not in resp.json()
 
 
 async def test_me_requires_auth(client: AsyncClient):

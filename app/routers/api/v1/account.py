@@ -2,12 +2,11 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
 
-from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.coupon import Coupon
@@ -25,15 +24,11 @@ from app.schemas.tracking import (
     AlertEventRead,
     NotificationPreferenceRead,
     NotificationPreferenceUpdate,
-    PushPublicKeyRead,
-    PushSubscription,
-    PushSubscriptionRead,
     SavedItemRead,
     TrackedProductCreate,
     TrackedProductRead,
     TrackedProductUpdate,
 )
-from app.services.push import load_subscription
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -232,81 +227,6 @@ async def update_notification_preferences(
     await db.commit()
     await db.refresh(prefs)
     return prefs
-
-
-# ---- Browser push ----
-#
-# Push has its own endpoints rather than living entirely in
-# notification-preferences because it has one extra step nothing else does: the
-# browser has to hand us a subscription *before* the preference can mean
-# anything. Splitting it out keeps that handshake explicit.
-
-
-@router.get("/push/key", response_model=PushPublicKeyRead)
-async def get_push_key() -> PushPublicKeyRead:
-    """The VAPID public key.
-
-    Unauthenticated on purpose — the key is public by definition (it ships to
-    every browser that subscribes) and the settings page needs it before login
-    completes, to decide whether to even offer the push toggle.
-    """
-    settings = get_settings()
-    return PushPublicKeyRead(public_key=settings.vapid_public_key, enabled=settings.push_configured)
-
-
-@router.put("/push/subscription", response_model=PushSubscriptionRead)
-async def set_push_subscription(
-    payload: PushSubscription,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> PushSubscriptionRead:
-    """Register this browser's push subscription.
-
-    Enables push as a side effect, because a subscription the user did not ask
-    for is not something anyone stores: the browser only produces one after an
-    explicit permission grant, so its arrival *is* the consent.
-    """
-    settings = get_settings()
-    if not settings.push_configured:
-        # Failing loudly beats accepting a subscription we could never deliver
-        # to, which would leave the UI showing "on" and silently drop alerts.
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Push notifications are not configured on this deployment.",
-        )
-
-    prefs = await _get_prefs(db, user)
-    # Round-trip through push.load_subscription before committing: a subscription
-    # that parses as JSON but lacks a key half is the failure mode that makes
-    # push_enabled a lie.
-    serialised = payload.model_dump_json()
-    if load_subscription(serialised) is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Subscription is missing the keys the push service requires.",
-        )
-    prefs.push_subscription = serialised
-    prefs.push_enabled = True
-    await db.commit()
-    return PushSubscriptionRead(push_enabled=True, has_subscription=True)
-
-
-@router.delete("/push/subscription", status_code=status.HTTP_204_NO_CONTENT)
-async def clear_push_subscription(
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> Response:
-    """Forget this browser's subscription.
-
-    The server-side counterpart of `pushManager.unsubscribe()`. Clearing only in
-    the browser leaves the server sending to an endpoint nobody listens to, which
-    the push service answers with a 410 on every future alert.
-    """
-    prefs = await _get_prefs(db, user)
-    prefs.push_subscription = None
-    prefs.push_enabled = False
-    await db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # ---- Alert history ----

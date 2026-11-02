@@ -50,7 +50,6 @@ from app.models.tracking import (
 from app.models.user import User
 from app.services import notifications
 from app.services.email import AlertContent, AlertItem
-from app.services.push import PushSubscriptionGone
 
 logger = get_logger("durza.deal_alerts")
 
@@ -356,14 +355,7 @@ async def evaluate_user(db: AsyncSession, user_id: uuid.UUID, now: datetime | No
     batch_id = uuid.uuid4()
     delivered_any = False
     for sender in senders:
-        try:
-            delivered = await sender.send(user, prefs, content)
-        except PushSubscriptionGone:
-            # The browser unsubscribed; forget it now rather than on every send.
-            prefs.push_subscription = None
-            prefs.push_enabled = False
-            delivered = False
-            logger.info("cleared dead push subscription", extra={"user_id": str(user.id)})
+        delivered = await sender.send(user, prefs, content)
 
         # Every attempt is recorded, delivered or not: the history is the audit
         # trail, and "I never got that email" has to be answerable.

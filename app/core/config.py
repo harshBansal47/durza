@@ -99,14 +99,6 @@ class Settings(BaseSettings):
     # than the noreply-style sender address.
     email_reply_to: str | None = None
 
-    # ---- Web push (pywebpush) -------------------------------------------
-    # Generate with: python -m app.core.push_keys  (prints a VAPID key pair).
-    vapid_private_key: str | None = None
-    vapid_public_key: str | None = None
-    vapid_subject: str = "mailto:alerts@durza.in"
-    # Push payloads over ~4KB are rejected by browsers, so keep bodies small.
-    push_ttl_seconds: int = 3600
-
     # ---- Passwordless email sign-in (OTP) -------------------------------
     # Six digits, valid for a single short window. The digest key is separate
     # from the JWT secret when set; falling back to SECRET_KEY keeps existing
@@ -119,8 +111,7 @@ class Settings(BaseSettings):
     otp_hash_key: str | None = None
 
     # ---- Telegram ------------------------------------------------------
-    # Optional fourth channel. Off unless a bot token is supplied; the chat id
-    # itself is stored per-user in notification_preferences.
+    # Public offer posting only. Personal account alerts are delivered by email.
     telegram_bot_token: str | None = None
 
     # ---- Scheduler ------------------------------------------------------
@@ -245,11 +236,9 @@ class Settings(BaseSettings):
     slow_request_seconds: float = 2.0
 
     # --- Telegram channel (app/services/telegram_service.py) ---
-    # Posting new offers to a public channel. Off until switched on. It reuses the
-    # bot token above (the same bot can also send people their own alerts).
+    # Posting new offers to a public channel. Off until switched on.
     telegram_channel_enabled: bool = False
-    # "@yourchannel" for a public channel, or the numeric "-100..." id. Distinct from
-    # the per-user chat id kept in notification preferences.
+    # "@yourchannel" for a public channel, or the numeric "-100..." id.
     telegram_channel_id: str | None = None
     # Per rolling 24 hours. The send gap also keeps a large import within Telegram's rate limit.
     telegram_max_posts_per_day: int = 1000
@@ -292,10 +281,6 @@ class Settings(BaseSettings):
         because it is already required to be strong in production.
         """
         return self.otp_hash_key or self.secret_key
-
-    @property
-    def push_configured(self) -> bool:
-        return bool(self.vapid_private_key and self.vapid_public_key)
 
     @property
     def is_production(self) -> bool:
@@ -402,8 +387,6 @@ class Settings(BaseSettings):
         """
         if self.smtp_user and not self.smtp_password:
             raise ValueError("SMTP_USER is set but SMTP_PASSWORD is not")
-        if bool(self.vapid_private_key) != bool(self.vapid_public_key):
-            raise ValueError("VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY must both be set")
         return self
 
     @model_validator(mode="after")
