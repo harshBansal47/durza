@@ -205,9 +205,9 @@ its user, not just to the rendered page.
 
 ## Scheduler, cache, and observability
 
-- **Scheduler** (`app/services/scheduler.py`, `scripts/run_alerts.py`,
-  `scripts/run_ingestion.py`, `scripts/refresh_coupons.py`): APScheduler-driven,
-  gated by `SCHEDULER_ENABLED`. Jobs: deal/alert emails, coupon expiry,
+- **Scheduler** (`app/services/scheduler.py`, `scripts/run_ingestion.py`,
+  `scripts/refresh_coupons.py`): APScheduler-driven,
+  gated by `SCHEDULER_ENABLED`. Jobs: saved-item update emails, coupon expiry,
   ingestion refresh, verification, click-hash scrub, conversion sync. Locks in
   `app/core/locks.py` keep overlapping runs from colliding.
 - **Redis cache** (`REDIS_URL`/`UPSTASH_REDIS_URL`): used for coupon-listing
@@ -421,7 +421,7 @@ current coupon changes; no per-user alert history is stored.
   - `GET|POST|DELETE /me/saved-stores[/{id}]`, same for `/me/saved-coupons`
   - `GET|PATCH /me/notification-preferences` (email on/off)
 - **Saved-item alert engine** (`app/services/deal_alert_service.py`, run by the
-  `send_deal_alerts` scheduler job): detects new offers at followed stores and
+  `send_deal_alerts` scheduler job): detects new offers at saved stores and
   recent changes to saved coupons, then batches them into an email digest.
   Scan-window timestamps prevent old changes from being replayed; alert history
   is not written to the database.

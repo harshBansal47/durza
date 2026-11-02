@@ -4,13 +4,15 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import select
+
 from app.core.config import get_settings
 from app.core.database import Base
 from app.core.unsubscribe import make_unsubscribe_token, read_unsubscribe_token
 from app.models.category import Category
 from app.models.coupon import Coupon, CouponStatus, DiscountType, VerificationStatus
-from app.models.store import Store
 from app.models.saved_items import NotificationPreference, SavedCoupon, SavedStore
+from app.models.store import Store
 from app.models.user import Role
 from app.schemas.user import UserCreate
 from app.services import deal_alert_service as engine
@@ -79,7 +81,7 @@ async def _coupon(db, store, cat, title="20% off sheet masks", **kw) -> Coupon:
     return coupon
 
 
-async def _follow(db, user, store, *, ago=DAY) -> None:
+async def _save_store(db, user, store, *, ago=DAY) -> None:
     db.add(SavedStore(user_id=user.id, store_id=store.id, created_at=datetime.now(UTC) - ago))
     await db.commit()
 
@@ -89,13 +91,13 @@ async def _save_coupon(db, user, coupon, *, ago=DAY) -> None:
     await db.commit()
 
 
-# ---- followed stores ----------------------------------------------------------
+# ---- saved stores -------------------------------------------------------------
 
 
 async def test_new_offer_is_derived_from_the_current_scan_window(async_session_maker, sender):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
-        await _follow(db, user, store)
+        await _save_store(db, user, store)
         await _coupon(db, store, cat)
 
         first_scan = datetime.now(UTC)
@@ -110,11 +112,11 @@ async def test_new_offer_is_derived_from_the_current_scan_window(async_session_m
         assert len(sender.sent) == 1
 
 
-async def test_offers_from_before_the_follow_are_not_news(async_session_maker, sender):
+async def test_offers_from_before_the_store_was_saved_are_not_news(async_session_maker, sender):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
         await _coupon(db, store, cat, created_at=datetime.now(UTC) - 3 * DAY)
-        await _follow(db, user, store, ago=timedelta(hours=1))
+        await _save_store(db, user, store, ago=timedelta(hours=1))
 
         assert await engine.evaluate_user(db, user.id) == 0
         assert sender.sent == []
@@ -123,7 +125,7 @@ async def test_offers_from_before_the_follow_are_not_news(async_session_maker, s
 async def test_offers_that_are_not_live_are_not_announced(async_session_maker, sender):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
-        await _follow(db, user, store)
+        await _save_store(db, user, store)
         await _coupon(db, store, cat, title="Inactive", is_active=False)
         await _coupon(
             db, store, cat, title="Expired", expires_at=datetime.now(UTC) - timedelta(hours=1)
@@ -250,7 +252,7 @@ async def test_one_mention_per_offer_and_the_urgent_one_wins(async_session_maker
 async def test_several_events_become_one_email_without_alert_history(async_session_maker, sender):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
-        await _follow(db, user, store)
+        await _save_store(db, user, store)
         await _coupon(db, store, cat, title="Offer A")
         await _coupon(db, store, cat, title="Offer B")
 
@@ -263,7 +265,7 @@ async def test_several_events_become_one_email_without_alert_history(async_sessi
 async def test_new_pending_offer_is_included_in_the_next_digest(async_session_maker, sender):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
-        await _follow(db, user, store)
+        await _save_store(db, user, store)
         await _coupon(db, store, cat, title="First")
         first_scan = datetime.now(UTC)
         assert await engine.evaluate_user(db, user.id, first_scan) == 1
@@ -284,7 +286,7 @@ async def test_failed_send_is_not_retained_and_can_retry_on_the_next_scan(
     monkeypatch.setattr(engine.notifications, "senders_for", lambda prefs: [failing])
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
-        await _follow(db, user, store)
+        await _save_store(db, user, store)
         await _coupon(db, store, cat)
 
         assert await engine.evaluate_user(db, user.id) == 0
@@ -299,20 +301,20 @@ async def test_nothing_is_sent_when_every_channel_is_off(async_session_maker, mo
     monkeypatch.setattr(engine.notifications, "senders_for", lambda prefs: [])
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
-        await _follow(db, user, store)
+        await _save_store(db, user, store)
         await _coupon(db, store, cat)
 
         assert await engine.evaluate_user(db, user.id) == 0
 
 
-async def test_scan_covers_every_follower(async_session_maker, sender):
+async def test_scan_covers_every_user_with_saved_stores(async_session_maker, sender):
     async with async_session_maker() as db:
         store, cat, first = await _world(db)
         second = await user_service.create_user(
             db, UserCreate(email="second@example.com", password="supersecret123"), role=Role.user
         )
-        await _follow(db, first, store)
-        await _follow(db, second, store)
+        await _save_store(db, first, store)
+        await _save_store(db, second, store)
         await _coupon(db, store, cat)
 
         assert await engine.run_deal_alert_scan(db) == 2

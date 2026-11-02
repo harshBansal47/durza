@@ -2,6 +2,7 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict
 
+
 class SavedItemRead(BaseModel):
     """A saved coupon or store returned to the account UI."""
 

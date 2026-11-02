@@ -29,13 +29,13 @@ from app.core.config import Settings, get_settings
 from app.core.observability import get_logger
 from app.core.timezones import ensure_utc
 from app.models.coupon import Coupon, CouponStatus, VerificationStatus
-from app.models.store import Store
 from app.models.saved_items import (
     AlertKind,
     NotificationPreference,
     SavedCoupon,
     SavedStore,
 )
+from app.models.store import Store
 from app.models.user import User
 from app.services import notifications
 from app.services.email import AlertContent, AlertItem

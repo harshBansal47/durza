@@ -10,12 +10,12 @@ from sqlalchemy.orm import noload
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.coupon import Coupon
-from app.models.store import Store
 from app.models.saved_items import (
     NotificationPreference,
     SavedCoupon,
     SavedStore,
 )
+from app.models.store import Store
 from app.models.user import User
 from app.schemas.saved_items import (
     NotificationPreferenceRead,

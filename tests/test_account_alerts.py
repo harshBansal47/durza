@@ -5,6 +5,7 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from app.core.security import create_access_token
 from app.models.category import Category
 from app.models.store import Store
 from app.models.user import Role
