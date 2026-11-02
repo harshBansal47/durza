@@ -140,17 +140,49 @@ async def related_data_many(
     Each item's rows keep the ordering `related_data` gives them (sort_order, then id).
     Every requested id is present in the result, with empty lists when it has none.
     """
-    grouped: dict[uuid.UUID, tuple[list, list, list]] = {cid: ([], [], []) for cid in content_ids}
+    grouped: dict[
+        uuid.UUID, tuple[list[EditorialRelation], list[EditorialEntityLink], list[EditorialFAQ]]
+    ] = {cid: ([], [], []) for cid in content_ids}
     if not grouped:
         return grouped
     ids = list(grouped)
-    for slot, model in enumerate((EditorialRelation, EditorialEntityLink, EditorialFAQ)):
-        rows = await db.scalars(
-            select(model).where(model.content_id.in_(ids)).order_by(model.sort_order, model.id)
+
+    relations_by_id: dict[uuid.UUID, list[EditorialRelation]] = {cid: [] for cid in ids}
+    entity_links_by_id: dict[uuid.UUID, list[EditorialEntityLink]] = {cid: [] for cid in ids}
+    faqs_by_id: dict[uuid.UUID, list[EditorialFAQ]] = {cid: [] for cid in ids}
+
+    relations = await db.scalars(
+        select(EditorialRelation)
+        .where(EditorialRelation.content_id.in_(ids))
+        .order_by(EditorialRelation.sort_order, EditorialRelation.id)
+    )
+    for relation_row in relations:
+        relations_by_id[relation_row.content_id].append(relation_row)
+
+    entity_links = await db.scalars(
+        select(EditorialEntityLink)
+        .where(EditorialEntityLink.content_id.in_(ids))
+        .order_by(EditorialEntityLink.sort_order, EditorialEntityLink.id)
+    )
+    for entity_row in entity_links:
+        entity_links_by_id[entity_row.content_id].append(entity_row)
+
+    faqs = await db.scalars(
+        select(EditorialFAQ)
+        .where(EditorialFAQ.content_id.in_(ids))
+        .order_by(EditorialFAQ.sort_order, EditorialFAQ.id)
+    )
+    for faq_row in faqs:
+        faqs_by_id[faq_row.content_id].append(faq_row)
+
+    return {
+        cid: (
+            relations_by_id.get(cid, []),
+            entity_links_by_id.get(cid, []),
+            faqs_by_id.get(cid, []),
         )
-        for row in rows:
-            grouped[row.content_id][slot].append(row)
-    return {cid: (rel, links, faqs) for cid, (rel, links, faqs) in grouped.items()}
+        for cid in ids
+    }
 
 
 async def _replace_related_data(
