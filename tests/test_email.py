@@ -29,23 +29,20 @@ from app.services.email import (
 )
 
 ALERT = AlertContent(
-    subject="Sony WH-1000XM5 dropped to $279.00 USD",
-    preheader="Down $40.00 USD",
-    headline="A price drop",
-    detail="Sony WH-1000XM5 fell from $319.00 USD to $279.00 USD.",
-    cta_label="See the price",
-    cta_url="https://durza.in/products/sony-wh-1000xm5",
-    price_line="$319.00 USD → $279.00 USD after the code",
-    code="SAVE20",
+    subject="New at Sony: 20% off headphones",
+    preheader="20% off headphones",
+    headline="A new offer at Sony",
+    detail="20% off headphones. You saved Sony, so we thought you would want to know.",
+    cta_label="See the offer",
+    cta_url="https://durza.in/coupons/20-off-headphones",
 )
 
 
 def test_text_body_carries_the_actionable_facts() -> None:
     body = render_text(ALERT, "shopper@example.com")
-    assert "A price drop" in body
-    assert "$279.00 USD" in body
-    assert "SAVE20" in body
-    assert "https://durza.in/products/sony-wh-1000xm5" in body
+    assert "A new offer at Sony" in body
+    assert "20% off headphones" in body
+    assert "https://durza.in/coupons/20-off-headphones" in body
 
 
 def test_text_body_always_offers_an_way_out() -> None:
@@ -78,8 +75,7 @@ def test_text_lines_are_wrapped_to_78_columns() -> None:
 
 
 def test_html_escapes_store_supplied_text() -> None:
-    # Product names and codes come from scraped feeds. A store named
-    # `<script>alert(1)</script>` must not become executable in someone's inbox.
+    # Store-supplied text must not become executable in someone's inbox.
     alert = AlertContent(
         subject="<b>subject</b>",
         preheader="p",
@@ -87,7 +83,6 @@ def test_html_escapes_store_supplied_text() -> None:
         detail="A & B < C",
         cta_label="Go",
         cta_url="https://durza.in/?a=1&b=2",
-        code="<script>bad()</script>",
     )
     html = render_html(alert, "a@example.com")
     assert "<img src=x" not in html
@@ -127,8 +122,7 @@ async def test_send_without_smtp_configured_reports_queued() -> None:
 
 @pytest.mark.asyncio
 async def test_send_failure_returns_false_and_does_not_raise(monkeypatch) -> None:
-    # A bounced address must not roll back the alert-event row recording the
-    # attempt, so this returns False rather than propagating.
+    # A bounced address must not abort the rest of the saved-item digest.
     settings = get_settings()
     monkeypatch.setattr(settings, "smtp_host", "smtp.example.com", raising=False)
 

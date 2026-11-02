@@ -7,14 +7,14 @@ request for the duration of the connection.
 Design notes that are easy to get wrong and expensive to get wrong publicly:
 
 * **Text and HTML are both sent.** Roughly a fifth of alert emails land in a
-  client that renders neither, and a price alert is exactly the message you do
+  client that renders neither, and a deal update is exactly the message you do
   not want to lose.
 * **One message per recipient.** Alerts are addressed individually so the
   `List-Unsubscribe` header can carry that person's own address. BCC-ing a
   batch would leak addresses to each other.
-* **Delivery failures are not job failures.** A bounced email must not roll
-  back the alert-event rows that record what we tried to send, so
-  `send_email` reports failure rather than raising.
+* **Delivery failures are not job failures.** A bounced email must not abort
+  the rest of the saved-item digest, so `send_email` reports failure rather
+  than raising.
 """
 
 from dataclasses import dataclass
@@ -76,10 +76,6 @@ class AlertContent:
     detail: str
     cta_label: str
     cta_url: str
-    store_name: str | None = None
-    product_name: str | None = None
-    price_line: str | None = None
-    code: str | None = None
     # A digest lists several offers. Empty for the single-subject alerts.
     items: tuple[AlertItem, ...] = ()
 
@@ -228,17 +224,13 @@ def render_text(alert: AlertContent, recipient: str) -> str:
     ]
     for item in alert.items:
         lines += ["", f"* {item.label}: {item.title}", f"  {item.url}"]
-    if alert.price_line:
-        lines += ["", f"Price: {alert.price_line}"]
-    if alert.code:
-        lines += ["", f"Code: {alert.code}"]
     lines += [
         "",
         f"{alert.cta_label}: {alert.cta_url}",
         "",
         "— Durza",
         "",
-        "You are getting this because you tracked something or followed a store.",
+        "You are getting this because you saved a coupon or store.",
         f"Change what you hear about: {unsubscribe_url(recipient)}",
         "",
         "We are not in the business of writing to people who did not ask.",
@@ -256,18 +248,6 @@ def render_html(alert: AlertContent, recipient: str) -> str:
             .replace(">", "&gt;")
             .replace('"', "&quot;")
         )
-
-    price_row = (
-        f'<p style="margin:0 0 12px;font:16px/1.5 ui-monospace,Menlo,monospace">{esc(alert.price_line)}</p>'
-        if alert.price_line
-        else ""
-    )
-    code_row = (
-        f'<p style="margin:0 0 16px"><code style="padding:2px 6px;border:1px solid #ccc;'
-        f'font:15px ui-monospace,Menlo,monospace">{esc(alert.code)}</code></p>'
-        if alert.code
-        else ""
-    )
 
     items_row = ""
     if alert.items:
@@ -294,15 +274,13 @@ def render_html(alert: AlertContent, recipient: str) -> str:
           <h1 style="margin:0 0 12px;font:26px/1.2 Georgia,serif">{esc(alert.headline)}</h1>
           <p style="margin:0 0 12px;font:15px/1.6 ui-sans-serif,system-ui,sans-serif;color:#3d3a34">{esc(alert.detail)}</p>
           {items_row}
-          {price_row}
-          {code_row}
           <p style="margin:0 0 24px">
             <a href="{esc(alert.cta_url)}" style="display:inline-block;padding:11px 18px;background:#C2410C;color:#fff;text-decoration:none;font:600 14px ui-sans-serif,system-ui,sans-serif">{esc(alert.cta_label)}</a>
           </p>
         </td></tr>
         <tr><td style="padding:16px 28px;border-top:1px solid #e6e2da">
           <p style="margin:0;font:12px/1.6 ui-sans-serif,system-ui,sans-serif;color:#6b675f">
-            You are getting this because you tracked something or followed a store on Durza.
+            You are getting this because you saved a coupon or store on Durza.
             <a href="{esc(unsubscribe)}" style="color:#1c4b8f">Stop email alerts</a>
           </p>
         </td></tr>

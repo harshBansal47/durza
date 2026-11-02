@@ -49,7 +49,7 @@ class NotificationPreference(Base, UUIDPKMixin, TimestampMixin):
 
 class AlertKind(str, enum.Enum):
     # Deal alerts are derived from saved items; no per-user alert history is kept.
-    new_offer = "new_offer"  # a followed store has a new live offer
+    new_offer = "new_offer"  # a saved store has a new live offer
     confirmed = "confirmed"  # a saved offer was confirmed working
     ending_soon = "ending_soon"  # a saved offer is approaching its expiry
     ended = "ended"  # a saved offer expired, or stopped working

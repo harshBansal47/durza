@@ -1,11 +1,11 @@
 """Email digests derived from stores and coupons a user has saved.
 
-This service answers "is there something new at a store I follow, and did a
+This service answers "is there something new at a store I saved, and did a
 saved offer change?".
 
 Four things can happen, and each is worth one line in an email:
 
-* ``new_offer``   — a followed store has a live offer created since the last scan.
+* ``new_offer``   — a saved store has a live offer created since the last scan.
 * ``confirmed``   — a saved offer was verified working since the last scan.
 * ``ending_soon`` — a saved offer entered the warning window since the last scan.
 * ``ended``       — a saved offer expired, or stopped working, since the last scan.
@@ -129,8 +129,8 @@ async def collect_events(db: AsyncSession, user_id: uuid.UUID, now: datetime) ->
     window_start = now - timedelta(minutes=settings.alert_scan_interval_minutes)
     events: list[DealEvent] = []
 
-    # New offers at followed stores: created after the follow, live now, and
-    # created during this scan interval. The join applies each store's follow date.
+    # New offers at saved stores: created after the save, live now, and
+    # created during this scan interval. The join applies each store's save date.
     new_offers = await db.execute(
         select(Coupon)
         .join(SavedStore, SavedStore.store_id == Coupon.store_id)
@@ -204,7 +204,6 @@ def build_digest(
                     detail=f"{coupon.title}. You saved {store_name}, so we thought you would want to know.",
                     cta_label="See the offer",
                     cta_url=url,
-                    store_name=store_name,
                 )
             case AlertKind.confirmed:
                 return AlertContent(
@@ -214,7 +213,6 @@ def build_digest(
                     detail=f"{coupon.title}. You saved it, and we have now confirmed it works.",
                     cta_label="Use it now",
                     cta_url=url,
-                    store_name=store_name,
                 )
             case AlertKind.ending_soon:
                 when = _hours_phrase(coupon.expires_at, now) if coupon.expires_at else "soon"
@@ -225,7 +223,6 @@ def build_digest(
                     detail=f"{coupon.title} ends {when}.",
                     cta_label="Use it before it ends",
                     cta_url=url,
-                    store_name=store_name,
                 )
             case _:
                 return AlertContent(
@@ -238,7 +235,6 @@ def build_digest(
                     ),
                     cta_label=f"See {store_name} offers" if store else "See offers",
                     cta_url=f"{site}/stores/{store.slug}" if store else site,
-                    store_name=store_name,
                 )
 
     items = tuple(
@@ -309,14 +305,14 @@ async def evaluate_user(db: AsyncSession, user_id: uuid.UUID, now: datetime | No
 
 async def run_deal_alert_scan(db: AsyncSession) -> int:
     """Evaluate users with saved stores or coupons. Returns digests sent."""
-    followers = select(SavedStore.user_id)
+    saved_stores = select(SavedStore.user_id)
     saved_coupons = select(SavedCoupon.user_id)
     user_ids = (
         (
             await db.execute(
                 select(User.id).where(
                     User.is_active.is_(True),
-                    or_(User.id.in_(followers), User.id.in_(saved_coupons)),
+                    or_(User.id.in_(saved_stores), User.id.in_(saved_coupons)),
                 )
             )
         )
