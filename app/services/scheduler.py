@@ -42,7 +42,6 @@ from app.core.locks import try_lock as _try_lock
 from app.core.locks import unlock as _unlock
 from app.core.observability import get_logger
 from app.models.job import JobRun, JobStatus
-from app.services.alert_service import run_alert_scan
 from app.services.lifecycle_service import expire_stale_coupons, refresh_coupon_prices
 from app.services.verification_service import run_sweep as run_verification_sweep
 
@@ -52,7 +51,6 @@ logger = get_logger("durza.scheduler")
 # works; these just need to be distinct from each other.
 _LOCK_EXPIRE = 0x0C0FFEE0
 _LOCK_REFRESH = 0x0C0FFEE1
-_LOCK_ALERTS = 0x0C0FFEE2
 _LOCK_VERIFY = 0x0C0FFEE3
 _LOCK_SCRUB_CLICKS = 0x0C0FFEE4
 _LOCK_SCRUB_VERIFICATIONS = 0x0C0FFEE7
@@ -84,11 +82,6 @@ async def _refresh_job(
         db, force=force, source_slugs=source_slugs, triggered_by=triggered_by
     )
     return f"refreshed {refreshed} source(s)"
-
-
-async def _alerts_job(db: AsyncSession) -> str:
-    sent = await run_alert_scan(db)
-    return f"sent {sent} alert(s)"
 
 
 async def _deal_alerts_job(db: AsyncSession) -> str:
@@ -144,7 +137,6 @@ async def _conversions_job(db: AsyncSession) -> str:
 JOBS: dict[str, tuple[Callable[..., Awaitable[str]], int]] = {
     "expire_coupons": (_expire_job, _LOCK_EXPIRE),
     "refresh_prices": (_refresh_job, _LOCK_REFRESH),
-    "send_alerts": (_alerts_job, _LOCK_ALERTS),
     "send_deal_alerts": (_deal_alerts_job, _LOCK_DEAL_ALERTS),
     "verify_coupons": (_verify_job, _LOCK_VERIFY),
     "scrub_clicks": (_scrub_clicks_job, _LOCK_SCRUB_CLICKS),
@@ -437,16 +429,6 @@ def build_scheduler() -> AsyncIOScheduler:
         max_instances=1,
         coalesce=True,
         next_run_time=datetime.now(UTC) + timedelta(seconds=offset + 30),
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        _fire,
-        IntervalTrigger(minutes=settings.alert_scan_interval_minutes),
-        args=["send_alerts"],
-        id="send_alerts",
-        max_instances=1,
-        coalesce=True,
-        next_run_time=datetime.now(UTC) + timedelta(seconds=offset + 60),
         replace_existing=True,
     )
     scheduler.add_job(

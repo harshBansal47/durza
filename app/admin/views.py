@@ -917,7 +917,7 @@ class JobRunAdmin(StaffModelView, model=JobRun):
             values=[
                 ("expire_coupons", "expire_coupons"),
                 ("refresh_prices", "refresh_prices"),
-                ("send_alerts", "send_alerts"),
+                ("send_deal_alerts", "send_deal_alerts"),
                 ("verify_coupons", "verify_coupons"),
                 ("scrub_clicks", "scrub_clicks"),
             ],

@@ -357,9 +357,8 @@ def _send_kwargs() -> dict[str, Any]:
 async def send_email(to: str, alert: AlertContent) -> bool:
     """Deliver one alert.
 
-    Returns False instead of raising: a bounced address must not roll back the
-    alert-history rows that record the attempt, and the caller decides what a
-    failed channel means for the job as a whole.
+    Returns False instead of raising so one bounced address cannot abort the
+    rest of a saved-item digest.
     """
     settings = get_settings()
     if not settings.email_configured:

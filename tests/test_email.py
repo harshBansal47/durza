@@ -3,8 +3,7 @@
 The rendering tests are the ones worth having. Delivery itself is exercised
 through its no-SMTP path and its failure path, because that is where the
 behaviour that matters lives: a send that fails must return False rather than
-raise, or a single bad address rolls back the alert history recording the
-attempt.
+raise, or a single bad address interrupts sending the current alert.
 """
 
 import json

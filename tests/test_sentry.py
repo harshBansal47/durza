@@ -82,8 +82,8 @@ def test_init_is_a_no_op_without_a_dsn() -> None:
 def test_capture_is_a_no_op_when_uninitialised() -> None:
     # Every call site checks nothing and just calls this. If it raised here, a
     # missing DSN would turn every job failure into a crash.
-    sentry.capture_exception(RuntimeError("boom"), job="send_alerts")
-    sentry.capture_message("dead-lettered", job="send_alerts")
+    sentry.capture_exception(RuntimeError("boom"), job="send_deal_alerts")
+    sentry.capture_message("dead-lettered", job="send_deal_alerts")
 
 
 def test_init_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:

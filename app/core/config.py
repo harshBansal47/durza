@@ -122,20 +122,13 @@ class Settings(BaseSettings):
     # names (see `scheduler.JOBS`). Empty means all of them. `SCHEDULER_ENABLED`
     # alone starts every job, including ingestion and verification, which reach
     # out to third parties; this lets a deployment turn on just the cheap ones,
-    # e.g. SCHEDULER_JOBS=send_deal_alerts,send_alerts,expire_coupons
+    # e.g. SCHEDULER_JOBS=send_deal_alerts,expire_coupons
     scheduler_jobs: str = ""
     # Minutes between alert scans. Alerts are cheap; ingestion is not.
     alert_scan_interval_minutes: int = 30
-    # ---- Deal alerts (followed stores, tracked offers) -------------------
-    # Only offers that appeared / ended this recently are worth an email. This
-    # also stops a first scan after an outage, or after the scheduler is first
-    # enabled, from mailing people about things that happened weeks ago.
-    deal_alert_window_days: int = 7
-    # "Ending soon" fires when a tracked offer expires within this many hours.
+    # ---- Saved-item alerts ----------------------------------------------
+    # "Ending soon" fires when a saved offer enters this many-hour window.
     deal_alert_ending_soon_hours: int = 48
-    # At most one deal-alert email per person in this many hours. Everything
-    # pending is batched into that one message.
-    deal_alert_min_hours_between_emails: int = 24
     # Offers listed in a single digest; the rest are summarised as a count.
     deal_alert_max_items: int = 6
     # Hours between ingestion sweeps. Each run re-fetches every enabled source.

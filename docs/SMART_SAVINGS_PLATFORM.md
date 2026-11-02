@@ -41,7 +41,7 @@ have shipped in this repository.
 ├── /search/?q={query}              Noindex
 ├── /account/                       Noindex
 │   ├── /account/saved
-│   └── /account/alerts
+│   └── /account/notifications
 ├── /about/
 ├── /how-we-work/
 ├── /affiliate-disclosure/

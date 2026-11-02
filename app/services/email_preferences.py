@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.unsubscribe import read_unsubscribe_token
-from app.models.tracking import NotificationPreference
+from app.models.saved_items import NotificationPreference
 from app.services.user_service import get_user_by_email
 
 

@@ -64,7 +64,7 @@ def test_scheduler_uses_the_configured_intervals() -> None:
     jobs = {job.id: job for job in scheduler.build_scheduler().get_jobs()}
     assert jobs["expire_coupons"].trigger.interval == timedelta(hours=1)
     assert jobs["refresh_prices"].trigger.interval == timedelta(hours=6)
-    assert jobs["send_alerts"].trigger.interval == timedelta(minutes=30)
+    assert jobs["send_deal_alerts"].trigger.interval == timedelta(minutes=30)
     assert jobs["verify_coupons"].trigger.interval == timedelta(hours=12)
 
 
@@ -141,13 +141,15 @@ async def test_lock_loss_is_recorded_as_skipped_not_failed(
     async def _no_lock(db, lock_id):
         return False
 
-    monkeypatch.setitem(scheduler.JOBS, "send_alerts", (_never, scheduler.JOBS["send_alerts"][1]))
+    monkeypatch.setitem(
+        scheduler.JOBS, "send_deal_alerts", (_never, scheduler.JOBS["send_deal_alerts"][1])
+    )
     monkeypatch.setattr(scheduler, "_try_lock", _no_lock)
 
-    assert await scheduler.run_job("send_alerts") == "skipped"
+    assert await scheduler.run_job("send_deal_alerts") == "skipped"
     assert ran == []
 
-    row = (await _rows(async_session_maker, "send_alerts"))[0]
+    row = (await _rows(async_session_maker, "send_deal_alerts"))[0]
     assert row.status is JobStatus.skipped
 
 
@@ -194,7 +196,7 @@ async def test_last_run_ignores_skipped_rows(async_session_maker, monkeypatch) -
         db.add_all(
             [
                 JobRun(
-                    job="send_alerts",
+                    job="send_deal_alerts",
                     status=JobStatus.skipped,
                     started_at=datetime.now(UTC),
                     detail="another worker held the lock",
@@ -206,18 +208,22 @@ async def test_last_run_ignores_skipped_rows(async_session_maker, monkeypatch) -
     async def _alerts(db):
         return "sent 3 alert(s)"
 
-    monkeypatch.setitem(scheduler.JOBS, "send_alerts", (_alerts, scheduler.JOBS["send_alerts"][1]))
-    await scheduler.run_job("send_alerts")
+    monkeypatch.setitem(
+        scheduler.JOBS,
+        "send_deal_alerts",
+        (_alerts, scheduler.JOBS["send_deal_alerts"][1]),
+    )
+    await scheduler.run_job("send_deal_alerts")
 
     async with async_session_maker() as db:
-        row = await scheduler.last_run(db, "send_alerts")
+        row = await scheduler.last_run(db, "send_deal_alerts")
         assert row.status is JobStatus.success
 
 
 @pytest.mark.asyncio
 async def test_last_run_is_none_before_anything_has_run(async_session_maker) -> None:
     async with async_session_maker() as db:
-        assert await scheduler.last_run(db, "send_alerts") is None
+        assert await scheduler.last_run(db, "send_deal_alerts") is None
 
 
 @pytest.mark.asyncio
@@ -365,8 +371,8 @@ async def test_the_pause_doubles_per_consecutive_failure(async_session_maker, mo
 async def test_the_pause_is_capped_as_a_multiple_of_the_interval(monkeypatch) -> None:
     # A 30-minute alert scan backed off 64x is 32 hours. Without a cap, the
     # doubling reaches a point where a job has effectively stopped forever.
-    interval = scheduler.job_interval_seconds("send_alerts")
-    assert scheduler._backoff_seconds("send_alerts", 50) == interval * 64
+    interval = scheduler.job_interval_seconds("send_deal_alerts")
+    assert scheduler._backoff_seconds("send_deal_alerts", 50) == interval * 64
 
 
 async def test_a_success_clears_the_streak_and_the_pause(async_session_maker, monkeypatch) -> None:
@@ -471,16 +477,16 @@ def test_backoff_state_reports_every_job() -> None:
 def test_backoff_state_marks_a_dead_lettered_job(monkeypatch) -> None:
     # Dead-lettering is a diagnosis a human has to act on, so it has to be
     # visible without reading logs.
-    monkeypatch.setitem(scheduler._failure_streak, "send_alerts", scheduler.DEAD_LETTER_AFTER)
-    monkeypatch.setitem(scheduler._backoff_until, "send_alerts", float("inf"))
+    monkeypatch.setitem(scheduler._failure_streak, "send_deal_alerts", scheduler.DEAD_LETTER_AFTER)
+    monkeypatch.setitem(scheduler._backoff_until, "send_deal_alerts", float("inf"))
 
-    entry = scheduler.backoff_state()["send_alerts"]
+    entry = scheduler.backoff_state()["send_deal_alerts"]
     assert entry["dead_lettered"] is True
     assert entry["backing_off"] is True
 
 
 def test_a_job_that_never_failed_is_not_dead_lettered() -> None:
-    assert scheduler.backoff_state()["send_alerts"]["dead_lettered"] is False
+    assert scheduler.backoff_state()["send_deal_alerts"]["dead_lettered"] is False
 
 
 def test_job_intervals_are_read_from_settings() -> None:
@@ -496,5 +502,5 @@ def test_job_intervals_are_read_from_settings() -> None:
         == settings.verification_interval_hours * 3600
     )
     assert (
-        scheduler.job_interval_seconds("send_alerts") == settings.alert_scan_interval_minutes * 60
+        scheduler.job_interval_seconds("send_deal_alerts") == settings.alert_scan_interval_minutes * 60
     )

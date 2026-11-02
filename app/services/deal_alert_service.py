@@ -1,36 +1,27 @@
-"""Alerts for stores a user follows and offers they track.
+"""Email digests derived from stores and coupons a user has saved.
 
-`alert_service` answers "did a product's price move?". This answers the other
-question a coupon site is asked: "is there something new at the store I
-follow, and is the offer I saved still good?". The two never overlap — they
-read different tables and share only the senders.
+This service answers "is there something new at a store I follow, and did a
+saved offer change?".
 
 Four things can happen, and each is worth one line in an email:
 
-* ``new_offer``   — a followed store has a live offer created after the follow.
-* ``confirmed``   — a tracked offer was verified working after it was saved.
-* ``ending_soon`` — a tracked offer expires within the warning window.
-* ``ended``       — a tracked offer expired, or stopped working.
+* ``new_offer``   — a followed store has a live offer created since the last scan.
+* ``confirmed``   — a saved offer was verified working since the last scan.
+* ``ending_soon`` — a saved offer entered the warning window since the last scan.
+* ``ended``       — a saved offer expired, or stopped working, since the last scan.
 
 Three properties this module is responsible for:
 
-* **Derived, not streamed.** Nothing records "an offer appeared"; each scan
-  looks at the current state. `DealAlertMark` is the memory that keeps a
-  re-scan from re-sending, and a mark is written only after a channel accepted
-  the send, so a failed delivery is retried rather than lost.
-* **At most one email a day per person.** Everything pending goes into one
-  digest. A site that mails every time anything changes teaches people to
-  unsubscribe, which is the one outcome that costs more than the alert earned.
-* **Nothing from the distant past.** Only changes inside a short window are
-  reported, so turning the scheduler on after an outage does not write to
-  people about last month.
+* **Digest.** Changes are collected into one email per subscriber per scan.
+* **No user alert history.** The scan interval is the only delivery window; the
+  service stores no per-user alert records.
 """
 
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import exists, func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import metrics
@@ -39,10 +30,8 @@ from app.core.observability import get_logger
 from app.core.timezones import ensure_utc
 from app.models.coupon import Coupon, CouponStatus, VerificationStatus
 from app.models.store import Store
-from app.models.tracking import (
-    AlertEvent,
+from app.models.saved_items import (
     AlertKind,
-    DealAlertMark,
     NotificationPreference,
     SavedCoupon,
     SavedStore,
@@ -52,8 +41,6 @@ from app.services import notifications
 from app.services.email import AlertContent, AlertItem
 
 logger = get_logger("durza.deal_alerts")
-
-DEAL_KINDS = (AlertKind.new_offer, AlertKind.confirmed, AlertKind.ending_soon, AlertKind.ended)
 
 # A coupon in one of these states has stopped being usable. `pending_validation`
 # is deliberately absent: an offer that has not gone live yet has not ended.
@@ -82,11 +69,6 @@ _LABEL = {
     AlertKind.new_offer: "New offer",
 }
 
-# After a failed send, wait before trying the same person again. Without it a
-# mail outage would write a failed row for every user on every scan.
-_RETRY_AFTER_FAILURE = timedelta(hours=2)
-
-
 @dataclass(frozen=True)
 class DealEvent:
     kind: AlertKind
@@ -109,57 +91,46 @@ def _gone_at(coupon: Coupon, now: datetime) -> datetime | None:
     return None
 
 
-def _tracked_events(
+def _saved_coupon_events(
     coupon: Coupon,
     saved_at: datetime,
-    marked: set[tuple[uuid.UUID, str]],
     now: datetime,
     settings: Settings,
 ) -> list[DealEvent]:
-    window_start = now - timedelta(days=settings.deal_alert_window_days)
+    window_start = now - timedelta(minutes=settings.alert_scan_interval_minutes)
     events: list[DealEvent] = []
 
-    def pending(kind: AlertKind) -> bool:
-        return (coupon.id, kind.value) not in marked
-
     if _is_live(coupon, now):
+        verified_at = ensure_utc(coupon.last_verified_at) if coupon.last_verified_at else None
         if (
             coupon.verification_status == VerificationStatus.verified
-            and coupon.last_verified_at is not None
-            and ensure_utc(coupon.last_verified_at) > saved_at
-            and ensure_utc(coupon.last_verified_at) > window_start
-            and pending(AlertKind.confirmed)
+            and verified_at is not None
+            and saved_at < verified_at <= now
+            and window_start < verified_at
         ):
             events.append(DealEvent(AlertKind.confirmed, coupon))
-        if (
-            coupon.expires_at is not None
-            and ensure_utc(coupon.expires_at)
-            <= now + timedelta(hours=settings.deal_alert_ending_soon_hours)
-            and pending(AlertKind.ending_soon)
-        ):
-            events.append(DealEvent(AlertKind.ending_soon, coupon))
+        if coupon.expires_at is not None:
+            expires_at = ensure_utc(coupon.expires_at)
+            warning_started_at = expires_at - timedelta(
+                hours=settings.deal_alert_ending_soon_hours
+            )
+            if saved_at < warning_started_at and window_start < warning_started_at <= now:
+                events.append(DealEvent(AlertKind.ending_soon, coupon))
         return events
 
     gone = _gone_at(coupon, now)
-    # `saved_at < gone`: tracking something that had already ended is not news.
-    if gone is not None and saved_at < gone and gone > window_start and pending(AlertKind.ended):
+    if gone is not None and saved_at < gone and window_start < gone <= now:
         events.append(DealEvent(AlertKind.ended, coupon))
     return events
 
 
 async def collect_events(db: AsyncSession, user_id: uuid.UUID, now: datetime) -> list[DealEvent]:
     settings = get_settings()
-    window_start = now - timedelta(days=settings.deal_alert_window_days)
+    window_start = now - timedelta(minutes=settings.alert_scan_interval_minutes)
     events: list[DealEvent] = []
 
     # New offers at followed stores: created after the follow, live now, and
-    # not already mentioned. The join lets one query apply each store's own
-    # follow date.
-    already_told = exists().where(
-        DealAlertMark.user_id == user_id,
-        DealAlertMark.coupon_id == Coupon.id,
-        DealAlertMark.kind == AlertKind.new_offer.value,
-    )
+    # created during this scan interval. The join applies each store's follow date.
     new_offers = await db.execute(
         select(Coupon)
         .join(SavedStore, SavedStore.store_id == Coupon.store_id)
@@ -169,31 +140,23 @@ async def collect_events(db: AsyncSession, user_id: uuid.UUID, now: datetime) ->
             or_(Coupon.expires_at.is_(None), Coupon.expires_at > now),
             Coupon.created_at > SavedStore.created_at,
             Coupon.created_at > window_start,
-            ~already_told,
+            Coupon.created_at <= now,
         )
         .order_by(Coupon.created_at.desc())
         .limit(settings.deal_alert_max_items * 3)
     )
     events += [DealEvent(AlertKind.new_offer, c) for c in new_offers.scalars().all()]
 
-    # Tracked offers: judged against what we already told this person.
-    tracked = (
+    # Saved offers: only changes since the previous scan are eligible.
+    saved_coupons = (
         await db.execute(
             select(Coupon, SavedCoupon.created_at)
             .join(SavedCoupon, SavedCoupon.coupon_id == Coupon.id)
             .where(SavedCoupon.user_id == user_id)
         )
     ).all()
-    if tracked:
-        marks = await db.execute(
-            select(DealAlertMark.coupon_id, DealAlertMark.kind).where(
-                DealAlertMark.user_id == user_id,
-                DealAlertMark.coupon_id.in_([coupon.id for coupon, _ in tracked]),
-            )
-        )
-        marked = {(coupon_id, kind) for coupon_id, kind in marks.all()}
-        for coupon, saved_at in tracked:
-            events += _tracked_events(coupon, ensure_utc(saved_at), marked, now, settings)
+    for coupon, saved_at in saved_coupons:
+        events += _saved_coupon_events(coupon, ensure_utc(saved_at), now, settings)
 
     # One mention per offer. If the same offer is both "confirmed" and "ending
     # soon", say the more urgent thing.
@@ -238,7 +201,7 @@ def build_digest(
                     subject=f"New at {store_name}: {coupon.title}",
                     preheader=coupon.title,
                     headline=f"A new offer at {store_name}",
-                    detail=f"{coupon.title}. You follow {store_name}, so we thought you would want to know.",
+                    detail=f"{coupon.title}. You saved {store_name}, so we thought you would want to know.",
                     cta_label="See the offer",
                     cta_url=url,
                     store_name=store_name,
@@ -248,7 +211,7 @@ def build_digest(
                     subject=f"Confirmed working: {coupon.title}",
                     preheader="We checked it and it works",
                     headline="This offer is confirmed working",
-                    detail=f"{coupon.title}. You are tracking it, and we have now confirmed it works.",
+                    detail=f"{coupon.title}. You saved it, and we have now confirmed it works.",
                     cta_label="Use it now",
                     cta_url=url,
                     store_name=store_name,
@@ -284,10 +247,10 @@ def build_digest(
     )
     more = f" and {hidden} more" if hidden else ""
     return AlertContent(
-        subject=f"{len(events)} updates on offers you follow",
+        subject=f"{len(events)} updates on saved offers",
         preheader=f"{shown[0].coupon.title}{more}",
-        headline=f"{len(events)} updates on offers you follow",
-        detail="Here is what changed since we last wrote to you."
+        headline=f"{len(events)} updates on saved offers",
+        detail="Here is what changed in offers you saved."
         + (f" Showing the first {len(shown)}." if hidden else ""),
         cta_label="See everything",
         cta_url=f"{site}/account/saved",
@@ -295,27 +258,9 @@ def build_digest(
     )
 
 
-async def _recently(
-    db: AsyncSession, user_id: uuid.UUID, *, delivered: bool, within: timedelta, now: datetime
-) -> bool:
-    """Has a deal alert (identified by its batch id) been recorded this recently?"""
-    count = await db.scalar(
-        select(func.count())
-        .select_from(AlertEvent)
-        .where(
-            AlertEvent.user_id == user_id,
-            AlertEvent.batch_id.is_not(None),
-            AlertEvent.delivered.is_(delivered),
-            AlertEvent.created_at > now - within,
-        )
-    )
-    return bool(count)
-
-
 async def evaluate_user(db: AsyncSession, user_id: uuid.UUID, now: datetime | None = None) -> int:
-    """Send this person at most one digest. Returns the number of events it covered."""
+    """Send one digest for pending offers; returns the number covered."""
     now = now or datetime.now(UTC)
-    settings = get_settings()
 
     user = await db.get(User, user_id)
     if user is None or not user.is_active:
@@ -327,18 +272,9 @@ async def evaluate_user(db: AsyncSession, user_id: uuid.UUID, now: datetime | No
     if prefs is None:
         prefs = NotificationPreference(user_id=user_id)
         db.add(prefs)
-        await db.flush()
+        await db.commit()
     senders = notifications.senders_for(prefs)
     if not senders:
-        return 0
-
-    if await _recently(
-        db,
-        user_id,
-        delivered=True,
-        within=timedelta(hours=settings.deal_alert_min_hours_between_emails),
-        now=now,
-    ) or await _recently(db, user_id, delivered=False, within=_RETRY_AFTER_FAILURE, now=now):
         return 0
 
     events = await collect_events(db, user_id, now)
@@ -350,34 +286,13 @@ async def evaluate_user(db: AsyncSession, user_id: uuid.UUID, now: datetime | No
         s.id: s for s in (await db.execute(select(Store).where(Store.id.in_(store_ids)))).scalars()
     }
     content = build_digest(events, stores, now)
-    lead = events[0]
 
-    batch_id = uuid.uuid4()
     delivered_any = False
     for sender in senders:
         delivered = await sender.send(user, prefs, content)
-
-        # Every attempt is recorded, delivered or not: the history is the audit
-        # trail, and "I never got that email" has to be answerable.
-        db.add(
-            AlertEvent(
-                user_id=user.id,
-                tracked_product_id=None,
-                kind=lead.kind,
-                channel=sender.channel,
-                detail=content.subject,
-                delivered=delivered,
-                coupon_id=lead.coupon.id,
-                store_id=lead.coupon.store_id,
-                batch_id=batch_id,
-            )
-        )
         metrics.alerts_sent.labels(sender.channel, "delivered" if delivered else "failed").inc()
         delivered_any = delivered_any or delivered
 
-    if delivered_any:
-        for event in events:
-            db.add(DealAlertMark(user_id=user.id, coupon_id=event.coupon.id, kind=event.kind.value))
     await db.commit()
 
     logger.info(
@@ -393,15 +308,15 @@ async def evaluate_user(db: AsyncSession, user_id: uuid.UUID, now: datetime | No
 
 
 async def run_deal_alert_scan(db: AsyncSession) -> int:
-    """Evaluate everyone who follows a store or tracks an offer. Returns digests sent."""
+    """Evaluate users with saved stores or coupons. Returns digests sent."""
     followers = select(SavedStore.user_id)
-    trackers = select(SavedCoupon.user_id)
+    saved_coupons = select(SavedCoupon.user_id)
     user_ids = (
         (
             await db.execute(
                 select(User.id).where(
                     User.is_active.is_(True),
-                    or_(User.id.in_(followers), User.id.in_(trackers)),
+                    or_(User.id.in_(followers), User.id.in_(saved_coupons)),
                 )
             )
         )

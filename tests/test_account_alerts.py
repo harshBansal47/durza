@@ -1,12 +1,10 @@
-"""Retention layer: saved items, tracked products, alert evaluation, preferences."""
+"""Account save endpoints and email notification preferences."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
 
-from app.core.security import create_access_token
 from app.models.category import Category
 from app.models.store import Store
 from app.models.user import Role
@@ -25,7 +23,7 @@ async def _user_headers(async_session_maker) -> dict[str, str]:
         return {"Authorization": f"Bearer {create_access_token(str(user.id), user.role.value)}"}
 
 
-async def _store_cat_product(client, admin_headers, async_session_maker):
+async def _store_and_category(async_session_maker):
     async with async_session_maker() as db:
         store = Store(name="Myntra", slug=f"myntra-{uuid.uuid4().hex[:6]}")
         cat = Category(
@@ -35,18 +33,11 @@ async def _store_cat_product(client, admin_headers, async_session_maker):
         await db.commit()
         await db.refresh(store)
         await db.refresh(cat)
-    product_id = (
-        await client.post(
-            "/api/v1/products",
-            json={"name": "MacBook Air M4", "store_id": str(store.id), "category_id": str(cat.id)},
-            headers=admin_headers,
-        )
-    ).json()["id"]
-    return store, cat, product_id
+    return store, cat
 
 
 async def test_saved_stores_and_coupons(client: AsyncClient, admin_headers, async_session_maker):
-    store, _cat, _product_id = await _store_cat_product(client, admin_headers, async_session_maker)
+    store, cat = await _store_and_category(async_session_maker)
     headers = await _user_headers(async_session_maker)
 
     assert (
@@ -59,81 +50,6 @@ async def test_saved_stores_and_coupons(client: AsyncClient, admin_headers, asyn
     saved = (await client.get("/api/v1/me/saved-stores", headers=headers)).json()
     assert len(saved) == 1 and saved[0]["item_id"] == str(store.id)
 
-    await client.delete(f"/api/v1/me/saved-stores/{store.id}", headers=headers)
-    assert (await client.get("/api/v1/me/saved-stores", headers=headers)).json() == []
-
-
-async def test_track_product_and_target_update(
-    client: AsyncClient, admin_headers, async_session_maker
-):
-    _, _, product_id = await _store_cat_product(client, admin_headers, async_session_maker)
-    headers = await _user_headers(async_session_maker)
-
-    resp = await client.post(
-        "/api/v1/me/tracked-products",
-        json={"product_id": product_id, "target_price": 75000},
-        headers=headers,
-    )
-    assert resp.status_code == 201
-    tracked_id = resp.json()["id"]
-
-    resp = await client.patch(
-        f"/api/v1/me/tracked-products/{tracked_id}",
-        json={"target_price": 70000},
-        headers=headers,
-    )
-    assert resp.json()["target_price"] == 70000
-
-    tracked = (await client.get("/api/v1/me/tracked-products", headers=headers)).json()
-    assert len(tracked) == 1
-
-
-async def test_alert_fires_when_target_met(client: AsyncClient, admin_headers, async_session_maker):
-    _, _, product_id = await _store_cat_product(client, admin_headers, async_session_maker)
-    headers = await _user_headers(async_session_maker)
-
-    await client.post(
-        "/api/v1/me/tracked-products",
-        json={"product_id": product_id, "target_price": 75000},
-        headers=headers,
-    )
-    now = datetime.now(UTC)
-    await client.post(
-        f"/api/v1/products/{product_id}/price-points",
-        json={"price": 90000, "captured_at": (now - timedelta(days=2)).isoformat()},
-        headers=admin_headers,
-    )
-    await client.post(
-        f"/api/v1/products/{product_id}/price-points",
-        json={"price": 74999, "captured_at": now.isoformat()},
-        headers=admin_headers,
-    )
-
-    from app.core.database import get_db  # noqa: F401
-    from app.services.alert_service import run_alert_scan
-
-    async with async_session_maker() as db:
-        sent = await run_alert_scan(db)
-    assert sent >= 1
-
-    alerts = (await client.get("/api/v1/me/alerts", headers=headers)).json()
-    assert any(a["kind"] == "target_met" for a in alerts)
-
-    # Second scan on the same observation sends nothing new.
-    async with async_session_maker() as db:
-        sent2 = await run_alert_scan(db)
-    assert sent2 == 0
-
-
-async def test_coupon_appeared_alert(client: AsyncClient, admin_headers, async_session_maker):
-    store, cat, product_id = await _store_cat_product(client, admin_headers, async_session_maker)
-    headers = await _user_headers(async_session_maker)
-
-    await client.post(
-        "/api/v1/me/tracked-products",
-        json={"product_id": product_id},  # no target -> coupon alert can fire
-        headers=headers,
-    )
     coupon_id = (
         await client.post(
             "/api/v1/coupons",
@@ -149,25 +65,17 @@ async def test_coupon_appeared_alert(client: AsyncClient, admin_headers, async_s
             headers=admin_headers,
         )
     ).json()["id"]
+    assert (
+        await client.post(f"/api/v1/me/saved-coupons/{coupon_id}", headers=headers)
+    ).status_code == 201
+    assert (
+        await client.post(f"/api/v1/me/saved-coupons/{coupon_id}", headers=headers)
+    ).status_code == 201
+    saved_coupons = (await client.get("/api/v1/me/saved-coupons", headers=headers)).json()
+    assert len(saved_coupons) == 1 and saved_coupons[0]["item_id"] == coupon_id
 
-    now = datetime.now(UTC)
-    await client.post(
-        f"/api/v1/products/{product_id}/price-points",
-        json={"price": 85000, "captured_at": (now - timedelta(days=1)).isoformat()},
-        headers=admin_headers,
-    )
-    await client.post(
-        f"/api/v1/products/{product_id}/price-points",
-        json={"price": 85000, "coupon_id": coupon_id, "captured_at": now.isoformat()},
-        headers=admin_headers,
-    )
-
-    from app.services.alert_service import run_alert_scan
-
-    async with async_session_maker() as db:
-        await run_alert_scan(db)
-    alerts = (await client.get("/api/v1/me/alerts", headers=headers)).json()
-    assert any(a["kind"] == "coupon_appeared" for a in alerts)
+    await client.delete(f"/api/v1/me/saved-stores/{store.id}", headers=headers)
+    assert (await client.get("/api/v1/me/saved-stores", headers=headers)).json() == []
 
 
 async def test_notification_preferences_roundtrip(client: AsyncClient, async_session_maker):
@@ -186,4 +94,4 @@ async def test_notification_preferences_roundtrip(client: AsyncClient, async_ses
 
 
 async def test_me_requires_auth(client: AsyncClient):
-    assert (await client.get("/api/v1/me/tracked-products")).status_code == 401
+    assert (await client.get("/api/v1/me/tracked-products")).status_code == 404

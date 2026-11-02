@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
@@ -10,24 +10,17 @@ from sqlalchemy.orm import noload
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.coupon import Coupon
-from app.models.product import Product
 from app.models.store import Store
-from app.models.tracking import (
-    AlertEvent,
+from app.models.saved_items import (
     NotificationPreference,
     SavedCoupon,
     SavedStore,
-    TrackedProduct,
 )
 from app.models.user import User
-from app.schemas.tracking import (
-    AlertEventRead,
+from app.schemas.saved_items import (
     NotificationPreferenceRead,
     NotificationPreferenceUpdate,
     SavedItemRead,
-    TrackedProductCreate,
-    TrackedProductRead,
-    TrackedProductUpdate,
 )
 
 router = APIRouter(prefix="/me", tags=["me"])
@@ -128,70 +121,6 @@ async def unsave_coupon(
         await db.commit()
 
 
-# ---- Tracked products ----
-
-
-@router.get("/tracked-products", response_model=list[TrackedProductRead])
-async def list_tracked(
-    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
-) -> list[TrackedProductRead]:
-    result = await db.execute(select(TrackedProduct).where(TrackedProduct.user_id == user.id))
-    return [TrackedProductRead.model_validate(row) for row in result.scalars().all()]
-
-
-@router.post("/tracked-products", response_model=TrackedProductRead, status_code=201)
-async def track_product(
-    payload: TrackedProductCreate,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> TrackedProduct:
-    if await db.get(Product, payload.product_id) is None:
-        raise HTTPException(status_code=404, detail="Product not found")
-    exists = await db.execute(
-        select(TrackedProduct).where(
-            TrackedProduct.user_id == user.id, TrackedProduct.product_id == payload.product_id
-        )
-    )
-    row = exists.scalar_one_or_none()
-    if row is None:
-        row = TrackedProduct(
-            user_id=user.id, product_id=payload.product_id, target_price=payload.target_price
-        )
-        db.add(row)
-        await db.commit()
-        await db.refresh(row)
-    return row
-
-
-@router.patch("/tracked-products/{tracked_id}", response_model=TrackedProductRead)
-async def update_tracking(
-    tracked_id: uuid.UUID,
-    payload: TrackedProductUpdate,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> TrackedProduct:
-    row = await db.get(TrackedProduct, tracked_id)
-    if row is None or row.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Tracked product not found")
-    if payload.target_price is not None:
-        row.target_price = payload.target_price
-    await db.commit()
-    await db.refresh(row)
-    return row
-
-
-@router.delete("/tracked-products/{tracked_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def untrack_product(
-    tracked_id: uuid.UUID,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> None:
-    row = await db.get(TrackedProduct, tracked_id)
-    if row is not None and row.user_id == user.id:
-        await db.delete(row)
-        await db.commit()
-
-
 # ---- Notification preferences ----
 
 
@@ -227,21 +156,3 @@ async def update_notification_preferences(
     await db.commit()
     await db.refresh(prefs)
     return prefs
-
-
-# ---- Alert history ----
-
-
-@router.get("/alerts", response_model=list[AlertEventRead])
-async def list_alerts(
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    limit: int = Query(50, ge=1, le=200),
-) -> list[AlertEventRead]:
-    result = await db.execute(
-        select(AlertEvent)
-        .where(AlertEvent.user_id == user.id)
-        .order_by(AlertEvent.created_at.desc())
-        .limit(limit)
-    )
-    return [AlertEventRead.model_validate(row) for row in result.scalars().all()]

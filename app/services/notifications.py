@@ -6,7 +6,7 @@ are not a private account notification channel.
 
 from typing import Protocol
 
-from app.models.tracking import NotificationPreference
+from app.models.saved_items import NotificationPreference
 from app.models.user import User
 from app.services import email as email_service
 from app.services.email import AlertContent

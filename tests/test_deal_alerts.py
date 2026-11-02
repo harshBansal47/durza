@@ -1,24 +1,16 @@
-"""Deal alerts: followed stores, tracked offers, the daily digest, and unsubscribe."""
+"""Saved-item email updates, digests, and unsubscribe."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
-
 from app.core.config import get_settings
+from app.core.database import Base
 from app.core.unsubscribe import make_unsubscribe_token, read_unsubscribe_token
 from app.models.category import Category
 from app.models.coupon import Coupon, CouponStatus, DiscountType, VerificationStatus
 from app.models.store import Store
-from app.models.tracking import (
-    AlertEvent,
-    AlertKind,
-    DealAlertMark,
-    NotificationPreference,
-    SavedCoupon,
-    SavedStore,
-)
+from app.models.saved_items import NotificationPreference, SavedCoupon, SavedStore
 from app.models.user import Role
 from app.schemas.user import UserCreate
 from app.services import deal_alert_service as engine
@@ -28,6 +20,13 @@ from app.services.email import AlertContent, AlertItem, build_message
 pytestmark = pytest.mark.asyncio
 
 DAY = timedelta(days=1)
+
+
+async def test_product_tracking_and_alert_history_are_not_mapped() -> None:
+    assert "tracked_products" not in Base.metadata.tables
+    assert "track_alert_states" not in Base.metadata.tables
+    assert "deal_alert_marks" not in Base.metadata.tables
+    assert "alert_events" not in Base.metadata.tables
 
 
 class FakeSender:
@@ -85,30 +84,29 @@ async def _follow(db, user, store, *, ago=DAY) -> None:
     await db.commit()
 
 
-async def _track(db, user, coupon, *, ago=DAY) -> None:
+async def _save_coupon(db, user, coupon, *, ago=DAY) -> None:
     db.add(SavedCoupon(user_id=user.id, coupon_id=coupon.id, created_at=datetime.now(UTC) - ago))
     await db.commit()
-
-
-async def _marks(db):
-    return (await db.execute(select(DealAlertMark))).scalars().all()
 
 
 # ---- followed stores ----------------------------------------------------------
 
 
-async def test_new_offer_at_a_followed_store_is_announced_once(async_session_maker, sender):
+async def test_new_offer_is_derived_from_the_current_scan_window(async_session_maker, sender):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
         await _follow(db, user, store)
         await _coupon(db, store, cat)
 
-        assert await engine.evaluate_user(db, user.id) == 1
+        first_scan = datetime.now(UTC)
+        assert await engine.evaluate_user(db, user.id, first_scan) == 1
         assert len(sender.sent) == 1
         assert sender.sent[0].subject.startswith("New at Nykaa")
-        assert [m.kind for m in await _marks(db)] == ["new_offer"]
 
-        assert await engine.evaluate_user(db, user.id) == 0
+        next_scan = first_scan + timedelta(
+            minutes=get_settings().alert_scan_interval_minutes, seconds=1
+        )
+        assert await engine.evaluate_user(db, user.id, next_scan) == 0
         assert len(sender.sent) == 1
 
 
@@ -134,39 +132,45 @@ async def test_offers_that_are_not_live_are_not_announced(async_session_maker, s
         assert await engine.evaluate_user(db, user.id) == 0
 
 
-# ---- tracked offers -----------------------------------------------------------
+# ---- saved offers -------------------------------------------------------------
 
 
-async def test_ending_soon_is_announced_for_a_tracked_offer(async_session_maker, sender):
+async def test_ending_soon_is_announced_when_a_saved_offer_enters_the_window(
+    async_session_maker, sender
+):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
-        coupon = await _coupon(db, store, cat, expires_at=datetime.now(UTC) + timedelta(hours=10))
-        await _track(db, user, coupon)
+        now = datetime.now(UTC)
+        warning_hours = get_settings().deal_alert_ending_soon_hours
+        coupon = await _coupon(
+            db, store, cat, expires_at=now + timedelta(hours=warning_hours) - timedelta(minutes=5)
+        )
+        await _save_coupon(db, user, coupon)
 
-        assert await engine.evaluate_user(db, user.id) == 1
+        assert await engine.evaluate_user(db, user.id, now) == 1
         assert sender.sent[0].subject.startswith("Ending soon")
-        assert "10 hour" in sender.sent[0].detail or "9 hour" in sender.sent[0].detail
 
 
 async def test_an_offer_ending_in_a_week_is_not_ending_soon(async_session_maker, sender):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
         coupon = await _coupon(db, store, cat, expires_at=datetime.now(UTC) + 7 * DAY)
-        await _track(db, user, coupon)
+        await _save_coupon(db, user, coupon)
 
         assert await engine.evaluate_user(db, user.id) == 0
 
 
-async def test_ended_is_announced_only_if_it_ended_after_it_was_tracked(
+async def test_ended_is_announced_only_if_it_ended_after_it_was_saved(
     async_session_maker, sender
 ):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
+        now = datetime.now(UTC)
         ended_after = await _coupon(
-            db, store, cat, title="Ended after", expires_at=datetime.now(UTC) - timedelta(hours=2)
+            db, store, cat, title="Ended after", expires_at=now - timedelta(minutes=5)
         )
-        await _track(db, user, ended_after, ago=DAY)
-        assert await engine.evaluate_user(db, user.id) == 1
+        await _save_coupon(db, user, ended_after, ago=DAY)
+        assert await engine.evaluate_user(db, user.id, now) == 1
         assert sender.sent[0].subject.startswith("No longer available")
 
     async with async_session_maker() as db:
@@ -174,7 +178,7 @@ async def test_ended_is_announced_only_if_it_ended_after_it_was_tracked(
         ended_before = await _coupon(
             db, store, cat, title="Ended before", expires_at=datetime.now(UTC) - 2 * DAY
         )
-        await _track(db, user, ended_before, ago=timedelta(hours=1))
+        await _save_coupon(db, user, ended_before, ago=timedelta(hours=1))
         assert await engine.evaluate_user(db, user.id) == 0
 
 
@@ -184,26 +188,27 @@ async def test_a_pending_offer_has_not_ended(async_session_maker, sender):
         coupon = await _coupon(
             db, store, cat, is_active=False, status=CouponStatus.pending_validation
         )
-        await _track(db, user, coupon)
+        await _save_coupon(db, user, coupon)
 
         assert await engine.evaluate_user(db, user.id) == 0
 
 
-async def test_confirmed_requires_verification_after_the_offer_was_tracked(
+async def test_confirmed_requires_a_recent_verification_after_saving(
     async_session_maker, sender
 ):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
+        now = datetime.now(UTC)
         fresh = await _coupon(
             db,
             store,
             cat,
             title="Fresh",
             verification_status=VerificationStatus.verified,
-            last_verified_at=datetime.now(UTC) - timedelta(hours=1),
+            last_verified_at=now - timedelta(minutes=5),
         )
-        await _track(db, user, fresh, ago=DAY)
-        assert await engine.evaluate_user(db, user.id) == 1
+        await _save_coupon(db, user, fresh, ago=DAY)
+        assert await engine.evaluate_user(db, user.id, now) == 1
         assert sender.sent[0].subject.startswith("Confirmed working")
 
     async with async_session_maker() as db:
@@ -214,33 +219,35 @@ async def test_confirmed_requires_verification_after_the_offer_was_tracked(
             cat,
             title="Stale",
             verification_status=VerificationStatus.verified,
-            last_verified_at=datetime.now(UTC) - 2 * DAY,
+            last_verified_at=now - 2 * DAY,
         )
-        await _track(db, user, stale, ago=timedelta(hours=1))
-        assert await engine.evaluate_user(db, user.id) == 0
+        await _save_coupon(db, user, stale, ago=timedelta(hours=1))
+        assert await engine.evaluate_user(db, user.id, now) == 0
 
 
 async def test_one_mention_per_offer_and_the_urgent_one_wins(async_session_maker, sender):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
+        now = datetime.now(UTC)
+        warning_hours = get_settings().deal_alert_ending_soon_hours
         coupon = await _coupon(
             db,
             store,
             cat,
-            expires_at=datetime.now(UTC) + timedelta(hours=5),
+            expires_at=now + timedelta(hours=warning_hours) - timedelta(minutes=5),
             verification_status=VerificationStatus.verified,
-            last_verified_at=datetime.now(UTC) - timedelta(hours=1),
+            last_verified_at=now - timedelta(minutes=5),
         )
-        await _track(db, user, coupon, ago=DAY)
+        await _save_coupon(db, user, coupon, ago=DAY)
 
-        assert await engine.evaluate_user(db, user.id) == 1
+        assert await engine.evaluate_user(db, user.id, now) == 1
         assert sender.sent[0].subject.startswith("Ending soon")
 
 
 # ---- the digest, the cap, and failure ------------------------------------------
 
 
-async def test_several_events_become_one_email_and_one_history_entry(async_session_maker, sender):
+async def test_several_events_become_one_email_without_alert_history(async_session_maker, sender):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
         await _follow(db, user, store)
@@ -250,32 +257,27 @@ async def test_several_events_become_one_email_and_one_history_entry(async_sessi
         assert await engine.evaluate_user(db, user.id) == 2
         assert len(sender.sent) == 1
         digest = sender.sent[0]
-        assert digest.subject == "2 updates on offers you follow"
+        assert digest.subject == "2 updates on saved offers"
         assert {i.title for i in digest.items} == {"Offer A", "Offer B"}
 
-        events = (await db.execute(select(AlertEvent))).scalars().all()
-        assert len(events) == 1 and events[0].batch_id is not None
-        assert events[0].tracked_product_id is None and events[0].kind == AlertKind.new_offer
-
-
-async def test_at_most_one_email_per_day(async_session_maker, sender):
+async def test_new_pending_offer_is_included_in_the_next_digest(async_session_maker, sender):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
         await _follow(db, user, store)
         await _coupon(db, store, cat, title="First")
-        assert await engine.evaluate_user(db, user.id) == 1
+        first_scan = datetime.now(UTC)
+        assert await engine.evaluate_user(db, user.id, first_scan) == 1
 
-        await _coupon(db, store, cat, title="Second")
-        assert await engine.evaluate_user(db, user.id) == 0
-        assert len(sender.sent) == 1
-
-        # A day later it goes out, and only the new offer is in it.
-        later = datetime.now(UTC) + timedelta(hours=25)
-        assert await engine.evaluate_user(db, user.id, now=later) == 1
+        next_scan = first_scan + timedelta(
+            minutes=get_settings().alert_scan_interval_minutes, seconds=1
+        )
+        await _coupon(db, store, cat, title="Second", created_at=next_scan - timedelta(seconds=1))
+        assert await engine.evaluate_user(db, user.id, next_scan) == 1
+        assert len(sender.sent) == 2
         assert sender.sent[1].subject.startswith("New at Nykaa: Second")
 
 
-async def test_a_failed_send_is_recorded_not_marked_and_not_retried_at_once(
+async def test_failed_send_is_not_retained_and_can_retry_on_the_next_scan(
     async_session_maker, monkeypatch
 ):
     failing = FakeSender(ok=False)
@@ -286,16 +288,11 @@ async def test_a_failed_send_is_recorded_not_marked_and_not_retried_at_once(
         await _coupon(db, store, cat)
 
         assert await engine.evaluate_user(db, user.id) == 0
-        assert await _marks(db) == []  # so a later scan can still tell them
-        events = (await db.execute(select(AlertEvent))).scalars().all()
-        assert [e.delivered for e in events] == [False]
-
         assert await engine.evaluate_user(db, user.id) == 0
-        assert len(failing.sent) == 1  # backed off rather than failing on every scan
+        assert len(failing.sent) == 2
 
         failing.ok = True
-        later = datetime.now(UTC) + timedelta(hours=3)
-        assert await engine.evaluate_user(db, user.id, now=later) == 1
+        assert await engine.evaluate_user(db, user.id) == 1
 
 
 async def test_nothing_is_sent_when_every_channel_is_off(async_session_maker, monkeypatch):
@@ -306,7 +303,6 @@ async def test_nothing_is_sent_when_every_channel_is_off(async_session_maker, mo
         await _coupon(db, store, cat)
 
         assert await engine.evaluate_user(db, user.id) == 0
-        assert await _marks(db) == []
 
 
 async def test_scan_covers_every_follower(async_session_maker, sender):
@@ -338,11 +334,11 @@ def test_scheduler_runs_only_the_allowed_jobs(monkeypatch):
     monkeypatch.setattr(
         scheduler,
         "get_settings",
-        lambda: base.model_copy(update={"scheduler_jobs": "send_deal_alerts,send_alerts"}),
+        lambda: base.model_copy(update={"scheduler_jobs": "send_deal_alerts,expire_coupons"}),
     )
     assert {job.id for job in scheduler.build_scheduler().get_jobs()} == {
         "send_deal_alerts",
-        "send_alerts",
+        "expire_coupons",
     }
 
     monkeypatch.setattr(

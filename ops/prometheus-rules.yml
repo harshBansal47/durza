@@ -28,17 +28,17 @@ groups:
     rules:
       - alert: DurzaAlertsNotRunning
         expr: |
-          time() - max(durza_job_last_success_timestamp_seconds{job="send_alerts"}) > 7200
+          time() - max(durza_job_last_success_timestamp_seconds{job="send_deal_alerts"}) > 7200
         for: 10m
         labels:
           severity: page
         annotations:
           summary: "Price alerts have not been delivered for over two hours"
           description: >-
-            The last successful send_alerts run was {{ $value | humanizeDuration }} ago.
+            The last successful send_deal_alerts run was {{ $value | humanizeDuration }} ago.
             Users are not being told about price drops. Check /health/deep on the API,
             then the Job Runs table in /admin.
-          runbook: /admin/job-run/list?search=send_alerts
+          runbook: /admin/job-run/list?search=send_deal_alerts
 
       # `absent()` rather than a comparison: a job that has *never* run produces
       # no series at all, and `max(series) < threshold` is silently true when the

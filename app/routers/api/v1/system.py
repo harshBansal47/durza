@@ -35,7 +35,7 @@ logger = get_logger("durza.health")
 _STALE_AFTER = {
     "expire_coupons": timedelta(hours=6),
     "refresh_prices": timedelta(hours=48),
-    "send_alerts": timedelta(hours=3),
+    "send_deal_alerts": timedelta(hours=3),
     # Generous: verification is a background quality signal, not a
     # user-visible promise, and a missed sweep costs nothing for a day.
     "verify_coupons": timedelta(days=2),

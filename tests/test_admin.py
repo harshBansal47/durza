@@ -394,7 +394,7 @@ async def test_job_run_detail_page_renders(admin_client, make_user, async_sessio
     async with async_session_maker() as session:
         session.add(
             JobRun(
-                job="send_alerts",
+                job="send_deal_alerts",
                 status=JobStatus.failed,
                 detail="ConnectionError: SMTP unreachable",
                 started_at=datetime.now(UTC),
@@ -405,7 +405,7 @@ async def test_job_run_detail_page_renders(admin_client, make_user, async_sessio
     await staff_login(admin_client, make_user, Role.admin)
     resp = await admin_client.get("/admin/job-run/list")
     assert resp.status_code == 200
-    assert "send_alerts" in resp.text
+    assert "send_deal_alerts" in resp.text
     assert "SMTP unreachable" in resp.text
 
 
@@ -417,7 +417,7 @@ async def test_job_runs_cannot_be_edited_by_hand(admin_client, make_user, async_
 
     async with async_session_maker() as session:
         run = JobRun(
-            job="send_alerts",
+            job="send_deal_alerts",
             status=JobStatus.failed,
             detail="original",
             started_at=datetime.now(UTC),
@@ -429,7 +429,7 @@ async def test_job_runs_cannot_be_edited_by_hand(admin_client, make_user, async_
     await staff_login(admin_client, make_user, Role.admin)
     resp = await admin_client.post(
         f"/admin/job-run/edit/{run_id}",
-        data={"job": "send_alerts", "status": "success", "started_at": "2030-01-01 00:00:00"},
+        data={"job": "send_deal_alerts", "status": "success", "started_at": "2030-01-01 00:00:00"},
         follow_redirects=False,
     )
     # 403 is what SQLAdmin's authorization backend returns for a denied action,

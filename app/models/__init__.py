@@ -75,14 +75,10 @@ from app.models.sponsored import (
 )
 from app.models.store import Store, StoreStatus
 from app.models.telegram_post import TelegramPost, TelegramPostStatus
-from app.models.tracking import (
-    AlertEvent,
-    DealAlertMark,
+from app.models.saved_items import (
     NotificationPreference,
     SavedCoupon,
     SavedStore,
-    TrackAlertState,
-    TrackedProduct,
 )
 from app.models.user import EmailOtpChallenge, User
 from app.models.user_interest import UserInterest
@@ -97,7 +93,6 @@ __all__ = [
     "AffiliateProgram",
     "AffiliateProvider",
     "AffiliateRevenue",
-    "AlertEvent",
     "AnalyticsEvent",
     "AnalyticsSession",
     "AppLog",
@@ -124,7 +119,6 @@ __all__ = [
     "DailyMerchantStats",
     "DailyProviderStats",
     "DailyTrafficStats",
-    "DealAlertMark",
     "DestinationStatus",
     "DeviceType",
     "DiscountType",
@@ -168,8 +162,6 @@ __all__ = [
     "SyncMode",
     "TelegramPost",
     "TelegramPostStatus",
-    "TrackAlertState",
-    "TrackedProduct",
     "TrafficSource",
     "User",
     "UserInterest",

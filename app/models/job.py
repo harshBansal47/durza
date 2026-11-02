@@ -31,7 +31,7 @@ class JobStatus(str, enum.Enum):
 class JobRun(Base, UUIDPKMixin, TimestampMixin):
     __tablename__ = "job_runs"
 
-    # "expire_coupons" | "refresh_prices" | "send_alerts". Free text rather than
+    # "expire_coupons" | "refresh_prices" | "send_deal_alerts". Free text rather than
     # an enum: adding a job should not require a migration, and a typo in a job
     # name is a fact worth recording rather than crashing on insert.
     job: Mapped[str] = mapped_column(String(60), index=True, nullable=False)

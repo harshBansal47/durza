@@ -1,15 +1,16 @@
-# Deal alerts (follow a store, track an offer)
+# Saved-item email updates
 
 ## What a visitor gets
 
 | Action | Email when | Cap |
 |---|---|---|
-| **Follow a store** | the store has a new live offer | one email per person per 24h |
-| **Track an offer** | it is confirmed working, is about to end (within 48h), or has ended / stopped working | same email |
+| **Follow a store** | the store has a new live offer | one digest per scheduler scan |
+| **Save a coupon** | it is confirmed working, enters the 48-hour expiry window, or has ended / stopped working | same email |
 
-Everything pending is batched into one digest. Only changes from the last 7
-days are reported, so a first scan after an outage never mails people about old
-news. Every email has a working unsubscribe (signed link, one-click header).
+Everything pending is batched into one digest. Only changes from the last scan
+interval are reported, so old changes are not replayed. Alert contents and
+per-user alert history are not stored. Every email has a working unsubscribe
+(signed link, one-click header).
 
 ## Turning it on in production
 
@@ -20,7 +21,7 @@ only the cheap ones:
 
 ```
 SCHEDULER_ENABLED=true
-SCHEDULER_JOBS=send_deal_alerts,send_alerts,expire_coupons
+SCHEDULER_JOBS=send_deal_alerts,expire_coupons
 ```
 
 then restart the API container. The logs show `deal alert dispatched` per digest.
@@ -34,8 +35,7 @@ log line `alert email queued (no SMTP_HOST configured)` if nothing arrives.
 
 ## How it works
 
-`app/services/deal_alert_service.py`. State is derived from current offers on
-each scan; `deal_alert_marks` remembers what a person was already told, and is
-written only after a channel accepted the send, so failed deliveries are retried
-(after a 2h back-off). History lands in `alert_events` with `batch_id` shared by
-all channel rows of one alert.
+`app/services/deal_alert_service.py`. Each scan derives events from saved-item
+timestamps and current offer state. No per-user alert rows are written.
+Because there is no delivery history, a failed send is not queued for a later
+retry.

@@ -311,7 +311,7 @@ Everything is browsable and testable at http://localhost:8000/docs.
 | Admin analytics | `/admin/analytics/...` | Staff-only analytics overview (admin/editor/analytics_viewer) |
 | Earnings | `/earnings/...` | Affiliate revenue attribution |
 | Personalization | `/personalization/...` | Feature-flagged (off by default) |
-| Account (`/me`) | `/me/saved-stores`, `/me/saved-coupons`, `/me/tracked-products`, `/me/notification-preferences`, `/me/alerts` | Bearer token required |
+| Account (`/me`) | `/me/saved-stores`, `/me/saved-coupons`, `/me/notification-preferences` | Bearer token required |
 
 **Access policy:** reads are public; create/update need `admin` or `editor`;
 delete needs `admin`. Every list endpoint returns
@@ -404,8 +404,8 @@ Phase 1 of the shift from coupon directory to commerce-intelligence platform:
   applied, shipping added, floored at 0). This is the "\u20b9Coupon: \u20b91,000 OFF → Effective: \u20b97,499"
   number the frontend can show without duplicating the math.
 - **Price-drop detection** — when a new point comes in below the previous
-  price, `last_price_drop_pct` + `last_price_drop_at` are stored (used later
-  for alerts / deal-quality).
+  price, `last_price_drop_pct` + `last_price_drop_at` are stored for product
+  price context and deal-quality signals.
 - Public read endpoints: `GET /products`, `/products/{id}`, `/products/by-slug/{slug}`,
   `/products/{id}/price-history`. Writing points requires admin/editor.
 
@@ -413,23 +413,22 @@ Frontend pages/charts for products are the next step (no product UI exists yet).
 
 ## User retention + distribution (Phase 1)
 
-The retention loop: `User ├── saved stores / saved coupons / tracked products
-(target price) / email notification preferences` → `AlertEvent` history.
+The retention loop: `User -> saved stores / saved coupons / email notification
+preferences` -> email delivery. Alert emails are derived from saved items and
+current coupon changes; no per-user alert history is stored.
 
 - **Endpoints** (all under `/api/v1/me`, bearer token required):
   - `GET|POST|DELETE /me/saved-stores[/{id}]`, same for `/me/saved-coupons`
-  - `GET|POST /me/tracked-products`, `PATCH|DELETE /me/tracked-products/{id}`
   - `GET|PATCH /me/notification-preferences` (email on/off)
-  - `GET /me/alerts` — what was sent and when
-- **Alert engine** (`app/services/alert_service.py`, run via
-  `scripts/run_alerts.py` on cron): per tracked product, on new observation:
-  `target_met` (effective price incl. coupon ≤ target) beats `price_drop`
-  beats `coupon_appeared`. One alert per (tracked product, price point) —
-  `TrackAlertState` prevents re-alerting about the same data.
+- **Saved-item alert engine** (`app/services/deal_alert_service.py`, run by the
+  `send_deal_alerts` scheduler job): detects new offers at followed stores and
+  recent changes to saved coupons, then batches them into an email digest.
+  Scan-window timestamps prevent old changes from being replayed; alert history
+  is not written to the database.
 - **Private account alerts** (`app/services/notifications.py`) are email only.
   Public Telegram offer posts are a separate channel and do not depend on a
   user's account or notification preferences.
-- Idempotent by design: duplicate saves/tracking upsert instead of erroring.
+- Idempotent by design: duplicate saves do not create duplicate saved rows.
 
 The account settings UI uses these endpoints to manage email alerts.
 

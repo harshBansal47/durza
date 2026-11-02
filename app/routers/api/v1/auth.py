@@ -211,9 +211,8 @@ async def delete_account(
 ) -> None:
     """Delete the current user's account and all associated data.
 
-    This is a hard delete: the user, their saved items, tracked products,
-    alert history, and notification preferences are all removed. Verification
-    reports submitted by the user are preserved (without the account attached)
+    This is a hard delete: the user, their saved items, and
+    notification preferences are removed. Verification reports submitted by the user are preserved (without the account attached)
     because they are public attestations.
 
     The signed-in session authorises the delete; typing the account email is a

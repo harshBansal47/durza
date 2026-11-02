@@ -85,7 +85,7 @@ async def test_deep_health_reports_a_job_that_has_never_run_as_normal(
     # locally and in CI. Calling that unhealthy would train everyone to ignore
     # this endpoint.
     body = (await client.get("/health/deep")).json()
-    assert body["checks"]["send_alerts"]["status"] == "never run"
+    assert body["checks"]["send_deal_alerts"]["status"] == "never run"
     assert body["status"] == "ok"
 
 
@@ -94,7 +94,7 @@ async def test_deep_health_flags_a_stale_job(client: AsyncClient, async_session_
     async with async_session_maker() as db:
         db.add(
             JobRun(
-                job="send_alerts",
+                job="send_deal_alerts",
                 status=JobStatus.success,
                 started_at=datetime.now(UTC) - timedelta(days=2),
                 detail="sent 0 alert(s)",
@@ -103,7 +103,7 @@ async def test_deep_health_flags_a_stale_job(client: AsyncClient, async_session_
         await db.commit()
 
     body = (await client.get("/health/deep")).json()
-    assert body["checks"]["send_alerts"]["status"] == "stale"
+    assert body["checks"]["send_deal_alerts"]["status"] == "stale"
     # A stale job is worth reporting but is not a reason to stop serving traffic:
     # the database is fine and every page still renders.
     assert body["status"] == "ok"
@@ -136,7 +136,7 @@ async def test_deep_health_ignores_skipped_rows(client: AsyncClient, async_sessi
     async with async_session_maker() as db:
         db.add(
             JobRun(
-                job="send_alerts",
+                job="send_deal_alerts",
                 status=JobStatus.skipped,
                 started_at=datetime.now(UTC) - timedelta(days=5),
                 detail="another worker held the lock",
@@ -144,7 +144,7 @@ async def test_deep_health_ignores_skipped_rows(client: AsyncClient, async_sessi
         )
         await db.commit()
 
-    assert (await client.get("/health/deep")).json()["checks"]["send_alerts"][
+    assert (await client.get("/health/deep")).json()["checks"]["send_deal_alerts"][
         "status"
     ] == "never run"
 
@@ -292,7 +292,7 @@ async def test_deep_health_reports_a_backing_off_job(
     async with async_session_maker() as db:
         db.add(
             JobRun(
-                job="send_alerts",
+                job="send_deal_alerts",
                 status=JobStatus.failed,
                 started_at=datetime.now(UTC) - timedelta(minutes=5),
                 detail="ConnectionError: SMTP unreachable",
@@ -300,11 +300,11 @@ async def test_deep_health_reports_a_backing_off_job(
         )
         await db.commit()
 
-    monkeypatch.setitem(scheduler._failure_streak, "send_alerts", 2)
-    monkeypatch.setitem(scheduler._backoff_until, "send_alerts", float("inf"))
+    monkeypatch.setitem(scheduler._failure_streak, "send_deal_alerts", 2)
+    monkeypatch.setitem(scheduler._backoff_until, "send_deal_alerts", float("inf"))
 
     body = (await client.get("/health/deep")).json()
-    check = body["checks"]["send_alerts"]
+    check = body["checks"]["send_deal_alerts"]
     assert check["backing_off"] is True
     # The original failure is still reported — a pause is an addition to the
     # diagnosis, not a replacement for it.

@@ -75,10 +75,10 @@ def test_json_formatter_omits_the_request_id_when_there_is_none() -> None:
 
 def test_extra_fields_are_included() -> None:
     record = _record("job finished")
-    record.job = "send_alerts"
+    record.job = "send_deal_alerts"
     record.detail = "sent 3 alert(s)"
     payload = json.loads(JsonFormatter().format(record))
-    assert payload["job"] == "send_alerts"
+    assert payload["job"] == "send_deal_alerts"
     assert payload["detail"] == "sent 3 alert(s)"
 
 
@@ -110,8 +110,8 @@ def test_text_formatter_prefixes_the_request_id() -> None:
 
 def test_text_formatter_appends_extra_fields() -> None:
     record = _record("job finished")
-    record.job = "send_alerts"
-    assert "job=send_alerts" in _text().format(record)
+    record.job = "send_deal_alerts"
+    assert "job=send_deal_alerts" in _text().format(record)
 
 
 def test_both_formatters_agree_on_the_core_fields() -> None:
