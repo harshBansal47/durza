@@ -469,7 +469,9 @@ async def _publish_new_offers(db: AsyncSession, source_slug: str) -> None:
     except Exception:
         # Telegram delivery is a side effect; it must not rewrite a completed
         # ingestion result. The publisher logs offer-level delivery outcomes.
-        logger.exception("telegram publishing failed after ingestion", extra={"source": source_slug})
+        logger.exception(
+            "telegram publishing failed after ingestion", extra={"source": source_slug}
+        )
         return
     logger.info(
         "telegram publishing triggered by ingestion",

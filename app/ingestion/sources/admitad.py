@@ -33,8 +33,13 @@ def _category_names(item: dict, campaign: dict) -> list[str]:
             candidates = [entry]
             if isinstance(entry, dict):
                 parent = entry.get("parent")
-                candidates = [entry.get("name"), parent.get("name") if isinstance(parent, dict) else None]
-            names.extend(value.strip() for value in candidates if isinstance(value, str) and value.strip())
+                candidates = [
+                    entry.get("name"),
+                    parent.get("name") if isinstance(parent, dict) else None,
+                ]
+            names.extend(
+                value.strip() for value in candidates if isinstance(value, str) and value.strip()
+            )
     return names
 
 
