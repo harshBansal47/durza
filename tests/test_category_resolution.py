@@ -228,6 +228,12 @@ async def test_a_wording_that_was_pending_is_upgraded_once_a_rule_can_place_it(
 
 async def test_two_runs_meeting_the_same_new_wording_do_not_collide(async_session_maker, taxonomy):
     """Sources run concurrently; a caught IntegrityError would poison the session."""
+    # Seed the fallback before opening concurrent transactions. In production
+    # the migration does this; this test is specifically about alias upserts.
+    async with async_session_maker() as db:
+        db.add(Category(name="Other", slug="other"))
+        await db.commit()
+
     async with async_session_maker() as first_db, async_session_maker() as second_db:
         first, second = CategoryResolver(), CategoryResolver()
         await first.resolve_labels(first_db, ["Brand New Wording"], source_slug="a")

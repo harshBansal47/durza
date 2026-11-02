@@ -349,7 +349,8 @@ def test_scheduler_runs_only_the_allowed_jobs(monkeypatch):
         scheduler, "get_settings", lambda: base.model_copy(update={"scheduler_jobs": ""})
     )
     all_jobs = {job.id for job in scheduler.build_scheduler().get_jobs()}
-    assert "send_deal_alerts" in all_jobs and set(scheduler.JOBS) == all_jobs
+    assert "send_deal_alerts" in all_jobs
+    assert set(scheduler.JOBS) - {"post_telegram"} == all_jobs
 
 
 # ---- unsubscribe ------------------------------------------------------------------

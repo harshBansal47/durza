@@ -5,6 +5,7 @@ record, carries that record's reference to the affiliate network, and never
 stores who the visitor was beyond a one-way hash.
 """
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
@@ -192,7 +193,7 @@ async def test_go_uses_the_network_of_the_selected_coupon_source(
         await db.flush()
         db.add(
             CouponSource(
-                coupon_id=coupon["id"],
+                coupon_id=uuid.UUID(coupon["id"]),
                 source_id=source.id,
                 affiliate_url="https://admitad.example/click?campaign=42",
             )

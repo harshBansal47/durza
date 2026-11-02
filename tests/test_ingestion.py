@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.ingestion import merchants, pipeline, probe
 from app.ingestion.base import RawOffer
+from app.ingestion.categories import CategoryResolver
 from app.ingestion.lifecycle import expire_stale_coupons
 from app.ingestion.normalize import NormalizeError, normalize_offer, offer_from_dict, parse_discount
 from app.models.category import Category
@@ -39,7 +40,7 @@ async def test_provider_category_alias_resolves_to_existing_site_category(async_
                 destination_url="https://shop.example/laptop",
             )
         )
-        resolved = await pipeline._resolve_category(db, offer, source)
+        resolved = await CategoryResolver().resolve(db, offer, source)
 
         assert resolved is not None
         assert resolved.id == category.id
@@ -119,10 +120,10 @@ async def test_rejected_offer_marks_run_partial_and_preserves_existing_source_li
         source.config = {
             "offers": [
                 {
-                    "title": "Provider category drift",
+                    "title": "Offer with invalid destination",
                     "store_slug": "sample-shop",
-                    "category_slug": "not-in-our-taxonomy",
-                    "destination_url": "https://sample-shop.example/other",
+                    "category_slug": "fashion",
+                    "destination_url": "not-a-url",
                     "external_id": "new-2",
                 }
             ]

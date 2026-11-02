@@ -23,6 +23,7 @@ Settings.model_config["env_file"] = None
 os.environ["ENVIRONMENT"] = "test"
 os.environ.pop("REDIS_URL", None)
 os.environ.pop("SENTRY_DSN", None)
+os.environ.pop("CORS_ORIGINS", None)
 
 # `database_url` is a required setting with no default, and until now it was
 # being satisfied by `.env` — which is to say the module-level engine in

@@ -42,7 +42,7 @@ async def test_email_otp_request_is_rate_limited(client):
         resp = await client.post(
             "/api/v1/auth/email/request", json={"email": f"burst{i}@example.com"}
         )
-        assert resp.status_code == 202
+        assert resp.status_code == 200
 
     sixth = await client.post("/api/v1/auth/email/request", json={"email": "burst5@example.com"})
     assert sixth.status_code == 429

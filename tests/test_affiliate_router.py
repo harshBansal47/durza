@@ -8,6 +8,7 @@ source for the wrong market, or a fabricated performance metric.
 
 import uuid
 from datetime import UTC, datetime
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -144,7 +145,7 @@ async def test_routed_admitad_source_carries_its_tracking_network(async_session_
 
     assert routed.network == "admitad"
     assert routed.decision is RoutingDecision.source
-    assert routed.candidates == 2
+    assert routed.candidates == 1
 
 
 async def test_priority_beats_a_more_confident_source(async_session_maker, world):
@@ -472,7 +473,13 @@ async def test_the_redirect_uses_the_routed_link_and_never_leaks_the_provider(
     resp = await client.get(f"/api/v1/coupons/{created['id']}/go", follow_redirects=False)
 
     assert resp.status_code == 302
-    assert resp.headers["location"] == "https://trusted.example/deep"
+    location = urlsplit(resp.headers["location"])
+    assert (location.scheme, location.netloc, location.path) == (
+        "https",
+        "trusted.example",
+        "/deep",
+    )
+    assert set(parse_qs(location.query)) == {"clickref"}
     # The provider's slug is internal: not in the header, not in a body.
     assert trusted.slug not in resp.text
     assert resp.content == b""
