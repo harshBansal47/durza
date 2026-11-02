@@ -121,6 +121,15 @@ EXTRA_VALUES: dict[str, dict[str, str]] = {
     "users": {"hashed_password": "'not-a-real-password-hash'"},
 }
 
+# Rows deliberately created by migrations after the round-trip seed has been
+# dropped. The round-trip check still requires every other row to be gone and
+# validates that these canonical rows are present exactly as declared.
+EXPECTED_ROWS_AFTER_UPGRADE: dict[str, tuple[dict[str, Any], ...]] = {
+    "categories": (
+        {"id": "f2a8c1d4-e6b9-4c2a-8f10-000000000001", "name": "Other", "slug": "other"},
+    ),
+}
+
 
 class Schema:
     """What `information_schema` says the database currently looks like."""
@@ -436,11 +445,11 @@ async def seed() -> int:
 
 
 async def check() -> int:
-    """Every seeded table must be empty again after downgrade → upgrade.
+    """Every seeded table must return to its migration-owned baseline.
 
-    A table that still holds a row means the downgrade did not run the code we
-    think it did — either it was skipped, or it recreated what it should have
-    dropped. Both are worth failing a build over.
+    Tables without intentional migration seed data must be empty. For tables
+    with declared seed data, only those exact rows may remain; this catches both
+    missing/altered canonical rows and leftovers from the round-trip seed.
     """
     # Through Schema, so it is `run_sync` rather than `inspect` on the async
     # connection — SQLAlchemy refuses to inspect an AsyncConnection directly, and
@@ -452,21 +461,39 @@ async def check() -> int:
 
     survivors: list[str] = []
     for table in tables:
+        expected = EXPECTED_ROWS_AFTER_UPGRADE.get(table, ())
+        expected_count = len(expected)
         try:
             async with engine.connect() as tx:
                 count = int((await tx.execute(text(f"SELECT count(*) FROM {table}"))).scalar_one())
+                matching_counts = []
+                for row in expected:
+                    predicates = " AND ".join(f"{column} = :{column}" for column in row)
+                    matching_counts.append(
+                        int(
+                            (
+                                await tx.execute(
+                                    text(f"SELECT count(*) FROM {table} WHERE {predicates}"), row
+                                )
+                            ).scalar_one()
+                        )
+                    )
         except Exception as exc:  # noqa: BLE001
             print(f"  !! {table} is not queryable after re-upgrade: {exc}")
             survivors.append(table)
             continue
-        if count:
-            print(f"  !! {table} still holds {count} row(s)")
+        if count != expected_count:
+            print(f"  !! {table} holds {count} row(s), expected {expected_count}")
+            survivors.append(table)
+            continue
+        if any(matching != 1 for matching in matching_counts):
+            print(f"  !! {table} is missing or has an altered migration-owned seed row")
             survivors.append(table)
 
     if survivors:
         print(f"FAIL: {len(survivors)} table(s) did not round-trip cleanly: {', '.join(survivors)}")
         return 1
-    print(f"OK: all {len(tables)} table(s) are empty after downgrade + upgrade")
+    print(f"OK: all {len(tables)} table(s) match their post-upgrade baseline")
     return 0
 
 
