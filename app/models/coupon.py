@@ -9,10 +9,13 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
+    desc,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -90,6 +93,31 @@ class VerificationStatus(str, enum.Enum):
 
 class Coupon(Base, UUIDPKMixin, TimestampMixin):
     __tablename__ = "coupons"
+    __table_args__ = (
+        Index(
+            "ix_coupons_title_trgm",
+            "title",
+            postgresql_using="gin",
+            postgresql_ops={"title": "gin_trgm_ops"},
+        ).ddl_if(dialect="postgresql"),
+        Index(
+            "ix_coupons_code_trgm",
+            "code",
+            postgresql_using="gin",
+            postgresql_ops={"code": "gin_trgm_ops"},
+        ).ddl_if(dialect="postgresql"),
+        Index(
+            "ix_coupons_description_trgm",
+            "description",
+            postgresql_using="gin",
+            postgresql_ops={"description": "gin_trgm_ops"},
+        ).ddl_if(dialect="postgresql"),
+        Index(
+            "ix_coupons_active_created_at",
+            desc("created_at"),
+            postgresql_where=text("is_active IS TRUE"),
+        ).ddl_if(dialect="postgresql"),
+    )
 
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(220), unique=True, index=True, nullable=False)

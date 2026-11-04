@@ -20,6 +20,7 @@ from app.core.migration_guard import enforce_from_environment, resolve_command
 # DROPPED it, and `alembic check` reported the database as clean while the
 # drift was present. An unlisted module is a table nobody is checking.
 from app.models import ad as _ad  # noqa: F401
+from app.models import affiliate_campaign as _affiliate_campaign  # noqa: F401
 from app.models import affiliate_destination as _affiliate_destination  # noqa: F401
 from app.models import affiliate_program as _affiliate_program  # noqa: F401
 from app.models import affiliate_provider as _affiliate_provider  # noqa: F401

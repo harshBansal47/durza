@@ -2,6 +2,7 @@ import enum
 import uuid
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     ForeignKey,
     UniqueConstraint,
@@ -37,7 +38,7 @@ class SavedCoupon(Base, UUIDPKMixin, TimestampMixin):
 
 
 class NotificationPreference(Base, UUIDPKMixin, TimestampMixin):
-    """One row per user: whether email updates about saved items are enabled."""
+    """One row per user: notification settings for saved items."""
 
     __tablename__ = "notification_preferences"
 
@@ -45,6 +46,7 @@ class NotificationPreference(Base, UUIDPKMixin, TimestampMixin):
         ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
     )
     email_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    muted_categories: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
 
 
 class AlertKind(str, enum.Enum):

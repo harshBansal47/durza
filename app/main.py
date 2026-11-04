@@ -35,6 +35,7 @@ from app.routers.api.v1.sales import router as sales_router
 from app.routers.api.v1.search import router as search_router
 from app.routers.api.v1.stores import router as stores_router
 from app.routers.api.v1.system import router as system_router
+from app.routers.api.v1.vcommission import router as vcommission_router
 from app.services.scheduler import start_scheduler, stop_scheduler
 
 settings = get_settings()
@@ -127,6 +128,7 @@ for _router in (
     personalization_router,
     sales_router,
     earnings_router,
+    vcommission_router,
     search_router,
 ):
     app.include_router(_router, prefix="/api/v1")

@@ -66,6 +66,7 @@ def test_scheduler_uses_the_configured_intervals() -> None:
     assert jobs["refresh_prices"].trigger.interval == timedelta(hours=6)
     assert jobs["send_deal_alerts"].trigger.interval == timedelta(minutes=30)
     assert jobs["verify_coupons"].trigger.interval == timedelta(hours=12)
+    assert jobs["sync_vcommission_campaigns"].trigger.interval == timedelta(hours=12)
 
 
 @pytest.mark.asyncio

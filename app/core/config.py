@@ -174,6 +174,10 @@ class Settings(BaseSettings):
     # Admitad Publisher API OAuth credentials used by conversion sync.
     admitad_client_id: str | None = None
     admitad_client_secret: str | None = None
+    # The vCommission campaigns endpoint may carry its credential in the URL.
+    # Keep it backend-only; never include it in logs or API responses.
+    vcommissions_campaigns_url: str | None = None
+    vcommissions_sync_interval_hours: int = 12
     # How often the conversion sync job runs, and how far back each sweep
     # looks. Networks validate sales over a window of days-to-weeks, so the
     # lookback must be wider than any single validation window to catch
@@ -299,6 +303,7 @@ class Settings(BaseSettings):
         "otp_hash_key",
         "telegram_bot_token",
         "telegram_channel_id",
+        "vcommissions_campaigns_url",
         mode="before",
     )
     @classmethod
@@ -333,11 +338,12 @@ class Settings(BaseSettings):
         "otp_max_attempts",
         "otp_resend_cooldown_seconds",
         "otp_requests_per_email_per_hour",
+        "vcommissions_sync_interval_hours",
     )
     @classmethod
-    def _otp_limits_are_positive(cls, value: int) -> int:
+    def _positive_limits_are_positive(cls, value: int) -> int:
         if value < 1:
-            raise ValueError("OTP limits must be at least 1")
+            raise ValueError("Configured limits must be at least 1")
         return value
 
     @field_validator("telegram_max_posts_per_day")

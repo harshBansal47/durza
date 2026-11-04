@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Numeric, String
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -18,6 +18,14 @@ class Product(Base, UUIDPKMixin, TimestampMixin):
     price_service.record_price every time a PricePoint lands."""
 
     __tablename__ = "products"
+    __table_args__ = (
+        Index(
+            "ix_products_name_trgm",
+            "name",
+            postgresql_using="gin",
+            postgresql_ops={"name": "gin_trgm_ops"},
+        ).ddl_if(dialect="postgresql"),
+    )
 
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(220), unique=True, index=True, nullable=False)

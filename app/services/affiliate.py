@@ -28,6 +28,7 @@ class AffiliateNetwork(str, enum.Enum):
     cuelinks = "cuelinks"
     admitad = "admitad"
     impact = "impact"
+    vcommission = "vcommission"
 
 
 CLICKREF_PARAM: dict[str, str] = {

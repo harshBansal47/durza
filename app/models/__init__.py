@@ -8,6 +8,7 @@ that catches exactly that omission is `tests/test_models_registered.py`.
 """
 
 from app.models.ad import Ad
+from app.models.affiliate_campaign import AffiliateCampaign, AffiliateCampaignSync
 from app.models.affiliate_destination import AffiliateDestination, DestinationStatus
 from app.models.affiliate_program import (
     AffiliateProgram,
@@ -89,6 +90,8 @@ __all__ = [
     "PUBLICLY_VISIBLE_STATUSES",
     "SWEEPABLE_STATUSES",
     "Ad",
+    "AffiliateCampaign",
+    "AffiliateCampaignSync",
     "AffiliateDestination",
     "AffiliateProgram",
     "AffiliateProvider",

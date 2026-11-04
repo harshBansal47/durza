@@ -58,6 +58,7 @@ _LOCK_CONVERSIONS = 0x0C0FFEE5
 _LOCK_DEAL_ALERTS = 0x0C0FFEE8
 _LOCK_SCRUB_LOGS = 0x0C0FFEE9
 _LOCK_POST_TELEGRAM = 0x0C0FFEEA
+_LOCK_VCOMMISSION = 0x0C0FFEEB
 
 
 # A job that fails is recorded and re-raised so the caller can distinguish "ran
@@ -134,6 +135,17 @@ async def _conversions_job(db: AsyncSession) -> str:
     return await sync_conversions(db)
 
 
+async def _vcommission_job(db: AsyncSession) -> str:
+    from app.services.vcommission_service import sync_campaigns
+
+    summary = await sync_campaigns(db)
+    return (
+        f"vCommission campaigns: {summary.inserted} inserted, {summary.updated} updated, "
+        f"{summary.unchanged} unchanged, {summary.skipped} skipped, "
+        f"{summary.deactivated} deactivated"
+    )
+
+
 JOBS: dict[str, tuple[Callable[..., Awaitable[str]], int]] = {
     "expire_coupons": (_expire_job, _LOCK_EXPIRE),
     "refresh_prices": (_refresh_job, _LOCK_REFRESH),
@@ -146,6 +158,7 @@ JOBS: dict[str, tuple[Callable[..., Awaitable[str]], int]] = {
     # SCHEDULER_JOBS allowlists, but intentionally has no interval trigger.
     "post_telegram": (_post_telegram_job, _LOCK_POST_TELEGRAM),
     "sync_conversions": (_conversions_job, _LOCK_CONVERSIONS),
+    "sync_vcommission_campaigns": (_vcommission_job, _LOCK_VCOMMISSION),
 }
 
 
@@ -193,6 +206,7 @@ def job_interval_seconds(name: str) -> float:
         "scrub_verifications": settings.verification_scrub_interval_hours,
         "scrub_logs": settings.log_scrub_interval_hours,
         "sync_conversions": settings.conversion_sync_interval_hours,
+        "sync_vcommission_campaigns": settings.vcommissions_sync_interval_hours,
     }
 
     if name in hourly:
@@ -491,6 +505,16 @@ def build_scheduler() -> AsyncIOScheduler:
         next_run_time=datetime.now(UTC) + timedelta(seconds=offset + 150),
         replace_existing=True,
     )
+    scheduler.add_job(
+        _fire,
+        IntervalTrigger(hours=settings.vcommissions_sync_interval_hours),
+        args=["sync_vcommission_campaigns"],
+        id="sync_vcommission_campaigns",
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(UTC) + timedelta(seconds=offset + 210),
+        replace_existing=True,
+    )
 
     allowed = settings.scheduler_job_names
     if allowed is not None:
@@ -524,6 +548,7 @@ async def start_scheduler() -> AsyncIOScheduler | None:
             "ingest_every_hours": settings.ingestion_interval_hours,
             "alerts_every_minutes": settings.alert_scan_interval_minutes,
             "conversions_every_hours": settings.conversion_sync_interval_hours,
+            "vcommission_every_hours": settings.vcommissions_sync_interval_hours,
         },
     )
     return _scheduler

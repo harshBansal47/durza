@@ -54,6 +54,8 @@ _RULES: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         (rf"^/editorial/(?!manage/|id/){_SEG}/{_SEG}$", CATALOGUE),
         (r"^/sales$", CATALOGUE),
         (rf"^/sales/{_SEG}(/{_SEG})?$", CATALOGUE),
+        (r"^/vcommission/campaigns$", OFFERS),
+        (rf"^/vcommission/campaigns/{_SEG}$", OFFERS),
     )
 )
 

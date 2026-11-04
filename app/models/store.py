@@ -22,7 +22,7 @@ rather than by application code that can be bypassed.
 import enum
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -58,6 +58,12 @@ class Store(Base, UUIDPKMixin, TimestampMixin):
         # domain is guaranteed to own it. `index=True` on the column would be a
         # second, redundant index on a column a unique constraint already covers.
         UniqueConstraint("normalized_domain", name="uq_store_normalized_domain"),
+        Index(
+            "ix_stores_name_trgm",
+            "name",
+            postgresql_using="gin",
+            postgresql_ops={"name": "gin_trgm_ops"},
+        ).ddl_if(dialect="postgresql"),
     )
 
     name: Mapped[str] = mapped_column(String(150), nullable=False)

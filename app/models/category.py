@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -9,6 +9,14 @@ from app.models.base import TimestampMixin, UUIDPKMixin
 
 class Category(Base, UUIDPKMixin, TimestampMixin):
     __tablename__ = "categories"
+    __table_args__ = (
+        Index(
+            "ix_categories_name_trgm",
+            "name",
+            postgresql_using="gin",
+            postgresql_ops={"name": "gin_trgm_ops"},
+        ).ddl_if(dialect="postgresql"),
+    )
 
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     slug: Mapped[str] = mapped_column(String(140), unique=True, index=True, nullable=False)
