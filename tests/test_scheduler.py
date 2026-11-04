@@ -366,7 +366,9 @@ async def test_the_pause_doubles_per_consecutive_failure(async_session_maker, mo
         scheduler._backoff_until["expire_coupons"] = time.monotonic()
 
     interval = scheduler.job_interval_seconds("expire_coupons")
-    assert intervals == pytest.approx([interval, 2 * interval, 4 * interval, 8 * interval])
+    # Remaining time is sampled after the async job and its database writes,
+    # so allow for a small amount of scheduler/CI latency.
+    assert intervals == pytest.approx([interval, 2 * interval, 4 * interval, 8 * interval], abs=0.1)
 
 
 async def test_the_pause_is_capped_as_a_multiple_of_the_interval(monkeypatch) -> None:
