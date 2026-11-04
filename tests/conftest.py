@@ -207,6 +207,10 @@ async def _blank_slate_postgres(engine) -> None:
         if TEST_DATABASE_SCHEMA:
             # The schema has to exist before `search_path` can resolve into it.
             await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{TEST_DATABASE_SCHEMA}"'))
+        # PostgreSQL model metadata includes the same trigram indexes as the
+        # migration. CI creates the test schema with create_all (not Alembic),
+        # so install the operator class before SQLAlchemy attempts those indexes.
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
         # Normalise whatever a previous run — possibly a crashed one — left
         # behind, then build the current schema once. `drop_all` also drops the
         # enum types it created; leaving those behind is what makes a later
