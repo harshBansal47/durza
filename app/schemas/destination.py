@@ -23,3 +23,6 @@ class StoreDestinationRead(BaseModel):
     faqs: list[StoreFAQRead]
     alternatives: list[StoreRead]
     related_content: list[EditorialRead]
+    # Every live offer, not just the (up to 100 + 100) listed above. Lets the store page show
+    # an exact count without a second listing request.
+    offer_total: int = 0

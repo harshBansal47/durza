@@ -8,6 +8,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.admin import setup_admin
+from app.core.cache_headers import CacheControlMiddleware
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal, engine
 from app.core.limiter import limiter
@@ -85,6 +86,9 @@ app.state.limiter = limiter
 # a real bug.
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 app.add_middleware(SlowAPIMiddleware)
+
+# Cache-Control on the public catalogue reads (explicit allow-list, see the module).
+app.add_middleware(CacheControlMiddleware)
 
 # Security headers on every response.
 app.add_middleware(SecurityHeadersMiddleware)

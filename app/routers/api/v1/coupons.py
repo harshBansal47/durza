@@ -38,7 +38,7 @@ router = APIRouter(prefix="/coupons", tags=["coupons"])
 async def list_coupons(
     store_id: uuid.UUID | None = None,
     category_id: uuid.UUID | None = None,
-    search: str | None = None,
+    search: str | None = Query(None, max_length=100),
     active_only: bool = True,
     sort: coupon_service.CouponSort = coupon_service.CouponSort.newest,
     discount_type: DiscountType | None = None,

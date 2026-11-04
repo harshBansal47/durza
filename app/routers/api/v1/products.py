@@ -36,7 +36,7 @@ async def _with_effective(db: AsyncSession, product: Product) -> ProductRead:
 
 @router.get("", response_model=Paginated[ProductRead])
 async def list_products(
-    search: str | None = None,
+    search: str | None = Query(None, max_length=100),
     store_id: uuid.UUID | None = None,
     category_id: uuid.UUID | None = None,
     skip: int = Query(0, ge=0),

@@ -6,6 +6,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import paginate
+from app.core.search import LIKE_ESCAPE, like_contains
 from app.core.slugs import generate_unique_slug
 from app.models.coupon import Coupon
 from app.models.editorial import StoreFAQ, StoreRelationship
@@ -30,7 +31,7 @@ async def list_stores(
     """
     stmt = select(Store)
     if search:
-        stmt = stmt.where(Store.name.ilike(f"%{search}%"))
+        stmt = stmt.where(Store.name.ilike(like_contains(search), escape=LIKE_ESCAPE))
     if country_code:
         code = country_code.strip().upper()
         stmt = stmt.where((Store.country_code == code) | (Store.country_code.is_(None)))
@@ -134,7 +135,7 @@ async def delete_store(db: AsyncSession, store: Store) -> None:
 
 async def autocomplete_stores(db: AsyncSession, query: str, limit: int = 10) -> list[str]:
     result = await db.execute(
-        select(Store.name).where(Store.name.ilike(f"%{query}%")).order_by(Store.name).limit(limit)
+        select(Store.name).where(Store.name.ilike(like_contains(query), escape=LIKE_ESCAPE)).order_by(Store.name).limit(limit)
     )
     return list(result.scalars().all())
 

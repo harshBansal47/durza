@@ -11,6 +11,7 @@ from sqlalchemy.orm import noload
 from app.core.config import get_settings
 from app.core.exceptions import EntityNotFoundError
 from app.core.pagination import paginate
+from app.core.search import LIKE_ESCAPE, like_contains
 from app.core.slugs import generate_unique_slug
 from app.models.category import Category
 from app.models.click import ClickEvent
@@ -45,6 +46,32 @@ def _search_terms(value: str) -> list[str]:
     terms = [term.strip() for term in value.split() if term.strip()]
     specific = [term for term in terms if term.casefold() not in _SEARCH_INTENT_WORDS]
     return specific
+
+
+async def _ids_by_name_term(
+    db: AsyncSession, model: type[Store] | type[Category], terms: Sequence[str]
+) -> dict[str, list[uuid.UUID]]:
+    """For each term, the ids of the stores (or categories) whose name contains it.
+
+    One small query for all terms, because the matching is finished in Python. This replaces
+    a correlated `EXISTS (... name ILIKE ...)` inside each term's OR: Postgres cannot answer an
+    OR through an index when one arm is a subquery, so a single EXISTS arm pushed the whole
+    search back to a sequential scan of every coupon. With plain `store_id IN (...)` arms every
+    arm is indexable. Stores and categories number in the hundreds, so this is cheap.
+    """
+    if not terms:
+        return {}
+    rows = (
+        await db.execute(
+            select(model.id, model.name).where(
+                or_(*[model.name.ilike(like_contains(t), escape=LIKE_ESCAPE) for t in terms])
+            )
+        )
+    ).all()
+    return {
+        term: [row_id for row_id, name in rows if term.casefold() in name.casefold()]
+        for term in terms
+    }
 
 
 class CouponSort(str, enum.Enum):
@@ -182,17 +209,21 @@ async def list_coupons(
         # offer text, or category. Treat words like "promo code" and "offer"
         # as intent so queries such as "Acer promo code" still find Acer's
         # coupons even though those generic words are not in the provider title.
-        for term in _search_terms(search)[:8]:
-            pattern = f"%{term}%"
-            stmt = stmt.where(
-                or_(
-                    Coupon.title.ilike(pattern),
-                    Coupon.code.ilike(pattern),
-                    Coupon.description.ilike(pattern),
-                    Coupon.store.has(Store.name.ilike(pattern)),
-                    Coupon.category.has(Category.name.ilike(pattern)),
-                )
-            )
+        terms = _search_terms(search)[:8]
+        store_ids = await _ids_by_name_term(db, Store, terms)
+        category_ids = await _ids_by_name_term(db, Category, terms)
+        for term in terms:
+            pattern = like_contains(term)
+            arms = [
+                Coupon.title.ilike(pattern, escape=LIKE_ESCAPE),
+                Coupon.code.ilike(pattern, escape=LIKE_ESCAPE),
+                Coupon.description.ilike(pattern, escape=LIKE_ESCAPE),
+            ]
+            if store_ids[term]:
+                arms.append(Coupon.store_id.in_(store_ids[term]))
+            if category_ids[term]:
+                arms.append(Coupon.category_id.in_(category_ids[term]))
+            stmt = stmt.where(or_(*arms))
     if discount_type is not None:
         stmt = stmt.where(Coupon.discount_type == discount_type)
     if has_code is not None:

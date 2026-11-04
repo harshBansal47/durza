@@ -32,8 +32,12 @@ async def get_store_destination(
     # and the ones without. (This used to ask for `discount_type=deal` as well,
     # so a "20% off, no code needed" offer matched neither query and vanished
     # from the store page while still being counted in its total.)
-    deals, _ = await coupon_service.list_coupons(db, store_id=store.id, has_code=False, limit=100)
-    coupons, _ = await coupon_service.list_coupons(db, store_id=store.id, has_code=True, limit=100)
+    deals, deals_total = await coupon_service.list_coupons(
+        db, store_id=store.id, has_code=False, limit=100
+    )
+    coupons, coupons_total = await coupon_service.list_coupons(
+        db, store_id=store.id, has_code=True, limit=100
+    )
     faq_result = await db.scalars(
         select(StoreFAQ).where(StoreFAQ.store_id == store.id).order_by(StoreFAQ.sort_order)
     )
@@ -87,12 +91,13 @@ async def get_store_destination(
             for item in alternative_items
         ],
         related_content=content_reads,
+        offer_total=deals_total + coupons_total,
     )
 
 
 @router.get("", response_model=Paginated[StoreRead])
 async def list_stores(
-    search: str | None = None,
+    search: str | None = Query(None, max_length=100),
     country_code: str | None = Query(
         None,
         min_length=2,

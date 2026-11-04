@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import metrics
 from app.core.exceptions import EntityNotFoundError
 from app.core.pagination import paginate
+from app.core.search import LIKE_ESCAPE, like_contains
 from app.core.slugs import generate_unique_slug
 from app.models.category import Category
 from app.models.coupon import Coupon, DiscountType
@@ -33,7 +34,7 @@ async def list_products(
     if category_id is not None:
         stmt = stmt.where(Product.category_id == category_id)
     if search:
-        stmt = stmt.where(Product.name.ilike(f"%{search}%"))
+        stmt = stmt.where(Product.name.ilike(like_contains(search), escape=LIKE_ESCAPE))
     return await paginate(db, stmt.order_by(Product.created_at.desc()), skip, limit)
 
 
@@ -173,7 +174,7 @@ async def record_price(db: AsyncSession, product: Product, payload: PricePointCr
 async def autocomplete_products(db: AsyncSession, query: str, limit: int = 10) -> list[str]:
     result = await db.execute(
         select(Product.name)
-        .where(Product.name.ilike(f"%{query}%"))
+        .where(Product.name.ilike(like_contains(query), escape=LIKE_ESCAPE))
         .order_by(Product.name)
         .limit(limit)
     )

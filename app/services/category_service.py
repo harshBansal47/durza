@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import EntityNotFoundError
 from app.core.pagination import paginate
+from app.core.search import LIKE_ESCAPE, like_contains
 from app.core.slugs import generate_unique_slug
 from app.models.category import Category
 from app.schemas.category import CategoryCreate, CategoryUpdate
@@ -77,7 +78,7 @@ async def delete_category(db: AsyncSession, category: Category) -> None:
 async def autocomplete_categories(db: AsyncSession, query: str, limit: int = 10) -> list[str]:
     result = await db.execute(
         select(Category.name)
-        .where(Category.name.ilike(f"%{query}%"))
+        .where(Category.name.ilike(like_contains(query), escape=LIKE_ESCAPE))
         .order_by(Category.name)
         .limit(limit)
     )

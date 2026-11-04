@@ -9,11 +9,12 @@ The individual endpoints remain, and the response matches what the client assemb
 import logging
 from collections.abc import Awaitable, Callable
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.limiter import limiter
 from app.services import category_service, price_service, store_service
 
 router = APIRouter(prefix="/search", tags=["search"])
@@ -39,7 +40,9 @@ async def _safely(
 
 
 @router.get("/suggest", response_model=SuggestRead)
+@limiter.limit("120/minute")
 async def suggest(
+    request: Request,
     q: str = Query(..., min_length=1, max_length=100),
     limit: int = Query(5, ge=1, le=20),
     db: AsyncSession = Depends(get_db),
