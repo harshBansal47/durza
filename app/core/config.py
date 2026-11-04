@@ -236,8 +236,6 @@ class Settings(BaseSettings):
     # Per rolling 24 hours. The send gap also keeps a large import within Telegram's rate limit.
     telegram_max_posts_per_day: int = 1000
     telegram_send_gap_seconds: float = 4.0
-    # Only offers created this recently are announced.
-    telegram_post_window_hours: int = 24
     # Do not announce an offer that is about to expire.
     telegram_min_hours_to_expiry: int = 3
     # Audience country. Offers for another country are skipped; empty means any.
@@ -247,7 +245,7 @@ class Settings(BaseSettings):
     telegram_only_verified: bool = False
     # Posts between 11pm and 7am IST are delivered without a notification sound.
     telegram_silent_at_night: bool = True
-    telegram_footer: str = "Terms apply. We may earn a commission at no extra cost to you."
+    telegram_footer: str = "Most of the offers are verified by the community. "
     # Expose /metrics. Left off locally so a stray scrape isn't talking to a
     # developer's laptop.
     metrics_enabled: bool = False
@@ -255,9 +253,7 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [
-            origin.strip().rstrip("/")
-            for origin in self.cors_origins.split(",")
-            if origin.strip()
+            origin.strip().rstrip("/") for origin in self.cors_origins.split(",") if origin.strip()
         ]
 
     @property
@@ -344,10 +340,7 @@ class Settings(BaseSettings):
             raise ValueError("OTP limits must be at least 1")
         return value
 
-    @field_validator(
-        "telegram_max_posts_per_day",
-        "telegram_post_window_hours",
-    )
+    @field_validator("telegram_max_posts_per_day")
     @classmethod
     def _telegram_limits_are_positive(cls, value: int) -> int:
         if value < 1:

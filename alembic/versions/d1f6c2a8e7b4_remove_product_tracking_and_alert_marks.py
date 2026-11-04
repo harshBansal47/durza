@@ -30,10 +30,16 @@ def downgrade() -> None:
         sa.Column("target_price", sa.Float(), nullable=True),
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.Column(
-            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["product_id"], ["products.id"], ondelete="CASCADE"),
@@ -50,10 +56,16 @@ def downgrade() -> None:
         sa.Column("last_notified_price_point_id", sa.Uuid(), nullable=True),
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.Column(
-            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["tracked_product_id"], ["tracked_products.id"], ondelete="CASCADE"
@@ -77,15 +89,25 @@ def downgrade() -> None:
         sa.Column("kind", sa.String(length=30), nullable=False),
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.Column(
-            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["coupon_id"], ["coupons.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("user_id", "coupon_id", "kind", name="uq_deal_alert_marks_user_coupon_kind"),
+        sa.UniqueConstraint(
+            "user_id", "coupon_id", "kind", name="uq_deal_alert_marks_user_coupon_kind"
+        ),
     )
     op.create_index("ix_deal_alert_marks_user_id", "deal_alert_marks", ["user_id"], unique=False)
-    op.create_index("ix_deal_alert_marks_coupon_id", "deal_alert_marks", ["coupon_id"], unique=False)
+    op.create_index(
+        "ix_deal_alert_marks_coupon_id", "deal_alert_marks", ["coupon_id"], unique=False
+    )

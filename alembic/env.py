@@ -46,11 +46,11 @@ from app.models import page as _page  # noqa: F401
 from app.models import product as _product  # noqa: F401
 from app.models import revenue_event as _revenue_event  # noqa: F401
 from app.models import sale as _sale  # noqa: F401
+from app.models import saved_items as _saved_items  # noqa: F401
 from app.models import source as _source  # noqa: F401
 from app.models import sponsored as _sponsored  # noqa: F401
 from app.models import store as _store  # noqa: F401
 from app.models import telegram_post as _telegram_post  # noqa: F401
-from app.models import saved_items as _saved_items  # noqa: F401
 from app.models import user as _user  # noqa: F401
 from app.models import user_interest as _user_interest  # noqa: F401
 from app.models import user_segment as _user_segment  # noqa: F401

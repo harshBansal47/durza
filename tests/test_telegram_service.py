@@ -66,7 +66,6 @@ def cfg(monkeypatch):
         "telegram_country": "IN",
         "telegram_only_verified": False,
         "telegram_max_posts_per_day": 40,
-        "telegram_post_window_hours": 24,
         "telegram_min_hours_to_expiry": 3,
     }.items():
         monkeypatch.setattr(settings, name, value)
@@ -288,7 +287,9 @@ async def test_two_copies_in_one_scan_post_one(async_session_maker, cfg):
         assert len(fake.sent) == 1
 
 
-async def test_only_live_recent_in_country_offers_are_announced(async_session_maker, cfg):
+async def test_old_live_unsent_offers_are_announced_but_ineligible_offers_are_not(
+    async_session_maker, cfg
+):
     fake = FakeTelegram()
     now = datetime.now(UTC)
     async with async_session_maker() as db:
@@ -296,7 +297,7 @@ async def test_only_live_recent_in_country_offers_are_announced(async_session_ma
         dead_store = Store(name="Gone", slug=f"gone-{uuid.uuid4().hex[:6]}", is_active=False)
         db.add(dead_store)
         await db.commit()
-        await _coupon(db, store, cat, created_at=now - timedelta(days=3))  # too old
+        await _coupon(db, store, cat, created_at=now - timedelta(days=3))  # still eligible
         await _coupon(db, store, cat, expires_at=now - timedelta(hours=1))  # expired
         await _coupon(db, store, cat, expires_at=now + timedelta(hours=1))  # about to lapse
         await _coupon(db, store, cat, status=CouponStatus.pending_validation)
@@ -306,10 +307,10 @@ async def test_only_live_recent_in_country_offers_are_announced(async_session_ma
         await _coupon(db, store, cat, verification_status=VerificationStatus.failed)
         await _coupon(db, dead_store, cat)
 
-        assert await svc.post_new_offers(db, client=fake, sleep=Naps()) == "nothing new"
-        assert fake.sent == []
+        assert (await svc.post_new_offers(db, client=fake, sleep=Naps())).startswith("posted 1")
+        assert len(fake.sent) == 1
 
-        # ...and a plain live one right beside them is announced.
+        # A newly created live offer is still announced as before.
         await _coupon(db, store, cat)
         assert (await svc.post_new_offers(db, client=fake, sleep=Naps())).startswith("posted 1")
 

@@ -1,9 +1,9 @@
 # Telegram channel
 
-New offers are posted to a public Telegram channel automatically, **each offer at
-most once**. There is no separate periodic channel scan: ingestion triggers a scan
-of eligible new offers, and the `telegram_posts` table remembers what was already
-posted.
+Eligible active offers are posted to a public Telegram channel automatically,
+**each offer at most once**. There is no separate periodic channel scan: ingestion
+triggers a scan, including for active offers that were imported earlier but not
+posted, and the `telegram_posts` table remembers what was already handled.
 
 ## One-time setup
 
@@ -38,14 +38,14 @@ posted.
 ## What gets posted
 
 An offer is announced only if it is publicly live (active, store active, started,
-not expired), will not expire in the next 3 hours, was created in the last 24 hours,
-is for India, and is not known to be broken. Best-scored first.
+not expired), has not already been handled by the channel, will not expire in the
+next 3 hours, is for India, and is not known to be broken. There is no age cutoff:
+an active, eligible offer can be announced on a later ingestion run. Best-scored first.
 
 | Setting | Default | Meaning |
 |---|---|---|
 | `TELEGRAM_MAX_POSTS_PER_DAY` | 1000 | maximum per rolling 24 hours and ingestion-triggered scan |
 | `TELEGRAM_SEND_GAP_SECONDS` | 4 | pause between posts (Telegram allows ~20/min per channel) |
-| `TELEGRAM_POST_WINDOW_HOURS` | 24 | only offers created this recently |
 | `TELEGRAM_MIN_HOURS_TO_EXPIRY` | 3 | skip offers about to lapse |
 | `TELEGRAM_COUNTRY` | `IN` | skip other countries; empty means any |
 | `TELEGRAM_ONLY_VERIFIED` | false | post only verified offers |

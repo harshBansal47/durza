@@ -64,10 +64,16 @@ def downgrade() -> None:
         sa.Column("batch_id", sa.Uuid(), nullable=True),
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.Column(
-            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(
@@ -95,7 +101,5 @@ def downgrade() -> None:
             existing_nullable=True,
         )
         batch.add_column(sa.Column("last_alert_kind", sa.String(length=30), nullable=True))
-        batch.add_column(
-            sa.Column("alerts_sent", sa.Integer(), nullable=False, server_default="0")
-        )
+        batch.add_column(sa.Column("alerts_sent", sa.Integer(), nullable=False, server_default="0"))
         batch.alter_column("alerts_sent", server_default=None)

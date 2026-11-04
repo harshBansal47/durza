@@ -73,10 +73,10 @@ from app.models import job as _job  # noqa: F401
 from app.models import page as _page  # noqa: F401
 from app.models import product as _product  # noqa: F401
 from app.models import revenue_event as _revenue_event  # noqa: F401
+from app.models import saved_items as _saved_items  # noqa: F401
 from app.models import source as _source  # noqa: F401
 from app.models import sponsored as _sponsored  # noqa: F401
 from app.models import store as _store  # noqa: F401
-from app.models import saved_items as _saved_items  # noqa: F401
 from app.models import user as _user  # noqa: F401
 from app.models import verification_attempt as _verification_attempt  # noqa: F401
 from app.models.user import Role

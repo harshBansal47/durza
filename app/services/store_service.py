@@ -135,7 +135,10 @@ async def delete_store(db: AsyncSession, store: Store) -> None:
 
 async def autocomplete_stores(db: AsyncSession, query: str, limit: int = 10) -> list[str]:
     result = await db.execute(
-        select(Store.name).where(Store.name.ilike(like_contains(query), escape=LIKE_ESCAPE)).order_by(Store.name).limit(limit)
+        select(Store.name)
+        .where(Store.name.ilike(like_contains(query), escape=LIKE_ESCAPE))
+        .order_by(Store.name)
+        .limit(limit)
     )
     return list(result.scalars().all())
 

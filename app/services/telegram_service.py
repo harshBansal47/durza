@@ -10,7 +10,8 @@ What makes something worth posting:
 
 * it is publicly live (active status, active store, started, not expired, not
   about to expire) and not known to be broken;
-* it was created recently, so switching this on does not announce last month;
+* it has not already been handled by the channel ledger, so active offers that
+  become eligible later can still be announced on a subsequent ingestion run;
 * it is for the channel's country, since the audience is Indian shoppers.
 
 Rules that keep the channel worth following:
@@ -258,7 +259,6 @@ async def select_candidates(
             Coupon.is_active.is_(True),
             Store.is_active.is_(True),
             Store.status == StoreStatus.active,
-            Coupon.created_at >= now - timedelta(hours=settings.telegram_post_window_hours),
             or_(Coupon.starts_at.is_(None), Coupon.starts_at <= now),
             # Not about to lapse: an offer that dies in an hour is a bad post.
             or_(

@@ -162,9 +162,7 @@ async def test_an_offer_ending_in_a_week_is_not_ending_soon(async_session_maker,
         assert await engine.evaluate_user(db, user.id) == 0
 
 
-async def test_ended_is_announced_only_if_it_ended_after_it_was_saved(
-    async_session_maker, sender
-):
+async def test_ended_is_announced_only_if_it_ended_after_it_was_saved(async_session_maker, sender):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
         now = datetime.now(UTC)
@@ -195,9 +193,7 @@ async def test_a_pending_offer_has_not_ended(async_session_maker, sender):
         assert await engine.evaluate_user(db, user.id) == 0
 
 
-async def test_confirmed_requires_a_recent_verification_after_saving(
-    async_session_maker, sender
-):
+async def test_confirmed_requires_a_recent_verification_after_saving(async_session_maker, sender):
     async with async_session_maker() as db:
         store, cat, user = await _world(db)
         now = datetime.now(UTC)
@@ -261,6 +257,7 @@ async def test_several_events_become_one_email_without_alert_history(async_sessi
         digest = sender.sent[0]
         assert digest.subject == "2 updates on saved offers"
         assert {i.title for i in digest.items} == {"Offer A", "Offer B"}
+
 
 async def test_new_pending_offer_is_included_in_the_next_digest(async_session_maker, sender):
     async with async_session_maker() as db:

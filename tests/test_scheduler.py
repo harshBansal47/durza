@@ -502,5 +502,6 @@ def test_job_intervals_are_read_from_settings() -> None:
         == settings.verification_interval_hours * 3600
     )
     assert (
-        scheduler.job_interval_seconds("send_deal_alerts") == settings.alert_scan_interval_minutes * 60
+        scheduler.job_interval_seconds("send_deal_alerts")
+        == settings.alert_scan_interval_minutes * 60
     )

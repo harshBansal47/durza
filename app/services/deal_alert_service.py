@@ -69,6 +69,7 @@ _LABEL = {
     AlertKind.new_offer: "New offer",
 }
 
+
 @dataclass(frozen=True)
 class DealEvent:
     kind: AlertKind
@@ -111,9 +112,7 @@ def _saved_coupon_events(
             events.append(DealEvent(AlertKind.confirmed, coupon))
         if coupon.expires_at is not None:
             expires_at = ensure_utc(coupon.expires_at)
-            warning_started_at = expires_at - timedelta(
-                hours=settings.deal_alert_ending_soon_hours
-            )
+            warning_started_at = expires_at - timedelta(hours=settings.deal_alert_ending_soon_hours)
             if saved_at < warning_started_at and window_start < warning_started_at <= now:
                 events.append(DealEvent(AlertKind.ending_soon, coupon))
         return events

@@ -64,6 +64,11 @@ from app.models.page import Page
 from app.models.product import PricePoint, Product
 from app.models.revenue_event import RevenueEvent, RevenueSourceType
 from app.models.sale import SaleEdition, SaleEditionCouponRule, SaleSeries, SaleSlugHistory
+from app.models.saved_items import (
+    NotificationPreference,
+    SavedCoupon,
+    SavedStore,
+)
 from app.models.source import Source, SourceKind, SourceStatus
 from app.models.sponsored import (
     CampaignModel,
@@ -75,11 +80,6 @@ from app.models.sponsored import (
 )
 from app.models.store import Store, StoreStatus
 from app.models.telegram_post import TelegramPost, TelegramPostStatus
-from app.models.saved_items import (
-    NotificationPreference,
-    SavedCoupon,
-    SavedStore,
-)
 from app.models.user import EmailOtpChallenge, User
 from app.models.user_interest import UserInterest
 from app.models.user_segment import UserSegment
