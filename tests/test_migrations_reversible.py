@@ -112,6 +112,31 @@ def test_every_migration_has_an_upgrade_and_a_downgrade() -> None:
         assert "def downgrade()" in source, f"{path.name} has no downgrade()"
 
 
+def test_alert_history_downgrade_restores_deal_alert_constraint_names() -> None:
+    path = VERSIONS / "c9d2b7a104ef_remove_alert_event_history.py"
+    tree = ast.parse(path.read_text())
+    downgrade = next(
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "downgrade"
+    )
+    constraints: dict[str, str | None] = {}
+    for node in ast.walk(downgrade):
+        if not isinstance(node, ast.Call) or _called_name(node.func) != "ForeignKeyConstraint":
+            continue
+        columns = node.args[0]
+        if not isinstance(columns, ast.List) or len(columns.elts) != 1:
+            continue
+        column = columns.elts[0]
+        if not isinstance(column, ast.Constant) or column.value not in {"coupon_id", "store_id"}:
+            continue
+        name = next((kw.value for kw in node.keywords if kw.arg == "name"), None)
+        constraints[column.value] = name.value if isinstance(name, ast.Constant) else None
+
+    assert constraints == {
+        "coupon_id": "fk_alert_events_coupon_id",
+        "store_id": "fk_alert_events_store_id",
+    }
+
+
 def test_every_enum_a_migration_creates_is_dropped_by_its_downgrade() -> None:
     """The bug, stated as an invariant.
 

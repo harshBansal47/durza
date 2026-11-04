@@ -80,8 +80,12 @@ def downgrade() -> None:
             ["tracked_product_id"], ["tracked_products.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(["price_point_id"], ["price_points.id"], ondelete="SET NULL"),
-        sa.ForeignKeyConstraint(["coupon_id"], ["coupons.id"], ondelete="SET NULL"),
-        sa.ForeignKeyConstraint(["store_id"], ["stores.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["coupon_id"], ["coupons.id"], name="fk_alert_events_coupon_id", ondelete="SET NULL"
+        ),
+        sa.ForeignKeyConstraint(
+            ["store_id"], ["stores.id"], name="fk_alert_events_store_id", ondelete="SET NULL"
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_alert_events_user_id"), "alert_events", ["user_id"], unique=False)
