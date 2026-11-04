@@ -33,6 +33,18 @@ _ALLOWLIST = {
     # user data lived in it beyond a short-lived token hash. Dropping it keeps
     # the schema honest instead of leaving a dead table forever.
     "a4f1c8e2d9b7_passwordless_email_otp.py",
+    # Browser push alerts were removed from the product; their endpoint and
+    # subscription fields are no longer read or written.
+    "8f4d1c2b6a90_remove_browser_push_alerts.py",
+    # Private Telegram alerts were removed in favor of the public channel;
+    # per-user Telegram destinations and opt-in flags are no longer used.
+    "a2c7e1f904bd_remove_private_telegram_alerts.py",
+    # The retired private alert feature's history and per-product alert state
+    # are no longer consumed by any application path.
+    "c9d2b7a104ef_remove_alert_event_history.py",
+    # Product tracking and per-user alert marks were removed from the product;
+    # these tables have no remaining application readers or writers.
+    "d1f6c2a8e7b4_remove_product_tracking_and_alert_marks.py",
 }
 
 

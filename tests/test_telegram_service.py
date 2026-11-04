@@ -131,7 +131,7 @@ async def test_post_has_the_essentials_and_escapes_markup(cfg):
     assert "<b>Myntra</b>" in post.text
     assert "<code>MYN20</code>" in post.text
     assert "Buy &lt;b&gt;1&lt;/b&gt; get 1 &amp; more" in post.text
-    assert "We may earn a commission" in post.text
+    assert cfg.telegram_footer in post.text
     _label, url = post.button
     assert (
         url

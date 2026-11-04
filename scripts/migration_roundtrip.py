@@ -56,7 +56,6 @@ from app.models import (  # noqa: F401  # noqa: F401  # noqa: F401
     product,
     source,
     store,
-    tracking,
     user,
 )
 
