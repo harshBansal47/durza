@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     # browsers block every client-side fetch from the Next.js app to this API
     # (server-side fetches in Next.js Server Components aren't affected —
     # only same-origin-policy-enforcing browser requests are).
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = "http://localhost:3000/"
 
     # ---- Public site ----------------------------------------------------
     # Absolute base for canonical URLs, sitemaps and email links. Emails that
@@ -254,7 +254,11 @@ class Settings(BaseSettings):
 
     @property
     def cors_origin_list(self) -> list[str]:
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        return [
+            origin.strip().rstrip("/")
+            for origin in self.cors_origins.split(",")
+            if origin.strip()
+        ]
 
     @property
     def scheduler_job_names(self) -> set[str] | None:

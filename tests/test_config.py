@@ -29,6 +29,19 @@ def test_development_allows_placeholder_secret():
     Settings(environment="development", secret_key="change-me", database_url=DB)
 
 
+def test_cors_origins_ignore_trailing_slashes():
+    settings = Settings(
+        environment="development",
+        secret_key="change-me",
+        database_url=DB,
+        cors_origins="http://localhost:3000/, http://127.0.0.1:3000",
+    )
+    assert settings.cors_origin_list == [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
+
 # ---- Production-only validation ----
 #
 # Each of these is a misconfiguration that boots fine locally and produces a
