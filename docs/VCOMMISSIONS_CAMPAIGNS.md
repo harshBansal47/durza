@@ -10,8 +10,7 @@ Set the campaigns feed URL in the backend environment:
 
 ```dotenv
 VCOMMISSIONS_CAMPAIGNS_URL=https://provider.example/campaigns?credential=...
-VCOMMISSIONS_SYNC_INTERVAL_HOURS=12
-SCHEDULER_ENABLED=true
+SCHEDULER_ENABLED=false
 ```
 
 Treat the complete URL as a credential if the provider places a token in its
@@ -24,11 +23,17 @@ added. When `data.count` is supplied, the importer verifies it equals the
 number of returned campaign records before applying any changes. A mismatch
 fails safely so an incomplete response cannot deactivate campaigns.
 
-Apply the database migration before enabling synchronization. The scheduler
-runs `sync_vcommission_campaigns` at the configured interval. If
-`SCHEDULER_JOBS` is explicitly set, include that job name. Admins can also
-trigger a sync with `POST /api/v1/vcommission/admin/sync` and inspect the latest
-attempt with `GET /api/v1/vcommission/admin/sync/latest`.
+Apply the database migration before the first sync. This integration can be
+operated manually without starting the scheduler: keep `SCHEDULER_ENABLED=false`
+and have an admin call `POST /api/v1/vcommission/admin/sync` whenever the feed
+should be refreshed. Check the latest attempt with
+`GET /api/v1/vcommission/admin/sync/latest`. The sync uses the same advisory
+lock as scheduled work, so it is safe if a scheduled instance is running
+elsewhere.
+
+The campaign catalogue page is `/affiliate-campaigns`. It reads the public
+campaign API and sends visitors through the backend's tracked campaign redirect;
+no provider credential is needed in the frontend.
 
 ## Public API
 

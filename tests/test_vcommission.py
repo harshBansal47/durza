@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime
 
 import httpx
@@ -6,6 +7,7 @@ from sqlalchemy import select
 
 from app.models.affiliate_campaign import AffiliateCampaign, AffiliateCampaignSync
 from app.models.store import Store
+from app.models.user import Role
 from app.services import vcommission_service as service
 
 
@@ -246,18 +248,18 @@ async def test_failed_fetch_preserves_existing_campaigns_and_records_failure(
     assert latest is not None and latest.status == "failed"
 
 
-@pytest.mark.asyncio
-async def test_public_campaign_response_hides_tracking_url_and_redirect_tracks_click(
-    async_session_maker, client
-):
+async def _add_campaign(async_session_maker) -> uuid.UUID:
     campaign = AffiliateCampaign(
         network="vcommission",
         external_campaign_id="campaign-1",
         title="Summer offer",
+        description="Payout 12% new users. Promotion Methods: Telegram - Not Allowed",
+        kpi="Cancelled orders are not payable",
         merchant_name="Example Shop",
         tracking_url="https://track.example/offer?token=secret",
         categories=["Fashion"],
         countries=["IN"],
+        payouts=[{"amount": 12}],
         network_metadata={},
         is_active=True,
         last_synced_at=datetime.now(UTC),
@@ -265,16 +267,57 @@ async def test_public_campaign_response_hides_tracking_url_and_redirect_tracks_c
     async with async_session_maker() as db:
         db.add(campaign)
         await db.commit()
-        campaign_id = campaign.id
+        return campaign.id
 
-    listing = await client.get("/api/v1/vcommission/campaigns?category=Fashion&country=IN")
+
+@pytest.mark.asyncio
+async def test_campaign_catalogue_is_not_public(async_session_maker, client, make_headers):
+    """Payouts, advertiser terms and KPI rules are commercial data, not shopper content."""
+    campaign_id = await _add_campaign(async_session_maker)
+
+    for path in (
+        "/api/v1/vcommission/campaigns",
+        f"/api/v1/vcommission/campaigns/{campaign_id}",
+    ):
+        anonymous = await client.get(path)
+        assert anonymous.status_code == 401, path
+        assert "payout" not in anonymous.text.lower()
+
+        shopper = await client.get(path, headers=await make_headers(Role.user))
+        assert shopper.status_code == 403, path
+        assert "payout" not in shopper.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_admin_can_read_campaigns_and_responses_are_never_cacheable_publicly(
+    async_session_maker, client, admin_headers
+):
+    campaign_id = await _add_campaign(async_session_maker)
+
+    listing = await client.get(
+        "/api/v1/vcommission/campaigns?category=Fashion&country=IN", headers=admin_headers
+    )
     assert listing.status_code == 200
     assert listing.json()["total"] == 1
-    assert "public" in listing.headers["cache-control"]
+    assert "public" not in listing.headers.get("cache-control", "")
 
-    response = await client.get(f"/api/v1/vcommission/campaigns/{campaign_id}")
-    assert response.status_code == 200
-    assert "tracking_url" not in response.json()
+    detail = await client.get(f"/api/v1/vcommission/campaigns/{campaign_id}", headers=admin_headers)
+    assert detail.status_code == 200
+    assert "tracking_url" not in detail.json()
+    assert "public" not in detail.headers.get("cache-control", "")
+
+
+def test_campaign_routes_are_not_on_the_public_cache_allow_list():
+    from app.core.cache_headers import cache_control_for
+
+    assert cache_control_for("/api/v1/vcommission/campaigns") is None
+    assert cache_control_for("/api/v1/vcommission/campaigns/abc") is None
+
+
+@pytest.mark.asyncio
+async def test_redirect_tracks_click_and_stays_public(async_session_maker, client):
+    """The shopper-facing tracked redirect must keep working without a login."""
+    campaign_id = await _add_campaign(async_session_maker)
 
     redirect = await client.get(
         f"/api/v1/vcommission/campaigns/{campaign_id}/go",

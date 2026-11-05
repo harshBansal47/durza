@@ -32,7 +32,8 @@ _SEG = r"[^/]+"
 # counts: the storefront reads them uncached on purpose), every `/go`, `/autocomplete` and
 # `/search/suggest` (high-cardinality, already uncached client-side), `/ads` (rotation),
 # `/editorial/manage` and `/editorial/id/...` (editor tooling), and everything under
-# `/me`, `/auth`, `/account`, `/admin`, `/analytics` and `/personalization`.
+# `/me`, `/auth`, `/account`, `/admin`, `/analytics`, `/personalization` and the admin-only
+# `/vcommission/campaigns` catalogue (a shared cache must never hold admin data).
 _RULES: tuple[tuple[re.Pattern[str], str], ...] = tuple(
     (re.compile(pattern), value)
     for pattern, value in (
@@ -54,8 +55,6 @@ _RULES: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         (rf"^/editorial/(?!manage/|id/){_SEG}/{_SEG}$", CATALOGUE),
         (r"^/sales$", CATALOGUE),
         (rf"^/sales/{_SEG}(/{_SEG})?$", CATALOGUE),
-        (r"^/vcommission/campaigns$", OFFERS),
-        (rf"^/vcommission/campaigns/{_SEG}$", OFFERS),
     )
 )
 

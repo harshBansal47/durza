@@ -1,4 +1,10 @@
-"""Public vCommission campaign catalogue and admin synchronization controls."""
+"""vCommission campaigns: an admin-only catalogue, a public tracked redirect, and sync controls.
+
+The catalogue carries what the advertiser wrote about its own programme: payouts, goals, KPI
+rules and promotion restrictions. That is commercial data about our publisher relationship, not
+shopper content, and networks commonly limit republishing it, so listing and reading campaigns
+requires an admin. The tracked `/go` redirect stays public: it is what shopper-facing links use.
+"""
 
 import uuid
 from urllib.parse import urlsplit
@@ -62,6 +68,7 @@ async def get_campaigns(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_role(Role.admin)),
 ) -> Paginated[AffiliateCampaignRead]:
     campaigns, total = await list_campaigns(
         db, search=search, category=category, country=country, skip=skip, limit=limit
@@ -114,7 +121,9 @@ async def go_to_campaign(
 
 @router.get("/campaigns/{campaign_id}", response_model=AffiliateCampaignRead)
 async def get_campaign_detail(
-    campaign_id: uuid.UUID, db: AsyncSession = Depends(get_db)
+    campaign_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_role(Role.admin)),
 ) -> AffiliateCampaignRead:
     campaign = await get_campaign(db, campaign_id)
     if campaign is None:
