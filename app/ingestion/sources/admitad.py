@@ -47,7 +47,7 @@ _USER_AGENT = "DurzaBot/1.0 (+https://durza.in/bot)"
 
 
 _NETWORK_TAG = re.compile(r"\[[^\]]*\]")
-_COUNTRY_SUFFIX = re.compile(r"\s+IN$")
+_COUNTRY_SUFFIX = re.compile(r"\s+(?:IN|WW)$")
 
 
 def clean_campaign_name(name: object) -> str | None:

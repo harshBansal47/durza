@@ -203,6 +203,7 @@ def test_campaign_names_lose_the_network_tags() -> None:
     assert clean_campaign_name("Acer [CPS] IN") == "Acer"
     assert clean_campaign_name("Tata CLiQ [CPA] IN") == "Tata CLiQ"
     assert clean_campaign_name("Myntra IN") == "Myntra"
+    assert clean_campaign_name("InVideo WW") == "InVideo"
     assert clean_campaign_name("Login") == "Login"  # only a standalone " IN"
     assert clean_campaign_name(None) is None
 
