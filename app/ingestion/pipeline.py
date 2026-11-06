@@ -963,6 +963,8 @@ async def _apply_offer(
     # interpreted into our own fields. See normalize._extract_restrictions.
     restrictions = offer.restrictions or coupon.restrictions
 
+    if coupon.title != offer.title:
+        coupon.slug = await generate_unique_slug(db, Coupon, offer.title, exclude_id=coupon.id)
     coupon.title = offer.title
     coupon.code = offer.code
     coupon.normalized_code = merchants.normalize_code(offer.code)
