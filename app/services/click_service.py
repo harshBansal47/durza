@@ -91,6 +91,10 @@ async def record_click(
         ClickEvent.coupon_id == (coupon.id if coupon else None),
         ClickEvent.product_id == (product.id if product else None),
         ClickEvent.ad_id == (ad.id if ad else None),
+        # Without this, a click on one store (no coupon, product or ad to tell them apart)
+        # was treated as a duplicate of a click on any other store, and shared its click
+        # reference, so a later sale would be credited to the wrong store.
+        ClickEvent.store_id == (store.id if store else None),
         ClickEvent.network == event_network,
     )
     existing = (await db.execute(stmt.limit(1))).scalar_one_or_none()

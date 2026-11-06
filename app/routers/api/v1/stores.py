@@ -1,12 +1,15 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import require_role
+from app.core.limiter import limiter
 from app.core.pagination import Paginated
+from app.core.request_meta import client_ip, hash_ip
 from app.models.editorial import EditorialContent, EditorialEntityLink, StoreFAQ, StoreRelationship
 from app.models.store import Store
 from app.models.user import Role, User
@@ -14,7 +17,14 @@ from app.schemas.coupon_public import CouponPublicRead
 from app.schemas.destination import StoreDestinationRead, StoreFAQRead
 from app.schemas.editorial import EditorialRead
 from app.schemas.store import StoreCreate, StoreRead, StoreUpdate
-from app.services import coupon_service, editorial_service, store_service
+from app.services import (
+    affiliate,
+    click_service,
+    coupon_service,
+    editorial_service,
+    store_router,
+    store_service,
+)
 
 router = APIRouter(prefix="/stores", tags=["stores"])
 
@@ -132,6 +142,50 @@ async def get_store_by_slug(slug: str, db: AsyncSession = Depends(get_db)) -> St
     if store is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
     return store
+
+
+@router.get(
+    "/by-slug/{slug}/go", response_class=RedirectResponse, status_code=status.HTTP_302_FOUND
+)
+@limiter.limit("60/minute")
+async def go_to_store(
+    slug: str,
+    request: Request,
+    src: str | None = Query(default=None, max_length=40),
+    content_ref: str | None = Query(default=None, max_length=80),
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    """ "Go to store": the redirect behind every store link on the site and in Telegram.
+
+    The destination is chosen here, server-side, by `app.services.store_router`; the browser
+    never sees which network or campaign it was. Each hit is logged as a click tagged with
+    `src` (the page or channel that sent the visitor), and the outbound URL carries that click's
+    reference where the network supports one.
+    """
+    store = await store_service.get_store_by_slug(db, slug)
+    if store is None or not store.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Store not found")
+    routed = await store_router.route_store(db, store, src=src)
+    if routed is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Store has no destination"
+        )
+    click, _ = await click_service.record_click(
+        db,
+        store=store,
+        src=src,
+        content_ref=content_ref,
+        network=routed.network,
+        visitor_hash=hash_ip(client_ip(request)),
+        user_agent=request.headers.get("user-agent"),
+    )
+    target = affiliate.build_outbound_url(
+        routed.url,
+        network=routed.network,
+        link_template=routed.link_template,
+        clickref=click.clickref,
+    )
+    return RedirectResponse(target, status_code=status.HTTP_302_FOUND)
 
 
 @router.get("/markets", response_model=list[str])
