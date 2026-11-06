@@ -13,6 +13,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -60,6 +61,13 @@ class AffiliateCampaign(Base, UUIDPKMixin, TimestampMixin):
     app_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     app_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     network_metadata: Mapped[dict] = mapped_column(_JSON, nullable=False, default=dict)
+    # What the advertiser allows and how it pays, read from the description at import time (see
+    # app/services/vcommission_terms.py). `needs_review` is the queryable summary: true when the
+    # terms could not be established or contain something a person should read before we promote.
+    terms: Mapped[dict | None] = mapped_column(_JSON, nullable=True)
+    needs_review: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     last_synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

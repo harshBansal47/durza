@@ -32,6 +32,9 @@ class AffiliateCampaignRead(BaseModel):
     is_active: bool
     last_synced_at: datetime
     click_url: str
+    # Parsed advertiser terms (admin-only endpoint; contains advertiser wording).
+    terms: Any | None = None
+    needs_review: bool = False
 
 
 class AffiliateCampaignPage(Paginated[AffiliateCampaignRead]):

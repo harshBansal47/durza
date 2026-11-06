@@ -53,3 +53,35 @@ An empty or partially invalid feed never deactivates campaigns. A complete,
 non-empty feed deactivates campaigns absent from that feed but retains their
 records for auditability. Existing stores are matched by normalized domain or
 name; unmatched campaigns remain unassociated.
+
+## Parsed advertiser terms
+
+Each campaign's `description` is advertiser-written HTML that follows one template. At import
+time `app/services/vcommission_terms.py` reads it into `affiliate_campaigns.terms` (JSON) and
+sets `needs_review`. It must run on the raw HTML: the stored `description` has been flattened
+to one line and cannot be parsed afterwards, so campaigns imported before this column existed
+get their terms on the next sync.
+
+`terms` holds, per campaign:
+
+- `channels`: the advertiser's Promotion Methods matrix (`telegram`, `coupon`, `email`, `sms`,
+  `cashback`, `search`, ...), each `allowed`, `conditional` (with the advertiser's note),
+  `not_allowed` or `unavailable`;
+- `cookie_days`, `validation_days`, `conversion_type`, `geo`;
+- `rules`: the Detailed KPI list, each tagged (`cancelled_not_payable`, `brand_bidding_banned`,
+  `other_affiliate_attribution`, `approved_discount_code`, `code_payout_rule`, `geo`, `other`);
+- `payout_structure` and `payout_effective_from`: anything other than `api_only` means the
+  advertiser's text describes slabs, user types or categories that the API's single payout
+  number does not capture, so do not rank on that number alone;
+- `review_reasons`.
+
+`needs_review` is true when the channel matrix or KPI section is missing, when a rule says which
+discount codes affect payout, or when a payout change is dated in the future. That is the queue
+a person should clear (`GET /vcommission/campaigns?needs_review=true`, admin only).
+
+Use `can_promote(terms, channel)` before posting or showing anything for a campaign. It fails
+closed: missing or unrecognised terms, "Not Allowed", and "Not Available" are all a no, and a
+conditional ("Allowed (Only generic)") is a no unless the caller accepts the condition.
+
+`terms` contains advertiser wording and is only returned by the admin-only endpoints. Shopper
+text should be written in our own words, never copied from it.

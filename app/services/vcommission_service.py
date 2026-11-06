@@ -20,6 +20,7 @@ from app.ingestion import merchants
 from app.ingestion.retry import with_retries
 from app.models.affiliate_campaign import AffiliateCampaign, AffiliateCampaignSync
 from app.models.store import Store
+from app.services.vcommission_terms import parse_campaign_terms
 
 logger = get_logger("durza.vcommission")
 _NETWORK = "vcommission"
@@ -244,6 +245,11 @@ def _campaign_data(item: object) -> dict[str, object] | None:
             "disabled",
         }
     )
+    # Parsed from the raw HTML: `_plain_text` flattens the description to one line, which
+    # destroys the line breaks the labels depend on, so this cannot be done later.
+    terms = parse_campaign_terms(
+        item.get("description"), payouts=item.get("payouts"), model=item.get("model")
+    )
     return {
         "external_campaign_id": external_id,
         "title": title,
@@ -267,6 +273,8 @@ def _campaign_data(item: object) -> dict[str, object] | None:
         "app_name": _string(item.get("app_name"), limit=255),
         "app_id": _string(item.get("app_id"), limit=255),
         "network_metadata": metadata,
+        "terms": terms.to_dict(),
+        "needs_review": terms.needs_review,
         "is_active": is_active,
     }
 
@@ -550,6 +558,8 @@ async def sync_campaigns(
         "app_name",
         "app_id",
         "network_metadata",
+        "terms",
+        "needs_review",
         "is_active",
     )
 
@@ -629,6 +639,7 @@ async def list_campaigns(
     search: str | None = None,
     category: str | None = None,
     country: str | None = None,
+    needs_review: bool | None = None,
     skip: int = 0,
     limit: int = 20,
 ) -> tuple[list[AffiliateCampaign], int]:
@@ -660,6 +671,8 @@ async def list_campaigns(
                 cast(AffiliateCampaign.countries, Text).contains(country_json, autoescape=True),
             )
         )
+    if needs_review is not None:
+        stmt = stmt.where(AffiliateCampaign.needs_review.is_(needs_review))
     stmt = stmt.order_by(AffiliateCampaign.merchant_name, AffiliateCampaign.title)
     items, total = await paginate(db, stmt, skip, limit)
     return list(items), total

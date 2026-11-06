@@ -57,6 +57,8 @@ def _campaign_read(campaign: AffiliateCampaign) -> AffiliateCampaignRead:
         is_active=campaign.is_active,
         last_synced_at=campaign.last_synced_at,
         click_url=f"/api/v1/vcommission/campaigns/{campaign.id}/go",
+        terms=campaign.terms,
+        needs_review=campaign.needs_review,
     )
 
 
@@ -65,13 +67,20 @@ async def get_campaigns(
     search: str | None = Query(default=None, max_length=100),
     category: str | None = Query(default=None, max_length=120),
     country: str | None = Query(default=None, min_length=2, max_length=2),
+    needs_review: bool | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_role(Role.admin)),
 ) -> Paginated[AffiliateCampaignRead]:
     campaigns, total = await list_campaigns(
-        db, search=search, category=category, country=country, skip=skip, limit=limit
+        db,
+        search=search,
+        category=category,
+        country=country,
+        needs_review=needs_review,
+        skip=skip,
+        limit=limit,
     )
     return Paginated(
         items=[_campaign_read(campaign) for campaign in campaigns],
