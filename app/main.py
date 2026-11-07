@@ -20,6 +20,7 @@ from app.core.sentry import init_sentry
 from app.routers.api.v1.account import router as account_router
 from app.routers.api.v1.admin_analytics import router as admin_analytics_router
 from app.routers.api.v1.admin_ingestion import router as admin_ingestion_router
+from app.routers.api.v1.admin_telegram import router as admin_telegram_router
 from app.routers.api.v1.admin_logs import router as admin_logs_router
 from app.routers.api.v1.ads import router as ads_router
 from app.routers.api.v1.analytics import router as analytics_router
@@ -124,6 +125,7 @@ for _router in (
     analytics_router,
     admin_analytics_router,
     admin_ingestion_router,
+    admin_telegram_router,
     admin_logs_router,
     personalization_router,
     sales_router,
