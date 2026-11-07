@@ -39,7 +39,9 @@ async def send_coupon_to_telegram(
 ) -> SendResponse:
     settings = get_settings()
     if not settings.telegram_bot_token or not settings.telegram_channel_id:
-        raise HTTPException(status_code=400, detail="Telegram bot token or channel id not configured")
+        raise HTTPException(
+            status_code=400, detail="Telegram bot token or channel id not configured"
+        )
 
     coupon = await db.get(Coupon, body.coupon_id)
     if coupon is None:
@@ -48,7 +50,12 @@ async def send_coupon_to_telegram(
     if store is None:
         raise HTTPException(status_code=404, detail="Store not found")
 
-    post = prepare(coupon, store, now=__import__("datetime").datetime.now(__import__("datetime").timezone.utc), settings=settings)
+    post = prepare(
+        coupon,
+        store,
+        now=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+        settings=settings,
+    )
     async with TelegramClient(settings.telegram_bot_token, settings.telegram_channel_id) as client:
         message_id = await client.send_message(post.text, button=post.button, silent=False)
     return SendResponse(message_id=message_id)
